@@ -160,6 +160,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 			_ = fields.Set("elyph_rules_shown", true)
 			stored.Metadata, _ = fields.Encode()
+			_ = metadata.Set("elyph_rules_shown", true)
 		}
 		err = req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata})
 
@@ -171,7 +172,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		})
 		if ruleCard != "" {
 			elyphRulesShown = true
-			_ = metadata.Set("elyph_rules_shown", true)
 		}
 		if len(metadata) != 0 {
 			fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)

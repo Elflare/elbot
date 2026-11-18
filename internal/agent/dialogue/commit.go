@@ -55,6 +55,37 @@ func (g *CommitGate) Enter(ctx context.Context, sessionID string) (context.Conte
 	return ctx, release, nil
 }
 
+// commitInput records the rule card in history and advances the live session only after persistence succeeds.
+func commitInput(ctx context.Context, session *storage.Session, commit storage.DialogueCommit, persistence agentshare.MessageCommitter) error {
+	if !commit.ElyphRulesShown {
+		return persistence.Commit(ctx, commit)
+	}
+	message := commit.Messages[0]
+	fields, err := storage.DecodeSessionMetadata(message.Metadata)
+	if err != nil {
+		return err
+	}
+	_ = fields.Set("elyph_rules_shown", true)
+	message.Metadata, err = fields.Encode()
+	if err != nil {
+		return err
+	}
+	fields, err = storage.DecodeSessionMetadata(session.Metadata)
+	if err != nil {
+		return err
+	}
+	_ = fields.Set("elyph_rules_shown", true)
+	metadata, err := fields.Encode()
+	if err != nil {
+		return err
+	}
+	if err := persistence.Commit(ctx, commit); err != nil {
+		return err
+	}
+	session.Metadata = metadata
+	return nil
+}
+
 type messageCommitter struct {
 	store     *MessageStore
 	operation string
@@ -64,11 +95,11 @@ func (s *MessageStore) Committer(operation string) agentshare.MessageCommitter {
 	return messageCommitter{store: s, operation: operation}
 }
 
-func (c messageCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) error {
-	if message == nil {
+func (c messageCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+	if len(commit.Messages) == 0 {
 		return nil
 	}
-	return c.store.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}, PlatformMessageMaps: mappings}, c.operation)
+	return c.store.Commit(ctx, commit, c.operation)
 }
 
 // ToolTranscriptCommitter reserves ordered slots and commits each final result.
@@ -81,8 +112,7 @@ type ToolTranscriptCommitter struct {
 	remaining int
 }
 
-func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
-
+func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) error {
 	c.head = head
 	c.calls = make([]llm.ToolCallRequest, len(head.ToolCalls))
 	for i, call := range head.ToolCalls {
@@ -133,8 +163,7 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	}
 	return err
 }
-func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (err error) {
-
+func (c *ToolTranscriptCommitter) Flush(ctx context.Context) error {
 	if c.remaining != 0 {
 		return fmt.Errorf("tool batch has unfinished results")
 	}

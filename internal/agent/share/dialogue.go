@@ -62,7 +62,7 @@ type Loop interface {
 }
 type PreparedLoop interface {
 	InputCommitter() MessageCommitter
-	PrepareInput(context.Context, context.Context, LoopInput, Output) (operationresult.Result[*storage.Message], error)
+	PrepareInput(context.Context, context.Context, LoopInput, Output) (operationresult.Result[storage.DialogueCommit], error)
 	RunLoop(context.Context, context.Context, LoopInput, Output) (operationresult.Result[LoopResult], error)
 }
 type LoopResolver interface {
@@ -179,7 +179,7 @@ type ToolDepsFactory interface {
 // MessageCommitter commits a prepared business message, or a cursor-only reply.
 // Protocol-private implementations can atomically attach their native state.
 type MessageCommitter interface {
-	Commit(context.Context, *storage.Message, []storage.PlatformMessageMap) error
+	Commit(context.Context, storage.DialogueCommit) error
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.

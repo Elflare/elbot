@@ -70,16 +70,17 @@ func (p *testPrepared) InputCommitter() agentshare.MessageCommitter {
 	return p.loop.messages.Committer("append_user_message")
 }
 
-func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (operationresult.Result[*storage.Message], error) {
+func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
 	if contextinfo.RootRequestIDFromContext(requestCtx) != in.RequestID {
 		p.loop.t.Fatal("preparation lost parent request")
 	}
 	p.user.Content = "canonical input"
-	return operationresult.Result[*storage.Message]{Status: operationresult.Success, Data: p.user}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: []*storage.Message{p.user}}}, nil
 }
 
 func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	p.loop.ran++
+	in.Selection.Model = "final-model"
 	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
 		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(requestCtx), Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}}, nil
 }
@@ -170,11 +171,14 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	info, requestCtx, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	in.RequestID = info.ID
-	_, operation, err := runner.RunTurn(ctx, requestCtx, in, out)
+	finalCtx, operation, err := runner.RunTurn(ctx, requestCtx, in, out)
 	if err != nil || operation.Status != operationresult.Success {
 		t.Fatalf("common execution failed: %+v / %v", operation, err)
 	}
 	result := operation.Data
+	if model, ok := contextinfo.ModelFromContext(finalCtx); !ok || model.Model != "final-model" || result.Selection.Model != model.Model {
+		t.Fatalf("lost loop selection: final context=%+v result=%+v", model, result.Selection)
+	}
 	if result.Outcome != agentshare.Completed || result.Committed.MessageID == "" || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
 		t.Fatalf("common execution failed: %+v", result)
 	}

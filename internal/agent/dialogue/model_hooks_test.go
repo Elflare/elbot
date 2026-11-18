@@ -19,7 +19,8 @@ type hookInputCommitter struct {
 	calls int
 }
 
-func (c *hookInputCommitter) Commit(_ context.Context, m *storage.Message, _ []storage.PlatformMessageMap) error {
+func (c *hookInputCommitter) Commit(_ context.Context, commit storage.DialogueCommit) error {
+	m := commit.Messages[0]
 	c.calls++
 	c.text = m.Content
 	c.id = m.ID

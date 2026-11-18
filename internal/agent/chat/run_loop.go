@@ -56,14 +56,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if checked := r.CheckSelection(s.selection); checked.Status != operationresult.Success {
 				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 			}
-			var modelErr error
-			s.requestCtx, modelErr = r.View.WithModel(s.requestCtx, s.selection)
-			if modelErr == nil {
-				s.ctx, modelErr = r.View.WithModel(s.ctx, s.selection)
-			}
-			if modelErr != nil {
-				return failedLoop(modelErr)
-			}
+			s.requestCtx = r.View.WithModel(s.requestCtx, s.selection)
+			s.ctx = r.View.WithModel(s.ctx, s.selection)
 			scope := r.Identity.Scope(s.requestCtx)
 			prompt, err := r.PromptBuilder.Build(s.requestCtx, PromptBuildRequest{Session: s.session, Scope: scope})
 			if err != nil {

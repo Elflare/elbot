@@ -113,10 +113,6 @@ func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agen
 	if err != nil {
 		return nil, err
 	}
-	ctx, err = r.View.WithModel(ctx, in.Selection)
-	if err != nil {
-		return nil, err
-	}
 	return &PreparedTurn{route: route, input: in, preparer: r.Preparer}, nil
 }
 
@@ -143,14 +139,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 			operation.Data = result
 		}
 	}()
-	var err error
-	ctx, err = r.View.WithModel(ctx, in.Selection)
-	if err == nil {
-		requestCtx, err = r.View.WithModel(requestCtx, in.Selection)
-	}
-	if err != nil {
-		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
-	}
+	ctx = r.View.WithModel(ctx, in.Selection)
+	requestCtx = r.View.WithModel(requestCtx, in.Selection)
 	loopIn := agentshare.LoopInput{Session: in.Session, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
 	preparation, err := in.Prepared.PrepareTurn(requestCtx)
 	if err != nil {
@@ -169,23 +159,11 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		result.Outcome = agentshare.Failed
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: input.Status, Message: input.Message}, nil
 	}
-	user := input.Data
 	if err := requestCtx.Err(); err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
-	if err := prepared.InputCommitter().Commit(requestCtx, user, nil); err != nil {
+	if err := commitInput(requestCtx, in.Session, input.Data, prepared.InputCommitter()); err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
-	}
-	if user != nil {
-		fields, _ := storage.DecodeSessionMetadata(user.Metadata)
-		if string(fields["elyph_rules_shown"]) == "true" {
-			fields, err := storage.DecodeSessionMetadata(in.Session.Metadata)
-			if err != nil {
-				return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
-			}
-			_ = fields.Set("elyph_rules_shown", true)
-			in.Session.Metadata, _ = fields.Encode()
-		}
 	}
 	executed, err := prepared.RunLoop(ctx, requestCtx, loopIn, out)
 	if err != nil {
@@ -206,13 +184,8 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
 	ctx = r.View.Context(ctx)
-	ctx, err = r.View.WithModel(ctx, result.Selection)
-	if err == nil {
-		requestCtx, err = r.View.WithModel(requestCtx, result.Selection)
-	}
-	if err != nil {
-		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
-	}
+	ctx = r.View.WithModel(ctx, result.Selection)
+	requestCtx = r.View.WithModel(requestCtx, result.Selection)
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
@@ -293,13 +266,14 @@ func NewRunner(deps RunnerDeps) *Runner {
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}
 	}
-	system := NewSystemPromptManager(SoulSystemPromptSource{Soul: soul})
-	system.AddSource(ToolNamesSystemPromptSource{Tools: deps.ToolProvider})
-	system.AddSource(ToolTagsSystemPromptSource{Preloader: deps.Preloader})
-
-	system.AddSource(BackgroundPathsSystemPromptSource{})
-	system.AddSource(ResidentMemorySystemPromptSource{Store: deps.Memory})
-	system.AddSource(ConversationMetaSystemPromptSource{})
+	system := NewSystemPromptManager(
+		SoulSystemPromptSource{Soul: soul},
+		ToolNamesSystemPromptSource{Tools: deps.ToolProvider},
+		ToolTagsSystemPromptSource{Preloader: deps.Preloader},
+		BackgroundPathsSystemPromptSource{},
+		ResidentMemorySystemPromptSource{Store: deps.Memory},
+		ConversationMetaSystemPromptSource{},
+	)
 	return &Runner{Status: deps.Status, Routes: deps.Routes, Preparer: preparer, Messages: messages, Replies: replies, Turns: deps.Turns, View: deps.View, Calls: calls, System: system}
 }
 

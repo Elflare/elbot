@@ -25,7 +25,7 @@ type Compactor struct {
 		Enter(context.Context, string) (context.Context, func(), error)
 	}
 	View interface {
-		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
+		WithModel(context.Context, modelmgr.Selection) context.Context
 	}
 	System interface {
 		Build(context.Context, agentshare.SystemPromptRequest) (string, error)
@@ -52,10 +52,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if !ok {
 		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Incompatible, Message: "当前 Responses 模型不支持原生压缩"}, nil
 	}
-	ctx, err = c.View.WithModel(ctx, selection)
-	if err != nil {
-		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
-	}
+	ctx = c.View.WithModel(ctx, selection)
 	cp, err := c.Context.Repository.CurrentCheckpoint(ctx, row.ID)
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err

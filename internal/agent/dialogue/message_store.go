@@ -4,7 +4,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -48,20 +47,10 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		rows = append(rows, commit.ToolResult.Result)
 	}
 	for _, message := range rows {
-		if message != nil {
-			fields, err := storage.DecodeSessionMetadata(message.Metadata)
-			if err != nil {
-				return err
-			}
-			var elyphRulesShown bool
-			if raw, ok := fields["elyph_rules_shown"]; ok {
-				if err := json.Unmarshal(raw, &elyphRulesShown); err != nil {
-					return err
-				}
-			}
-			commit.ElyphRulesShown = commit.ElyphRulesShown || elyphRulesShown
+		if message == nil {
+			continue
 		}
-		if message != nil && message.Segments != "" && !(commit.ToolResult != nil && commit.Native != nil) {
+		if message.Segments != "" && !(commit.ToolResult != nil && commit.Native != nil) {
 			projected, err := agentshare.MessageFromStorage(*message)
 			if err != nil {
 				return err

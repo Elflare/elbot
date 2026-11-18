@@ -25,12 +25,14 @@ import (
 // Execution still resolves and checks its fixed selection at admission.
 func (c *ExecutionCoordinator) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	selected := c.SelectionForTurn(ctx, row)
-	return c.view.WithModel(ctx, selected)
+	if selected.Client == nil {
+		return ctx, fmt.Errorf("model provider %q not found", selected.Provider)
+	}
+	return c.view.WithModel(ctx, selected), nil
 }
 
 func (c *ExecutionCoordinator) DefaultModelContext(ctx context.Context) (context.Context, error) {
-	selected := c.SelectionForTurn(ctx, nil)
-	return c.view.WithModel(ctx, selected)
+	return c.ModelContext(ctx, nil)
 }
 
 func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out agentshare.Output) (context.Context, *storage.Session, operationresult.Result[turn.Input], error) {
@@ -65,11 +67,7 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		release()
 		return ctx, session, operationresult.Result[turn.Input]{Status: compatible.Status, Message: compatible.Message}, nil
 	}
-	ctx, err = c.view.WithModel(ctx, selection)
-	if err != nil {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
+	ctx = c.view.WithModel(ctx, selection)
 	registered, err := c.sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
 	if err != nil {
 		release()
@@ -262,7 +260,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	if execution := turn.ExecutionFromContext(ctx); execution != nil {
 		execution.SetResult(session.ID, committed.MessageID, committed.RawText)
 	}
-	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(selection.Origin.APIType)})
+	ctx = c.view.WithModel(ctx, selection)
 	c.sessions.MaybeScheduleNaming(ctx, session.ID)
 	return pending, nil
 }

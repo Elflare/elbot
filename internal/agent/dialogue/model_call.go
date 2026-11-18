@@ -253,24 +253,14 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		ruleCard := elyph.RuleCardIfNeeded(pending.NeedsElyphRules, state.ElyphRulesShown)
 		if ruleCard != "" {
 			segments = append(llm.TextSegments(ruleCard+"\n\n"), segments...)
-			fields, err := storage.DecodeSessionMetadata(pending.Message.Metadata)
-			if err != nil {
-				return agentshare.CallInput{}, err
-			}
-			_ = fields.Set("elyph_rules_shown", true)
-			pending.Message.Metadata, _ = fields.Encode()
 		}
 		baseMessages[pending.MessageIndex].Segments = segments
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
-		if err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
+		commit := storage.DialogueCommit{SessionID: sessionID, Messages: []*storage.Message{&pending.Message}, ElyphRulesShown: ruleCard != ""}
+		if err := commitInput(ctx, session, commit, persistence); err != nil {
 			return agentshare.CallInput{}, err
-		}
-		if ruleCard != "" {
-			fields, _ := storage.DecodeSessionMetadata(session.Metadata)
-			_ = fields.Set("elyph_rules_shown", true)
-			session.Metadata, _ = fields.Encode()
 		}
 	}
 	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil

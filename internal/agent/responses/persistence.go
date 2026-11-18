@@ -12,12 +12,8 @@ import (
 
 type inputCommitter struct{ state *turnState }
 
-func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (err error) {
-
-	if message == nil {
-		err := fmt.Errorf("native input message is required")
-		return err
-	}
+func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+	message := commit.Messages[0]
 	segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
 	if err != nil {
 		return err
@@ -29,12 +25,8 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, ma
 	if err != nil {
 		return err
 	}
-	return c.state.commit(ctx, storage.DialogueCommit{
-		SessionID:           message.SessionID,
-		Messages:            []*storage.Message{message},
-		PlatformMessageMaps: mappings,
-		Native:              &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}},
-	}, "append_user_message")
+	commit.Native = &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}}
+	return c.state.commit(ctx, commit, "append_user_message")
 }
 
 func (s *turnState) checkpointID() string {
@@ -78,16 +70,14 @@ func (s *turnState) advance(messageID string) storage.NativeCommit {
 
 type replyCommitter struct{ state *turnState }
 
-func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) error {
-	s := c.state
-	var rows []*storage.Message
+func (c replyCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
 	id := ""
-	if message != nil {
-		id = message.ID
-		rows = []*storage.Message{message}
+	if len(commit.Messages) != 0 {
+		id = commit.Messages[0].ID
 	}
-	native := s.advance(id)
-	return s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Messages: rows, Native: &native, PlatformMessageMaps: mappings}, "append_assistant_message")
+	native := c.state.advance(id)
+	commit.Native = &native
+	return c.state.commit(ctx, commit, "append_assistant_message")
 }
 
 type toolCommitter struct {

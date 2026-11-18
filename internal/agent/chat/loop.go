@@ -71,11 +71,11 @@ type LoopDeps struct {
 	View interface {
 		Context(context.Context) context.Context
 		RefreshSession(context.Context, *storage.Session) (context.Context, error)
-		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
+		WithModel(context.Context, modelmgr.Selection) context.Context
 		CheckSelection(*storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error)
 	}
 	Preparer interface {
-		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
+		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, bool, error)
 	}
 	Tools interface {
 		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)

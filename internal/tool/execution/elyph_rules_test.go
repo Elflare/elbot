@@ -46,6 +46,7 @@ func (t ruleDetailTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 }
 
 type ruleCommitter struct {
+	rulesAtCommit bool
 	testToolCommitter
 	failure error
 	saved   chan struct{}
@@ -56,6 +57,7 @@ func (c *ruleCommitter) Result(ctx context.Context, index int, call llm.ToolCall
 		c.messages[index] = message
 		return c.failure
 	}
+	c.rulesAtCommit = string(update.Metadata["elyph_rules_shown"]) == "true"
 	err := c.testToolCommitter.Result(ctx, index, call, message, update)
 	if c.saved != nil {
 		close(c.saved)
@@ -90,6 +92,9 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	}
 	if !strings.Contains(row.Metadata, "elyph_rules_shown") {
 		t.Fatalf("committed results lost state after later failure: %s", row.Metadata)
+	}
+	if !committer.rulesAtCommit {
+		t.Fatal("rule card was saved without the session update in the same commit")
 	}
 	if !strings.Contains(committer.results[0].Metadata, `"elyph_rules_shown":true`) {
 		t.Fatal("rules must travel with the stored message")

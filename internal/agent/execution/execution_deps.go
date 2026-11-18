@@ -92,7 +92,7 @@ type ExecutionIdentity interface {
 
 type ExecutionView interface {
 	Context(context.Context) context.Context
-	WithModel(context.Context, modelmgr.Selection) (context.Context, error)
+	WithModel(context.Context, modelmgr.Selection) context.Context
 	CheckSelection(*storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error)
 }
 

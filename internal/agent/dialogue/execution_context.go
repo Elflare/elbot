@@ -4,7 +4,6 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/operationresult"
-	"fmt"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -30,11 +29,8 @@ func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.S
 	return modelmgr.CanSwitch(source, selection.Origin)
 }
 
-func (v ExecutionView) WithModel(ctx context.Context, selection modelmgr.Selection) (context.Context, error) {
-	if selection.Client == nil {
-		return ctx, fmt.Errorf("model provider %q not found", selection.Provider)
-	}
-	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(selection.Origin.APIType)}), nil
+func (v ExecutionView) WithModel(ctx context.Context, selection modelmgr.Selection) context.Context {
+	return contextinfo.WithModel(ctx, contextinfo.Model{Provider: selection.Provider, Model: selection.Model, APIType: string(selection.Origin.APIType)})
 }
 
 // Rebuild semantic values on the request context, retaining its cancellation.

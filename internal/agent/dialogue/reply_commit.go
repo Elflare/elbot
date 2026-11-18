@@ -50,39 +50,36 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
 	}
-	var err error
-	result.Receipt, err = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
-	if err != nil {
-		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "reply_send_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
+	logSendFailure := func(eventName string, err error) {
+		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: eventName, Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
 		events.LogAndNotify(context.WithoutCancel(ctx), record, events.NewNotification(ctx, record.Level, err.Error()))
 	}
-	toSave := message
-	var mappings []storage.PlatformMessageMap
-	if empty {
-		toSave = nil
-	} else {
+	var err error
+	result.Receipt, err = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
+	if err != nil {
+		logSendFailure("reply_send_failed", err)
+	}
+	commit := storage.DialogueCommit{SessionID: in.Session.ID}
+	if !empty {
+		commit.Messages = []*storage.Message{message}
 		for _, sent := range result.Receipt.SentMessages {
-			mappings = append(mappings, storage.PlatformMessageMap{
+			commit.PlatformMessageMaps = append(commit.PlatformMessageMaps, storage.PlatformMessageMap{
 				Platform: sent.Platform, ChatID: sent.ChatID, PlatformMessageID: sent.PlatformMessageID,
 				MessageID: message.ID, SessionID: in.Session.ID, ChatType: sent.ChatType,
 			})
 		}
 	}
-	if err := persistence.Commit(ctx, toSave, mappings); err != nil {
+	if err := persistence.Commit(ctx, commit); err != nil {
 		return result, err
 	}
-	if toSave != nil {
+	if !empty {
 		result.MessageID = message.ID
 	}
 	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: in.Outputs}); err != nil {
-		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "reply_extras_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		events.LogAndNotify(context.WithoutCancel(ctx), record, events.NewNotification(ctx, record.Level, err.Error()))
+		logSendFailure("reply_extras_failed", err)
 	}
 	return result, nil
 }

@@ -120,28 +120,28 @@ func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 	return inputCommitter{state: p.state}
 }
 
-func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[*storage.Message], error) {
+func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
 	s := p.state
 	s.ctx, s.requestCtx, s.selection, s.output = ctx, agentshare.WithReadOnlyCalls(requestCtx), in.Selection, out
 	if err := s.requestCtx.Err(); err != nil {
-		return operationresult.Result[*storage.Message]{}, err
+		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	checked, err := s.ensureInputFormat(s.requestCtx)
 	if err != nil {
-		return operationresult.Result[*storage.Message]{}, err
+		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	if checked.Status != operationresult.Success {
-		return operationresult.Result[*storage.Message]{Status: checked.Status, Message: checked.Message}, nil
+		return operationresult.Result[storage.DialogueCommit]{Status: checked.Status, Message: checked.Message}, nil
 	}
 	instructions, err := s.instructions(s.requestCtx)
 	if err != nil {
-		return operationresult.Result[*storage.Message]{}, err
+		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	s.projection = []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
 	for _, row := range p.materials.Loaded.Messages {
 		projected, err := agentshare.MessageFromStorage(row)
 		if err != nil {
-			return operationresult.Result[*storage.Message]{}, err
+			return operationresult.Result[storage.DialogueCommit]{}, err
 		}
 		s.projection = append(s.projection, projected)
 	}
@@ -149,16 +149,16 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
 	s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 	if err != nil {
-		return operationresult.Result[*storage.Message]{}, err
+		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	segments, tools, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools, p.materials.Input.NeedsElyphRules)
+	segments, tools, elyphRulesShown, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
-		return operationresult.Result[*storage.Message]{}, err
+		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	s.tools = tools
 	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
-	return operationresult.Result[*storage.Message]{Status: operationresult.Success, Data: user}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: []*storage.Message{user}, ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -197,13 +197,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if checked := s.route.CheckSelection(s.selection); checked.Status != operationresult.Success {
 				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 			}
-			s.requestCtx, err = s.route.View.WithModel(s.requestCtx, s.selection)
-			if err == nil {
-				s.ctx, err = s.route.View.WithModel(s.ctx, s.selection)
-			}
-			if err != nil {
-				return fail(err)
-			}
+			s.requestCtx = s.route.View.WithModel(s.requestCtx, s.selection)
+			s.ctx = s.route.View.WithModel(s.ctx, s.selection)
 			s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 			if err != nil {
 				return fail(err)
@@ -307,7 +302,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, summaryInput); err != nil {
 				return fail(err)
 			}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
+			if err := (inputCommitter{state: s}).Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{summaryInput}}); err != nil {
 				return fail(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*summaryInput)
@@ -376,7 +371,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, message); err != nil {
 				return fail(err)
 			}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
+			if err := (inputCommitter{state: s}).Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{message}}); err != nil {
 				return fail(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*message)

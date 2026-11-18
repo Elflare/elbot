@@ -32,7 +32,7 @@ type Preparer struct {
 	Tools *ToolExecutor
 }
 
-func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (materials agentshare.TurnMaterials, err error) {
+func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (agentshare.TurnMaterials, error) {
 	input := in.Input
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)
@@ -71,18 +71,18 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	return agentshare.TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
 }
 
-func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, error) {
+func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	result, err := p.Hooks.LLMTurnPrepared(ctx, agentshare.Session{ID: in.Session.ID}, agentshare.LLMInput{
 		Message:  agentshare.Message{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
 		Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools})
 	if err != nil {
-		return nil, nil, fmt.Errorf("llm turn hook: %w", err)
+		return nil, nil, false, fmt.Errorf("llm turn hook: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 	if in.Session.Mode == storage.SessionModeWork || in.Session.Mode == storage.SessionModeBackground {
 		tools = result.Tools
@@ -96,7 +96,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, us
 		}
 		infos, err := p.Tools.Manager.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: names, IncludeHidden: true, IncludeDiscover: true})
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 		for _, info := range infos {
 			needsElyphRules = needsElyphRules || info.Definition.NeedsElyphRules
@@ -104,20 +104,15 @@ func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, us
 	}
 	state, err := p.Tools.Manager.DecodeState(in.Session.Metadata)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	if ruleCard := elyph.RuleCardIfNeeded(needsElyphRules, state.ElyphRulesShown); ruleCard != "" {
+	ruleCard := elyph.RuleCardIfNeeded(needsElyphRules, state.ElyphRulesShown)
+	if ruleCard != "" {
 		result.Segments = append(llm.TextSegments(ruleCard+"\n\n"), result.Segments...)
-		fields, err := storage.DecodeSessionMetadata(user.Metadata)
-		if err != nil {
-			return nil, nil, err
-		}
-		_ = fields.Set("elyph_rules_shown", true)
-		user.Metadata, _ = fields.Encode()
 	}
 	archived, err := p.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
-	return archived[0].Segments, tools, nil
+	return archived[0].Segments, tools, ruleCard != "", nil
 }
