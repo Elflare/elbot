@@ -40,11 +40,11 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 		ID:          "msg-1",
 		GroupOpenID: "group-1",
 		Author:      inboundAuthor{MemberOpenID: "member-1"},
-		Content:     "@机器人 你好",
+		Content:     " <@other> 你好 ",
 	})
 
-	if handler.text != "你好" {
-		t.Fatalf("text = %q, want stripped group-at text", handler.text)
+	if handler.text != "<@other> 你好" {
+		t.Fatalf("text = %q, want other mention preserved", handler.text)
 	}
 	msgCtx, ok := share.MessageContextFrom(handler.ctx)
 	if !ok {
@@ -65,7 +65,7 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	if len(msgCtx.TriggerKeywords) != 1 || msgCtx.TriggerKeywords[0] != "芙莉丝" {
 		t.Fatalf("trigger keywords = %#v", msgCtx.TriggerKeywords)
 	}
-	if string(msgCtx.PlatformMessage) != string(raw) || msgCtx.RawText != "你好" {
+	if string(msgCtx.PlatformMessage) != string(raw) || msgCtx.RawText != "<@other> 你好" {
 		t.Fatalf("raw context = %q/%q", msgCtx.PlatformMessage, msgCtx.RawText)
 	}
 	target, err := adapter.contextTarget(handler.ctx)
@@ -74,6 +74,30 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	}
 }
 
+func TestFullGroupMessageMentions(t *testing.T) {
+	adapter := newTestAdapter(t, Config{AppID: "bot-app"}, nil)
+	for _, tc := range []struct {
+		content, mentions, want string
+		self                    bool
+	}{
+		{"<@self> 在？", `[{"member_openid":"self","is_you":true}]`, "在？", true},
+		{"<@other> 看<@self>这里", `[{"member_openid":"other"},{"member_openid":"self","is_you":true}]`, "<@other> 看这里", true},
+		{"<@other> <@all> 在？", `[{"member_openid":"other"},{"scope":"all"}]`, "<@other> <@all> 在？", false},
+	} {
+		t.Run(tc.content, func(t *testing.T) {
+			var msg inboundMessage
+			if err := json.Unmarshal([]byte(`{"id":"m","group_openid":"g","author":{"member_openid":"sender"},"content":"`+tc.content+`","mentions":`+tc.mentions+`}`), &msg); err != nil {
+				t.Fatal(err)
+			}
+			h := &captureHandler{}
+			adapter.handleGroupMessage(context.Background(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
+			ctx, ok := share.MessageContextFrom(h.ctx)
+			if !ok || h.text != tc.want || (len(ctx.Mentions) != 0) != tc.self {
+				t.Fatalf("text=%q mentions=%v, want %q self=%v", h.text, ctx.Mentions, tc.want, tc.self)
+			}
+		})
+	}
+}
 func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
 	adapter := newTestAdapter(t, Config{AppID: "bot-app", TriggerKeywords: []string{"芙莉丝"}}, nil)
 	handler := &captureHandler{}

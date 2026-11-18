@@ -27,17 +27,29 @@ const (
 )
 
 var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
-var qqOfficialGroupAtPrefixPattern = regexp.MustCompile(`^\s*(?:@\S+\s*|<@!?[^>]+>\s*)`)
 
 func (a *Adapter) handleC2CMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatPrivate, false)
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatPrivate, msg.Content, false)
 }
 
 func (a *Adapter) handleGroupMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatGroup, p.Type == eventGroupAtMessageCreate)
+	content := msg.Content
+	mentionedBot := p.Type == eventGroupAtMessageCreate
+	if p.Type == eventGroupMessageCreate {
+		for _, m := range msg.Mentions {
+			if m.IsYou {
+				mentionedBot = true
+				if m.MemberOpenID != "" {
+					content = strings.ReplaceAll(content, "<@"+m.MemberOpenID+">", "")
+				}
+				break
+			}
+		}
+	}
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatGroup, content, mentionedBot)
 }
 
-func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ChatType, mentionedBot bool) {
+func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ChatType, content string, mentionedBot bool) {
 	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
@@ -78,7 +90,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		return
 	}
 
-	text := normalizedInboundText(msg, mentionedBot)
+	text := normalizedInboundText(content)
 	segments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
 	if text == "" && len(segments) == 0 {
 		return
@@ -190,12 +202,8 @@ func inboundRoute(msg inboundMessage, conversation contextinfo.ChatType) (sender
 	return senderID, senderID, targetC2C, senderID
 }
 
-func normalizedInboundText(msg inboundMessage, mentionedBot bool) string {
-	text := qqOfficialFaceFallbackPattern.ReplaceAllString(msg.Content, "")
-	if mentionedBot {
-		text = qqOfficialGroupAtPrefixPattern.ReplaceAllString(text, "")
-	}
-	return strings.TrimSpace(text)
+func normalizedInboundText(content string) string {
+	return strings.TrimSpace(qqOfficialFaceFallbackPattern.ReplaceAllString(content, ""))
 }
 
 func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, scopeID, text, replyID string, reply share.ReplyContext) {

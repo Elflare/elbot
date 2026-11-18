@@ -84,6 +84,10 @@ type apiErrorResponse struct {
 }
 
 type inboundMessage struct {
+	Mentions []struct {
+		IsYou        bool   `json:"is_you"`        // Whether the mention targets this bot.
+		MemberOpenID string `json:"member_openid"` // Identifies the <@...> token in group message content.
+	} `json:"mentions,omitempty"`
 	ID           string              `json:"id"`
 	GroupOpenID  string              `json:"group_openid,omitempty"`
 	Author       inboundAuthor       `json:"author"`

@@ -56,7 +56,7 @@ func inboundReferencedMessage(msg inboundMessage, refIndex string) share.Referen
 		return share.ReferencedMessage{}
 	}
 	element := msg.MsgElements[0]
-	text := normalizedInboundText(inboundMessage{Content: element.Content}, false)
+	text := normalizedInboundText(element.Content)
 	segments := inboundSegments(text, inboundAttachmentSegments(element.Attachments))
 	if text == "" && len(segments) > 0 {
 		text = "[媒体消息]"

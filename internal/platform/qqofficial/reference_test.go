@@ -66,7 +66,7 @@ func TestReferenceAliasKeepsScope(t *testing.T) {
 	for _, group := range []string{"group", "other"} {
 		h = &captureHandler{}
 		a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupAtMessageCreate}, inboundMessage{
-			ID: "reply", GroupOpenID: group, Author: inboundAuthor{MemberOpenID: "reader"}, Content: "@bot remember",
+			ID: "reply", GroupOpenID: group, Author: inboundAuthor{MemberOpenID: "reader"}, Content: "remember",
 			MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},
 		})
 		got, ok := share.MessageContextFrom(h.ctx)
