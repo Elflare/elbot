@@ -286,6 +286,7 @@ Register as a regular tool:
 ```toml
 risk = "medium"
 superadmin_only = false
+weavable = true
 tags = ["doc"]
 depends_on = ["read_file"]
 command = ["python", "foo.py"]
@@ -298,7 +299,7 @@ parameters = '''
   "type": "object",
   "required": ["input"],
   "properties": {
-    "input": {"type": "string", "description": "Input text"}
+    "input": {"type": "string", "description": "input text"}
   }
 }
 '''
@@ -311,21 +312,22 @@ input = "--input"
 | --- | --- | --- |
 | `risk` | Required when registering as a tool | `safe`, `low`, `medium`, `high`, `critical`; documentation-type Skills without this field are treated as `safe`. |
 | `superadmin_only` | No | When `true`, only the superadmin can discover, preload, or call it. |
-| `tags` | No | Tool category, used for `@tool:<tag>` preloading. |
+| `weavable` | No | Allows `tool_weave` calls. Only used for executable Skills that return plain text; defaults to `false`. |
+| `tags` | No | Tool categories, used for `@tool:<tag>` preloading. |
 | `depends_on` | No | Names of tools/Skills that must be available when discovering or preloading this Skill. |
 | `command` | Required for tooling | Command array; do not use shell strings. |
 | `parameters` | Required for tooling | JSON object schema, determining the parameters seen by the LLM. |
 | `positional` | No | Array of parameter names, passed as positional arguments in the order declared; each item must correspond to `parameters.properties`. |
 | `[args]` | Required when there are unmapped parameters | Mapping from parameters to flags: `input = "--input"` translates the parameter `input` to `--input <value>`. Can be used in conjunction with `positional`. |
-| `timeout_seconds` | No | Command timeout in seconds. |
-| `expose_root` | No | Default is `false`; when `true`, discovering this Skill will expose its root path. |
-| `use_workspace` | No | Default is `false`; when `true`, the command is executed in the root directory of the currently called workspace, and media paths are also resolved relative to this directory. |
+| `timeout_seconds` | No | Command timeout duration. |
+| `expose_root` | No | Defaults to `false`; when `true`, discovering this Skill will expose its root path. |
+| `use_workspace` | No | Defaults to `false`; when `true`, the command is executed in the root directory of the current workspace call, and media paths are also resolved relative to that directory. |
 
 - ElBot only reads `ELBOT_SKILL.toml` in the Skill root directory and does not scan recursively.
 - stdout is used as the tool result; if stdout is a `{"content":"..."}` JSON, the `content` field is taken.
-- Positional arguments are output first according to the order of the `positional` array, followed by `[args]` flag/value pairs sorted by parameter name; missing optional values are not output. Required parameters must be mapped by one of these methods and cannot be mapped redundantly.
+- Positional arguments are output first in the order of the `positional` array, followed by `[args]` flag/value pairs sorted by parameter name; missing optional values are not output. Required parameters must be mapped by one of these methods and cannot be mapped redundantly.
 - Media parameters are declared as `{"type":"media"}` in `parameters.properties` and can be mapped via `positional` or `[args]`; the LLM passes `media:<sha256>`, which the host exports as a temporary file path relative to the working directory during execution. Strings not declared as media are not converted. stdout also supports `segments`; see [Skill Media Usage](concepts.md#skill-使用媒体) for format and lifecycle.
-- When written via the `agent_skill` meta-tool, it is only confirmed after a successful full reload; if the reload fails, the original TOML is restored, or the newly created file is deleted if no such file existed previously.
+- When written via the `agent_skill` meta-tool, it is only confirmed after a full reload succeeds; if the reload fails, the original TOML is restored, or the newly created file is deleted if no such file existed previously.
 
 ## Go Skill Compiler Path
 
