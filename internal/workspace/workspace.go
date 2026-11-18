@@ -98,35 +98,49 @@ func CurrentWorkspaceDir(ctx context.Context) (string, error) {
 
 func resolveWorkspaceDir(ctx context.Context, store WorkspaceStore, dir string) (string, error) {
 	for {
-		if strings.TrimSpace(dir) != "" {
-			resolved, err := ValidateWorkspaceDir(dir)
-			if err != nil {
-				return "", err
-			}
-			if resolved.Status == operationresult.Success {
-				return resolved.Data, nil
-			}
-			if resolved.Status != operationresult.NotFound {
-				return "", fmt.Errorf("invalid stored workspace directory: %s", resolved.Message)
-			}
-		}
-		cwd, err := os.Getwd()
+		saved := strings.TrimSpace(dir)
+		resolved, missing, err := resolveSavedDir(saved)
 		if err != nil {
-			return "", fmt.Errorf("resolve workspace: %w", err)
+			if saved == "" {
+				return "", fmt.Errorf("resolve workspace: %w", err)
+			}
+			return "", err
 		}
-		if strings.TrimSpace(dir) == "" {
-			return filepath.Clean(cwd), nil
+		if !missing {
+			return filepath.Clean(resolved), nil
 		}
 		cleared, err := store.ClearWorkspaceDirIfMatches(ctx, dir)
 		if err != nil {
 			return "", fmt.Errorf("clear missing workspace: %w", err)
 		}
 		if cleared {
-			return filepath.Clean(cwd), nil
+			return filepath.Clean(resolved), nil
 		}
 		dir, err = store.GetWorkspaceDir(ctx)
 		if err != nil {
 			return "", fmt.Errorf("load workspace: %w", err)
 		}
 	}
+}
+
+// missing 表示保存的目录已消失，且已取得可用的默认目录；由调用方按原值清理。
+func resolveSavedDir(saved string) (dir string, missing bool, err error) {
+	if saved != "" {
+		resolved, err := ValidateWorkspaceDir(saved)
+		if err != nil {
+			return "", false, err
+		}
+		switch resolved.Status {
+		case operationresult.Success:
+			return resolved.Data, false, nil
+		case operationresult.NotFound:
+		default:
+			return "", false, fmt.Errorf("invalid stored workspace directory: %s", resolved.Message)
+		}
+	}
+	dir, err = os.Getwd()
+	if err != nil && saved != "" {
+		return "", false, fmt.Errorf("resolve workspace: %w", err)
+	}
+	return dir, saved != "" && err == nil, err
 }

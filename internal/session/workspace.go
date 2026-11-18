@@ -36,7 +36,7 @@ func (s *WorkspaceStore) SetUserWorkspaceDir(ctx context.Context, dir string) er
 	return s.control.SetUserWorkspaceDir(ctx, s.sessionID, dir)
 }
 
-func (s *WorkspaceStore) SetWorkspaceSync(ctx context.Context, agentToUser, userToAgent bool, agentDir string) (workspace.State, error) {
+func (s *WorkspaceStore) SetWorkspaceSync(ctx context.Context, agentToUser, userToAgent bool, agentDir string) error {
 	return s.control.SetWorkspaceSync(ctx, s.sessionID, agentToUser, userToAgent, agentDir)
 }
 

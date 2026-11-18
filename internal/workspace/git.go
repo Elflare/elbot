@@ -84,6 +84,8 @@ func ReadGitDiff(ctx context.Context, path, relative string) (operationresult.Re
 	if change == nil {
 		return operationresult.Result[string]{Status: operationresult.NotFound, Message: "Git path has no changes"}, nil
 	}
+	var staged string
+	args := []string{"diff", "HEAD", "--", relative}
 	if change.Status == "untracked" {
 		abs := filepath.Join(status.Root, relative)
 		info, err := os.Lstat(abs)
@@ -100,41 +102,32 @@ func ReadGitDiff(ctx context.Context, path, relative string) (operationresult.Re
 		if !info.Mode().IsRegular() {
 			return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "Git path is not a regular file"}, nil
 		}
-		diff, err := gitDiffOutput(ctx, status.Root, "diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
+		args = []string{"diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative}
+	} else {
+		head, err := gitOutput(ctx, status.Root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
 		if err != nil {
 			return operationresult.Result[string]{}, err
 		}
-		return operationresult.Result[string]{Status: operationresult.Success, Data: diff}, nil
+		if slices.Contains(strings.Split(head, "\n"), "# branch.oid (initial)") {
+			var exceeded bool
+			staged, exceeded, err = gitDiffOutput(ctx, status.Root, "diff", "--cached", "--", relative)
+			if err != nil {
+				return operationresult.Result[string]{}, err
+			}
+			if exceeded {
+				return operationresult.Result[string]{Status: operationresult.Success, Data: largeGitDiffOutput}, nil
+			}
+			args = []string{"diff", "--", relative}
+		}
 	}
-	head, err := gitOutput(ctx, status.Root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
+	diff, exceeded, err := gitDiffOutput(ctx, status.Root, args...)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	if slices.Contains(strings.Split(head, "\n"), "# branch.oid (initial)") {
-		staged, err := gitDiffOutput(ctx, status.Root, "diff", "--cached", "--", relative)
-		if err != nil {
-			return operationresult.Result[string]{}, err
-		}
-		if staged == largeGitDiffOutput {
-			return operationresult.Result[string]{Status: operationresult.Success, Data: staged}, nil
-		}
-		worktree, err := gitDiffOutput(ctx, status.Root, "diff", "--", relative)
-		if err != nil {
-			return operationresult.Result[string]{}, err
-		}
-		if worktree == largeGitDiffOutput {
-			return operationresult.Result[string]{Status: operationresult.Success, Data: worktree}, nil
-		}
-		if len(staged)+len(worktree) > maxGitDiffOutput {
-			return operationresult.Result[string]{Status: operationresult.Success, Data: largeGitDiffOutput}, nil
-		}
-		return operationresult.Result[string]{Status: operationresult.Success, Data: staged + worktree}, nil
+	if exceeded || len(staged)+len(diff) > maxGitDiffOutput {
+		return operationresult.Result[string]{Status: operationresult.Success, Data: largeGitDiffOutput}, nil
 	}
-	diff, err := gitDiffOutput(ctx, status.Root, "diff", "HEAD", "--", relative)
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	return operationresult.Result[string]{Status: operationresult.Success, Data: diff}, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: staged + diff}, nil
 }
 
 var errNotGit = errors.New("not a Git repository")
@@ -177,7 +170,7 @@ func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
-func gitDiffOutput(ctx context.Context, dir string, args ...string) (string, error) {
+func gitDiffOutput(ctx context.Context, dir string, args ...string) (text string, exceeded bool, err error) {
 	stdout := &boundedBuffer{limit: maxGitDiffOutput}
 	var stderr bytes.Buffer
 	cmd := gitCommand(ctx, dir, args...)
@@ -185,18 +178,18 @@ func gitDiffOutput(ctx context.Context, dir string, args ...string) (string, err
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return "", false, ctx.Err()
 		}
 		if stdout.exceeded {
-			return largeGitDiffOutput, nil
+			return "", true, nil
 		}
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && exit.ExitCode() == 1 && slices.Contains(args, "--no-index") {
-			return stdout.String(), nil
+			return stdout.String(), false, nil
 		}
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return "", false, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return stdout.String(), nil
+	return stdout.String(), false, nil
 }
 
 type boundedBuffer struct {

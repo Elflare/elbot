@@ -80,6 +80,24 @@ func TestReadGitDiffLimitsOutput(t *testing.T) {
 	}
 }
 
+func TestReadGitDiffLimitsCombinedInitialDiff(t *testing.T) {
+	root := t.TempDir()
+	gitTestCommand(t, root, "init", "-q")
+	path := filepath.Join(root, "initial.txt")
+	line := strings.Repeat("x", maxGitDiffOutput/2) + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTestCommand(t, root, "add", "initial.txt")
+	if err := os.WriteFile(path, []byte(line+"worktree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := ReadGitDiff(t.Context(), root, "initial.txt")
+	if err != nil || diff.Status != operationresult.Success || diff.Data != largeGitDiffOutput {
+		t.Fatalf("combined diff length=%d status=%v err=%v", len(diff.Data), diff.Status, err)
+	}
+}
+
 func TestReadGitStatusReturnsNonRepository(t *testing.T) {
 	t.Setenv("LANG", "zh_CN.UTF-8")
 	t.Setenv("LANGUAGE", "zh_CN:zh")
@@ -109,8 +127,8 @@ func TestGitDiffCancellationAfterOutputLimit(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
-	diff, err := gitDiffOutput(ctx, dir, "diff")
-	if !errors.Is(err, context.DeadlineExceeded) || diff != "" {
-		t.Fatalf("canceled diff=%q err=%v", diff, err)
+	diff, exceeded, err := gitDiffOutput(ctx, dir, "diff")
+	if !errors.Is(err, context.DeadlineExceeded) || exceeded || diff != "" {
+		t.Fatalf("canceled diff=%q exceeded=%t err=%v", diff, exceeded, err)
 	}
 }

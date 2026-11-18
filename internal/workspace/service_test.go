@@ -36,9 +36,9 @@ func (s *serviceTestStore) SetUserWorkspaceDir(_ context.Context, dir string) er
 	s.state.SetUserDir(dir)
 	return nil
 }
-func (s *serviceTestStore) SetWorkspaceSync(_ context.Context, agentToUser, userToAgent bool, agentDir string) (State, error) {
+func (s *serviceTestStore) SetWorkspaceSync(_ context.Context, agentToUser, userToAgent bool, agentDir string) error {
 	s.state.SetSync(agentToUser, userToAgent, agentDir)
-	return s.state, nil
+	return nil
 }
 func workspaceServiceForTest(store *serviceTestStore) *Service {
 	return NewService(func(context.Context) (operationresult.Result[string], error) {

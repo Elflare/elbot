@@ -3,7 +3,6 @@ package workspace
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"elbot/internal/operationresult"
 )
@@ -12,7 +11,7 @@ type SessionStateStore interface {
 	WorkspaceStore
 	GetWorkspaceState(context.Context) (State, error)
 	SetUserWorkspaceDir(context.Context, string) error
-	SetWorkspaceSync(context.Context, bool, bool, string) (State, error)
+	SetWorkspaceSync(context.Context, bool, bool, string) error
 }
 
 type SessionStateStoreFactory func(sessionID string) SessionStateStore
@@ -54,23 +53,13 @@ func (s *Service) getSessionState(ctx context.Context, sessionID string) (State,
 		if err != nil {
 			return State{}, err
 		}
-		if state.Dir == "" {
-			state.Dir, err = os.Getwd()
-			return state, err
-		}
-		resolved, err := ValidateWorkspaceDir(state.Dir)
+		dir, missing, err := resolveSavedDir(state.Dir)
 		if err != nil {
 			return State{}, err
 		}
-		if resolved.Status == operationresult.Success {
-			state.Dir = resolved.Data
+		if !missing {
+			state.Dir = dir
 			return state, nil
-		}
-		if resolved.Status != operationresult.NotFound {
-			return State{}, fmt.Errorf("invalid stored workspace directory: %s", resolved.Message)
-		}
-		if _, err := os.Getwd(); err != nil {
-			return State{}, fmt.Errorf("resolve workspace: %w", err)
 		}
 		if _, err := store.ClearWorkspaceDirIfMatches(ctx, state.Dir); err != nil {
 			return State{}, fmt.Errorf("clear missing workspace: %w", err)
@@ -113,7 +102,7 @@ func (s *Service) SetSync(ctx context.Context, agentToUser, userToAgent bool) (o
 	if err != nil {
 		return operationresult.Result[CurrentState]{}, err
 	}
-	if _, err := store.SetWorkspaceSync(ctx, agentToUser, userToAgent, state.Dir); err != nil {
+	if err := store.SetWorkspaceSync(ctx, agentToUser, userToAgent, state.Dir); err != nil {
 		return operationresult.Result[CurrentState]{}, err
 	}
 	state, err = s.getSessionState(ctx, sessionID)
