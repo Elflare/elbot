@@ -10,39 +10,38 @@ import (
 )
 
 func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (context.Context, operationresult.Result[*storage.Session], error) {
-	// Fork prepares native/media material outside scope admission. Capture the
-	// newly activated binding afterward, with the same final identity check.
-	if msg, ok := agentshare.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
-		result, err := c.deps.Sessions.Fork(ctx, c.deps.Identity.Scope(ctx), msg.ForkFromMessageID)
+	msg, ok := agentshare.MessageContextFrom(ctx)
+	fork := ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != ""
+	scope := c.deps.Identity.Scope(ctx)
+	var result operationresult.Result[*storage.Session]
+	var locked context.Context
+	var release func()
+	var err error
+	if fork {
+		// Fork prepares native/media material before entering activation.
+		result, err = c.deps.Sessions.Fork(ctx, scope, msg.ForkFromMessageID)
 		if err != nil {
 			return ctx, operationresult.Result[*storage.Session]{}, err
 		}
 		if result.Status != operationresult.Success {
 			return ctx, result, nil
 		}
-		row := result.Data
-		locked, release, err := c.deps.Sessions.EnterActivation(ctx, c.deps.Identity.Scope(ctx), row.ID)
-		if err != nil {
-			return ctx, operationresult.Result[*storage.Session]{}, err
-		}
-		defer release()
-		bound, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, row.ID)
-		if err != nil || captured.Status != operationresult.Success {
-			return ctx, captured, err
-		}
-		return bound, captured, nil
+		locked, release, err = c.deps.Sessions.EnterActivation(ctx, scope, result.Data.ID)
+	} else {
+		locked, release, err = c.deps.Sessions.EnterScope(ctx, scope)
 	}
-	locked, release, err := c.deps.Sessions.EnterScope(ctx, c.deps.Identity.Scope(ctx))
 	if err != nil {
 		return ctx, operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	result, err := c.sessionForInput(locked, text)
-	if err != nil {
-		return ctx, operationresult.Result[*storage.Session]{}, err
-	}
-	if result.Status != operationresult.Success {
-		return ctx, result, nil
+	if !fork {
+		result, err = c.sessionForInput(locked, text)
+		if err != nil {
+			return ctx, operationresult.Result[*storage.Session]{}, err
+		}
+		if result.Status != operationresult.Success {
+			return ctx, result, nil
+		}
 	}
 	bound, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, result.Data.ID)
 	if err != nil || captured.Status != operationresult.Success {

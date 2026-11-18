@@ -44,41 +44,33 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		return ctx, session, operationresult.Result[turn.Input]{Status: admitted.Status, Message: admitted.Message}, nil
 	}
 	selection := c.deps.SelectionForTurn(ctx, session)
-	source, _, err := sessionpkg.Origin(session)
+	validation, err := func() (operationresult.Result[struct{}], error) {
+		defer release()
+		source, _, err := sessionpkg.Origin(session)
+		if err != nil {
+			return operationresult.Result[struct{}]{}, err
+		}
+		checked, err := c.deps.Dialogue.CheckSelection(selection)
+		if err != nil || checked.Status != operationresult.Success {
+			return checked, err
+		}
+		compatible, err := modelmgr.CanSwitch(source, selection.Origin)
+		if err != nil || compatible.Status != operationresult.Success {
+			return compatible, err
+		}
+		ctx = c.deps.View.WithModel(ctx, selection)
+		registered, err := c.deps.Sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
+		if err == nil && registered.Status == operationresult.Success {
+			*session = *registered.Data
+		}
+		return operationresult.Result[struct{}]{Status: registered.Status, Message: registered.Message}, err
+	}()
 	if err != nil {
-		release()
 		return ctx, session, operationresult.Result[turn.Input]{}, err
 	}
-	checked, err := c.deps.Dialogue.CheckSelection(selection)
-	if err != nil {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
+	if validation.Status != operationresult.Success {
+		return ctx, session, operationresult.Result[turn.Input]{Status: validation.Status, Message: validation.Message}, nil
 	}
-	if checked.Status != operationresult.Success {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{Status: checked.Status, Message: checked.Message}, nil
-	}
-	compatible, err := modelmgr.CanSwitch(source, selection.Origin)
-	if err != nil {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if compatible.Status != operationresult.Success {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{Status: compatible.Status, Message: compatible.Message}, nil
-	}
-	ctx = c.deps.View.WithModel(ctx, selection)
-	registered, err := c.deps.Sessions.RegisterOrigin(ctx, session.ID, selection.Origin)
-	if err != nil {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if registered.Status != operationresult.Success {
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{Status: registered.Status, Message: registered.Message}, nil
-	}
-	*session = *registered.Data
-	release()
 	ctx, compacted, err := c.compactBeforeTurn(ctx, session, text, out, selection)
 	if err != nil {
 		return ctx, session, operationresult.Result[turn.Input]{}, err
@@ -109,12 +101,12 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		return ctx, session, operationresult.Result[turn.Input]{Status: operationresult.Busy, Message: "当前会话已有其他执行，输入尚未开始处理"}, nil
 	}
 	// Restore durable usage before cancellation can publish the first snapshot.
-	if _, err := c.deps.Status.Usage(session); err != nil {
-		c.deps.Turns.FinishAttempt(session.ID, attempt)
-		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
+	var reqInfo request.Request
+	var reqCtx context.Context
+	var done func()
+	if _, err = c.deps.Status.Usage(session); err == nil {
+		reqInfo, reqCtx, done, err = c.deps.Requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.deps.ResponseTimeout})
 	}
-	reqInfo, reqCtx, done, err := c.deps.Requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.deps.ResponseTimeout})
 	if err != nil {
 		c.deps.Turns.FinishAttempt(session.ID, attempt)
 		release()
