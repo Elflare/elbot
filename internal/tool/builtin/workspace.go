@@ -58,7 +58,7 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 
 func workspaceBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("workspace").Weavable().
-		Description("当前工作目录，文件工具和shell的路径相对工作目录，工作时先切换；{}→查询，reset=true→重置，否则path→切换。").
+		Description("当前工作目录，文件工具和shell的路径相对工作目录，切换目录⇔目标目录 ≠ 当前工作目录。{}→查询，reset=true→重置，否则path→切换。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("agent", "files").
@@ -123,7 +123,7 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				return operationresult.Result[*toolshare.Result]{Status: checked.Status, Message: checked.Message}, checked.Message, nil
 			}
 			dir := checked.Data
-			content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
+			content := fmt.Sprintf("workspace set to %s", dir)
 			logContent = content
 			markNotice := false
 			if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {

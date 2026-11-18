@@ -38,7 +38,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if store.dir != filepath.Clean(dir) || !strings.Contains(result.Data.Content, "workspace set.") || !strings.Contains(result.Data.Content, filepath.Clean(dir)) {
+	if store.dir != filepath.Clean(dir) || result.Data.Content != "workspace set to "+filepath.Clean(dir) {
 		t.Fatalf("set content=%q stored=%q", result.Data.Content, store.dir)
 	}
 
@@ -131,10 +131,11 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "Loaded workspace instructions from AGENTS.md:\nwork rules") {
+	wantStatus := "workspace set to " + filepath.Clean(dir)
+	if result.Data.Content != wantStatus+"\n\nLoaded workspace instructions from AGENTS.md:\nwork rules" {
 		t.Fatalf("instructions not loaded: %q", result.Data.Content)
 	}
-	if !strings.HasPrefix(logContent, "workspace set.") || strings.Contains(logContent, "work rules") || !strings.Contains(result.Data.LogContent(), "work rules") {
+	if logContent != wantStatus || !strings.Contains(result.Data.LogContent(), "work rules") {
 		t.Fatalf("workspace log lost returned content: %q", logContent)
 	}
 	if len(store.noticeDirs) != 1 || store.noticeDirs[0] != filepath.Clean(dir) {
