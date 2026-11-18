@@ -45,14 +45,13 @@
 
 ### Fixed
 
-- Fixed an issue where official QQ quote targets were overwritten by message element indices, causing the bot to fail to wake up or associate with the wrong message when replied to.
-- Fixed an issue where official QQ bots missed @ mentions of themselves in full group message mode, and dedicated @ messages might accidentally delete other mentions at the beginning of the message body.
-- Fixed an issue where the workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and fixed an issue where cancellation errors were swallowed when Git diff output exceeded the limit.
-- File reference format, out-of-bounds, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
+- Fixed issues related to official QQ quoted replies and @ mentions.
+- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
+- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
 - Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
 - Fixed several potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Now both background and foreground searches are functional and do not interfere with each other.
-- Fixed a bug where duplicate content was compressed multiple times.
+- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.
+- Fixed a bug where repeated content was compressed multiple times.
 
 ## See releases for historical change logs
