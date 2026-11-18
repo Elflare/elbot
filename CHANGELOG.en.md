@@ -45,13 +45,14 @@
 
 ### Fixed
 
-- Fixed an issue where the QQ official bot missed detections of @ self in full group message mode, and dedicated @ messages might incorrectly delete other mentions at the beginning of the body.
-- Fixed an issue where the workspace still returned the old directory state after cleaning invalid directories or concurrent switching, and an issue where cancellation errors were swallowed when Git diff output exceeded the limit.
-- Format, out-of-bounds, and target type rejection errors for file references now display the business reason and terminate input processing, instead of propagating as program faults.
+- Fixed an issue where official QQ quote targets were overwritten by message element indices, causing the bot to fail to wake up or associate with the wrong message when replied to.
+- Fixed an issue where official QQ bots missed @ mentions of themselves in full group message mode, and dedicated @ messages might accidentally delete other mentions at the beginning of the message body.
+- Fixed an issue where the workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and fixed an issue where cancellation errors were swallowed when Git diff output exceeded the limit.
+- File reference format, out-of-bounds, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
 - Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
-- Fixed some potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.
-- Fixed a bug regarding multiple compressions of duplicate content.
+- Fixed several potential bugs during refactoring.
+- Fixed a bug in the chat history search tool. Now both background and foreground searches are functional and do not interfere with each other.
+- Fixed a bug where duplicate content was compressed multiple times.
 
 ## See releases for historical change logs

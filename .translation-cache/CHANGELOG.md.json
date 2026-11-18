@@ -1,12 +1,12 @@
 {
   "segments": {
-    "CHANGELOG.md:section:2b4d70d82ebe9dc8fe9da8621364940be3b911953fc2abf65537cb7d9805561d": {
+    "CHANGELOG.md:section:665adbab6835edbd1ea16d17537e893c4dfbf058f60912524f9bb0034adf9f4c": {
       "kind": "section",
-      "source": "### Fixed\n\n- 修复 QQ 官方机器人在全量群消息模式下漏判 @ 自己，以及专用 @ 消息可能误删正文开头其他提及的问题。\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
+      "source": "### Fixed\n\n- 修复 QQ 官方引用目标被消息元素索引覆盖，导致回复机器人时未唤醒或关联到错误消息的问题。\n- 修复 QQ 官方机器人在全量群消息模式下漏判 @ 自己，以及专用 @ 消息可能误删正文开头其他提及的问题。\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
       "source_file": "CHANGELOG.md",
-      "source_hash": "cbd62b72287e974e6a8d102b104553c1b92d2dd28d345c3ab32f2ddc1d54a999",
-      "translation": "### Fixed\n\n- Fixed an issue where the QQ official bot missed detections of @ self in full group message mode, and dedicated @ messages might incorrectly delete other mentions at the beginning of the body.\n- Fixed an issue where the workspace still returned the old directory state after cleaning invalid directories or concurrent switching, and an issue where cancellation errors were swallowed when Git diff output exceeded the limit.\n- Format, out-of-bounds, and target type rejection errors for file references now display the business reason and terminate input processing, instead of propagating as program faults.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed some potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.\n- Fixed a bug regarding multiple compressions of duplicate content.\n\n",
-      "updated_at": 1794990054
+      "source_hash": "2e3c5c9c0625c3240cfcdcb118c2a1cf0b4c43730c5944fa158ec7a50121e95e",
+      "translation": "### Fixed\n\n- Fixed an issue where official QQ quote targets were overwritten by message element indices, causing the bot to fail to wake up or associate with the wrong message when replied to.\n- Fixed an issue where official QQ bots missed @ mentions of themselves in full group message mode, and dedicated @ messages might accidentally delete other mentions at the beginning of the message body.\n- Fixed an issue where the workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and fixed an issue where cancellation errors were swallowed when Git diff output exceeded the limit.\n- File reference format, out-of-bounds, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed several potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Now both background and foreground searches are functional and do not interfere with each other.\n- Fixed a bug where duplicate content was compressed multiple times.\n\n",
+      "updated_at": 1794999656
     },
     "CHANGELOG.md:section:98d9f36b0462433f4e4651c9202d33484606c1adac2e101f1f4a7dc57ff97175": {
       "kind": "section",
@@ -34,8 +34,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "ea6834dbe695149b252bdbba4aed11a1f566909c2bbb2214b50dbccc98475525",
+  "source_hash": "554443d19c59829704d61f114e2770c1cfe0db5431fd966f04f3a2845c07d79a",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1794990055,
+  "updated_at": 1794999657,
   "version": 3
 }
