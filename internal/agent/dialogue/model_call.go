@@ -195,6 +195,9 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		}
 	}
 	baseMessages := llm.CloneMessages(messages)
+	if pending != nil {
+		baseMessages = agentshare.AppendAnswers(baseMessages, pending.ExtraAnswers)
+	}
 	requestMessages := llm.CloneMessages(baseMessages)
 	if notice, ok := agentshare.ForegroundNotice(session); ok {
 		requestMessages = append(requestMessages, notice)
@@ -258,9 +261,17 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
-		commit := storage.DialogueCommit{SessionID: sessionID, Messages: []*storage.Message{&pending.Message}, ElyphRulesShown: ruleCard != ""}
+		commit := storage.DialogueCommit{SessionID: sessionID, Messages: append([]*storage.Message{&pending.Message}, pending.ExtraAnswers...), ElyphRulesShown: ruleCard != ""}
+		for _, m := range pending.ExtraAnswers {
+			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
+				return agentshare.CallInput{}, err
+			}
+		}
 		if err := commitInput(ctx, session, commit, persistence); err != nil {
 			return agentshare.CallInput{}, err
+		}
+		for _, b := range pending.Answers {
+			b.Finish(true)
 		}
 	}
 	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil

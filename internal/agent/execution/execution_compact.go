@@ -214,7 +214,8 @@ func (c *ExecutionCoordinator) CompactActive(sessionID string) bool {
 }
 
 func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (context.Context, operationresult.Result[*storage.Session], error) {
-	if c.deps.Turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
+	// Answer batches belong to this Session; do not move them to a compacted successor.
+	if c.deps.Turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && len(agentshare.InboundTurnInput(ctx, text).Answers) == 0 && c.shouldCompact(ctx, session, selection) {
 		compactCtx := agentshare.WithInboundTurnInput(ctx, agentshare.InboundTurnInput(ctx, text))
 		next, err := c.runCompact(compactCtx, session, c.deps.Identity.Scope(compactCtx), "auto", selection)
 		if err != nil || next.Status != operationresult.Success {

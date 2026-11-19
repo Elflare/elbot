@@ -44,7 +44,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 `media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。
 
-`api_token` 仅用于把追加输入确认后的动作路由回当前连接，通过 `X-CLI-Connection` 发送，不单独授予权限。管理 API 请求还须携带配置的 client token 和 `X-Client-ID: <client_id>`。
+提交答案或确认追加输入时，通过 `X-CLI-Connection` 发送 `api_token`，后续对话将回到该连接。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。
 
 ## 消息格式
 
@@ -109,6 +109,14 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 ```
 
 独立的完整对话输出，包括非流式投递的正文、Hook 输出以及 Cron／Elnis 后台报告。后台报告也进入聊天区。可选 `blocks` 与流事件使用相同结构，存在时优先于 `text`。通过 `stream` 的 `send` 事件提交的正文不会再以 `chat` 重复发送，客户端需同时处理两种消息。
+
+提问通过正式 `chat` 消息投递，`blocks` 每题包含一个 `question` 块，`text` 提供纯文本展示。例如：
+
+```json
+{"kind":"question","content":{"id":19,"session_id":"s1","question":"测试范围？","options":["相关包","全量"],"answer_command":"/a"}}
+```
+
+`GET .../questions` 读当前 Session 内存草稿（重启清空）。`PUT .../questions/{id}/draft` 替换草稿：`{"choice":2,"text":"补充"}` 或 `{"text":"自由回答"}`。`POST .../questions/confirm` 携带 `X-CLI-Connection`，只提交已填且未排队的题号；队中改同题取最新。模型回复走 WebSocket。
 
 ### attachment — 文件或图片输出
 

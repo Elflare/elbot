@@ -10,6 +10,9 @@ import (
 
 // ControlCapabilities is the business surface consumed by the management API.
 type ControlCapabilities interface {
+	ListQuestions(context.Context, string) (operationresult.Result[[]control.Question], error)
+	SaveQuestionDraft(context.Context, string, int64, control.QuestionDraft) (operationresult.Result[control.Question], error)
+	ConfirmAnswers(context.Context, string) (operationresult.Result[control.ConfirmAnswersResult], error)
 	ListCommands(context.Context, control.ListCommandsRequest) (operationresult.Result[control.ListCommandsResult], error)
 	Status(context.Context) (operationresult.Result[control.StatusResult], error)
 	ListSessions(context.Context, control.ListSessionsRequest) (operationresult.Result[control.ListSessionsResult], error)

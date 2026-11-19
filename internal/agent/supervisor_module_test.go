@@ -107,7 +107,7 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 	}
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
-	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
+	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{CreateQuestions: controller.CreateQuestions, Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -98,6 +98,9 @@ func (m *Supervisor) StartAttempt(sessionID string, input Input, e *Execution, a
 func (m *Supervisor) ReserveExecution(sessionID string, input Input, e *Execution) bool {
 	return m.lifecycle.ReserveExecution(sessionID, lifecycle.Input(input), executionContract(e))
 }
+func (m *Supervisor) ReleaseReservation(sessionID string, e *Execution) {
+	m.lifecycle.ReleaseReservation(sessionID, executionContract(e))
+}
 func (m *Supervisor) CanCompact(sessionID string, e *Execution) bool {
 	return m.lifecycle.CanCompact(sessionID, executionContract(e))
 }

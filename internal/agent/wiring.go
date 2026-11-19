@@ -251,7 +251,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.RouterSource{Router: m.commands},
 	)
 	m.handler = handler
-	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
+	if err := deps.Control.ConnectAgent(control.AgentDeps{AdmitAnswers: controlAdapter.admitAnswers, Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
 		cancel()
 		return nil, err
 	}

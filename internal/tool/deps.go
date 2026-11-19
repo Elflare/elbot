@@ -15,11 +15,12 @@ import (
 
 // SupervisorDeps 只声明借用能力；配置单独传给构造入口，资源生命周期仍由提供方管理。
 type SupervisorDeps struct {
-	Store       storage.Store        // 读取和提交工具状态、Cron 任务定义。
-	Models      ModelCapabilities    // 校验 Cron 任务选择的模型。
-	Media       *media.MediaCenter   // 借用媒体管理能力，交付策略由 Media 处理。
-	Permission  *security.Permission // 统一提供工具访问和执行确认策略。
-	ChatHistory interface {
+	CreateQuestions func([]storage.Question)
+	Store           storage.Store        // 读取和提交工具状态、Cron 任务定义。
+	Models          ModelCapabilities    // 校验 Cron 任务选择的模型。
+	Media           *media.MediaCenter   // 借用媒体管理能力，交付策略由 Media 处理。
+	Permission      *security.Permission // 统一提供工具访问和执行确认策略。
+	ChatHistory     interface {
 		Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
 		Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)

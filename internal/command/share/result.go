@@ -13,6 +13,12 @@ import (
 type ResultKind string
 
 const (
+	ResultKindQuestions     ResultKind = "questions"
+	ResultKindQuestionDraft ResultKind = "question_draft"
+	ResultKindAnswers       ResultKind = "answers"
+)
+
+const (
 	ResultKindText      ResultKind = "text"
 	ResultKindSession   ResultKind = "session"
 	ResultKindSessions  ResultKind = "sessions"

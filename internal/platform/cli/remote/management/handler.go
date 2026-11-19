@@ -27,6 +27,9 @@ type handler struct {
 func NewHandler(options HandlerOptions) http.Handler {
 	h := &handler{control: options.Control, authenticate: options.Authenticate, continueCall: options.Continue}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /sessions/{session_id}/questions", h.listQuestions)
+	mux.HandleFunc("PUT /sessions/{session_id}/questions/{id}/draft", h.saveQuestionDraft)
+	mux.HandleFunc("POST /sessions/{session_id}/questions/confirm", h.confirmAnswers)
 	mux.HandleFunc("GET /commands", h.getCommands)
 	mux.HandleFunc("GET /status", h.getStatus)
 	mux.HandleFunc("GET /sessions", h.listSessions)
@@ -84,6 +87,7 @@ func NewHandler(options HandlerOptions) http.Handler {
 
 func (h *handler) writeContinuationResult(w http.ResponseWriter, req *http.Request, result any, continuation *control.Continuation) {
 	if err := writeAPIJSON(w, http.StatusOK, result); err != nil || continuation == nil || h.continueCall == nil {
+		continuation.CancelReservation()
 		return
 	}
 	if flusher, ok := w.(http.Flusher); ok {

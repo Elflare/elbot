@@ -158,7 +158,8 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	s.tools = tools
 	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: []*storage.Message{user}, ElyphRulesShown: elyphRulesShown}}, nil
+	s.projection = agentshare.AppendAnswers(s.projection, p.materials.ExtraAnswers)
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append([]*storage.Message{user}, p.materials.ExtraAnswers...), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -223,13 +224,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if compatible.Status != operationresult.Success {
 			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
 		}
-		var pending *agentshare.PendingUserMessage
-		if toolPhase {
-			pending = agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-			if pending != nil {
-				pending.MessageIndex = len(s.projection)
-				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
-			}
+		pending := agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
+		if pending != nil {
+			pending.MessageIndex = len(s.projection)
+			s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 		}
 		stream := out.StartStream(s.requestCtx)
 		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{

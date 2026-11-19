@@ -35,6 +35,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
 	if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
+		result.Continuation.CancelReservation()
 		return ctx, true, sendErr
 	}
 	if err != nil {

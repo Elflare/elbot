@@ -13,19 +13,22 @@ import (
 type inputCommitter struct{ state *turnState }
 
 func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
-	message := commit.Messages[0]
-	segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
-	if err != nil {
-		return err
+	inputs := make([]storage.NativeInput, 0, len(commit.Messages))
+	for _, message := range commit.Messages {
+		segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
+		if err != nil {
+			return err
+		}
+		if len(segments) == 0 {
+			segments = llm.TextSegments(message.Content)
+		}
+		input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
+		if err != nil {
+			return err
+		}
+		inputs = append(inputs, input)
 	}
-	if len(segments) == 0 {
-		segments = llm.TextSegments(message.Content)
-	}
-	input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
-	if err != nil {
-		return err
-	}
-	commit.Native = &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: []storage.NativeInput{input}}
+	commit.Native = &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: inputs}
 	return c.state.commit(ctx, commit, "append_user_message")
 }
 

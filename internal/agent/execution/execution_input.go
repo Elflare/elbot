@@ -11,6 +11,11 @@ import (
 	"elbot/internal/turn"
 )
 
+func (c *ExecutionCoordinator) RunAnswers(ctx context.Context, row *storage.Session, input turn.Input, execution *turn.Execution) (context.Context, operationresult.Result[struct{}], error) {
+	ctx = agentshare.WithInboundTurnInput(turn.WithExecution(ctx, execution), input)
+	return c.Run(ctx, row, input.Text, foregroundTurnOutput{ExecutionSender: c.deps.Output})
+}
+
 func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID string) (context.Context, operationresult.Result[struct{}], error) {
 	defer c.sessionIdle(ctx, sessionID)
 	for {
@@ -42,7 +47,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 			continue
 		}
 		merged, execution, ok := c.deps.Turns.ResumeAppend(row.ID)
-		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
+		if !ok || (merged.Text == "" && len(merged.Segments) == 0 && len(merged.Answers) == 0) {
 			release()
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "追加确认已失效"}, nil
 		}
@@ -87,6 +92,13 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		}
 		ctx = locked
 		snapshot := c.deps.Turns.Snapshot(session.ID)
+		if snapshot.ReservationDone != nil {
+			release()
+			if err := c.waitForAttempt(ctx, snapshot.ReservationDone); err != nil {
+				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
+			}
+			continue
+		}
 		if snapshot.Phase != turn.PhaseStopping && snapshot.Phase != turn.PhaseAwaitRiskConfirm && snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 			binding, _ := sessionpkg.BindingFromContext(ctx)
 			if err := c.deps.Sessions.RecordActivity(ctx, binding); err != nil {
@@ -122,7 +134,10 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			}
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
 		case turn.PhaseTool:
-			c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
+			if !c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text)) {
+				release()
+				continue
+			}
 			release()
 			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
 			if err != nil {

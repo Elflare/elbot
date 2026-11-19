@@ -165,6 +165,9 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	if err := commitInput(requestCtx, in.Session, input.Data, prepared.InputCommitter()); err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
+	for _, b := range in.Input.Answers {
+		b.Finish(true)
+	}
 	executed, err := prepared.RunLoop(ctx, requestCtx, loopIn, out)
 	if err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err

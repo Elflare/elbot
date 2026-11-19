@@ -47,7 +47,7 @@ func (m *Manager) CompleteTurn(sessionID, attempt string) (Input, bool) {
 	pending := mergeInputs(turn.pending)
 	if turn.execution == nil {
 		removeTurn(m.turns, sessionID, turn, false)
-	} else if pending.Text != "" || len(pending.Segments) > 0 {
+	} else if pending.Text != "" || len(pending.Segments) > 0 || len(pending.Answers) > 0 {
 		finishAttempt(turn)
 		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
 		pending.Segments = append([]llm.MessageSegment(nil), pending.Segments...)
@@ -105,10 +105,17 @@ func (m *Manager) ResumeAppend(sessionID string) (Input, Execution, bool) {
 func (m *Manager) StartAttempt(sessionID string, input Input, e Execution, attempt string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if old := m.turns[sessionID]; old != nil && !(old.reserved && old.execution == e && old.phase == PhaseLLM) {
+	var pending []Input
+	if old := m.turns[sessionID]; old == nil && len(input.Answers) > 0 {
 		return false
+	} else if old != nil {
+		if !old.reserved || old.execution != e || old.phase != PhaseLLM {
+			return false
+		}
+		pending = old.pending
+		finishReservation(old)
 	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, attempt: attempt, attemptDone: make(chan struct{})}
+	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), pending: pending, tools: map[string]int{}, execution: e, attempt: attempt, attemptDone: make(chan struct{})}
 	return true
 }
 func (m *Manager) ReserveExecution(sessionID string, input Input, e Execution) bool {
@@ -117,8 +124,16 @@ func (m *Manager) ReserveExecution(sessionID string, input Input, e Execution) b
 	if m.turns[sessionID] != nil {
 		return false
 	}
-	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, reserved: true}
+	m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: normalizeInput(input), tools: map[string]int{}, execution: e, reserved: true, reservationDone: make(chan struct{})}
 	return true
+}
+func (m *Manager) ReleaseReservation(sessionID string, e Execution) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.turns[sessionID]
+	if s != nil && s.reservationDone != nil && s.execution == e {
+		removeTurn(m.turns, sessionID, s, false)
+	}
 }
 func (m *Manager) CanCompact(sessionID string, e Execution) bool {
 	m.mu.Lock()
@@ -139,7 +154,15 @@ func refreshWait(turn *state) {
 	default:
 	}
 }
+func finishReservation(turn *state) {
+	if turn.reservationDone != nil {
+		close(turn.reservationDone)
+		turn.reservationDone = nil
+	}
+}
+
 func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve bool) {
+	finishReservation(turn)
 	if turn.execution != nil && !preserve {
 		turn.execution.Finish(context.Canceled)
 	}

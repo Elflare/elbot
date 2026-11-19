@@ -17,10 +17,11 @@ type ContentBlock struct {
 }
 
 const (
-	ContentText   ContentBlockKind = "text"
-	ContentDiff   ContentBlockKind = "diff"
-	ContentFields ContentBlockKind = "fields"
-	ContentCode   ContentBlockKind = "code"
+	ContentQuestion ContentBlockKind = "question"
+	ContentText     ContentBlockKind = "text"
+	ContentDiff     ContentBlockKind = "diff"
+	ContentFields   ContentBlockKind = "fields"
+	ContentCode     ContentBlockKind = "code"
 )
 
 // ContentField is an independently renderable confirmation field.
@@ -47,6 +48,8 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	}
 	var target any
 	switch raw.Kind {
+	case ContentQuestion:
+		target = new(QuestionContent)
 	case ContentFields:
 		target = new([]ContentField)
 	case ContentCode:
@@ -63,6 +66,8 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	}
 	b.Kind = raw.Kind
 	switch value := target.(type) {
+	case *QuestionContent:
+		b.Content = *value
 	case *[]ContentField:
 		b.Content = *value
 	case *CodeContent:
@@ -79,6 +84,8 @@ func ContentBlocksText(blocks []ContentBlock) string {
 	for _, block := range blocks {
 		var content string
 		switch block.Kind {
+		case ContentQuestion:
+			content = block.Content.(QuestionContent).text()
 		case ContentFields:
 			var lines []string
 			for _, field := range block.Content.([]ContentField) {

@@ -4,6 +4,7 @@ package lifecycle
 import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 	"elbot/internal/turn/share"
 	"sort"
 	"sync"
@@ -13,20 +14,21 @@ type RiskDecision = share.RiskDecision
 type RiskResult = share.RiskResult
 
 type state struct {
-	execution     Execution
-	compactReady  bool
-	reserved      bool
-	attempt       string // Current request or compaction attempt; empty while reserved for continuation.
-	phase         Phase
-	appendWaitID  uint64
-	originalInput Input
-	pending       []Input
-	riskConfirm   *RiskConfirmation
-	riskResponse  chan RiskDecision
-	riskResponded bool
-	waitRefresh   chan struct{}
-	riskDone      chan struct{}
-	tools         map[string]int
+	execution       Execution
+	compactReady    bool
+	reserved        bool
+	reservationDone chan struct{} // Closed when an explicit execution reservation starts or is released.
+	attempt         string        // Current request or compaction attempt; empty while reserved for continuation.
+	phase           Phase
+	appendWaitID    uint64
+	originalInput   Input
+	pending         []Input
+	riskConfirm     *RiskConfirmation
+	riskResponse    chan RiskDecision
+	riskResponded   bool
+	waitRefresh     chan struct{}
+	riskDone        chan struct{}
+	tools           map[string]int
 	// attemptDone belongs to this attempt and survives cancellation until its owner finishes.
 	attemptDone chan struct{}
 }
@@ -69,7 +71,7 @@ func snapshot(sessionID string, turn *state) Snapshot {
 	for name, count := range turn.tools {
 		tools[name] = count
 	}
-	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), AppendWaitID: turn.appendWaitID, Tools: tools, AttemptDone: turn.attemptDone, Execution: turn.execution, Attempt: turn.attempt}
+	return Snapshot{SessionID: sessionID, Phase: turn.phase, PendingCount: len(turn.pending), AppendWaitID: turn.appendWaitID, Tools: tools, AttemptDone: turn.attemptDone, ReservationDone: turn.reservationDone, Execution: turn.execution, Attempt: turn.attempt}
 }
 func matches(turn *state, expected string) bool {
 	return turn != nil && turn.attempt == expected
@@ -88,6 +90,7 @@ const (
 )
 
 type Input struct {
+	Answers []*storage.AnswerBatch // Deferred user messages, one per /ac.
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string
@@ -102,9 +105,10 @@ type Snapshot struct {
 	Tools        map[string]int
 	// AttemptDone closes when the current attempt has finished its actual work.
 	// It is nil when a confirmation is waiting without an active attempt.
-	AttemptDone <-chan struct{}
-	Execution   Execution // Logical execution owning this snapshot.
-	Attempt     string    // Current attempt; empty during a continuation reservation.
+	AttemptDone     <-chan struct{}
+	ReservationDone <-chan struct{} // Ordinary input waits for a reserved execution to start or cancel.
+	Execution       Execution       // Logical execution owning this snapshot.
+	Attempt         string          // Current attempt; empty during a continuation reservation.
 }
 type RiskConfirmation struct {
 	ToolName string

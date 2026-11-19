@@ -9,6 +9,9 @@ import (
 )
 
 type ControlCapabilities interface {
+	ListQuestions(context.Context, string) (operationresult.Result[[]control.Question], error)
+	SaveQuestionDraft(context.Context, string, int64, control.QuestionDraft) (operationresult.Result[control.Question], error)
+	ConfirmAnswers(context.Context, string) (operationresult.Result[control.ConfirmAnswersResult], error)
 	ListCommands(context.Context, control.ListCommandsRequest) (operationresult.Result[control.ListCommandsResult], error)
 	NewSession(context.Context) (operationresult.Result[control.NewSessionResult], error)
 	Status(context.Context) (operationresult.Result[control.StatusResult], error)

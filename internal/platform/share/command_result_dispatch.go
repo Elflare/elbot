@@ -45,6 +45,21 @@ func FormatCommandResult(req command.Request, result command.Result) (string, er
 	}
 	fields := strings.Fields(req.Args)
 	switch result.Kind {
+	case command.ResultKindQuestions:
+		return formatCommandData(result.Data, func(items []control.Question) string {
+			if len(items) == 0 {
+				return "无待答题"
+			}
+			return delivery.QuestionsOutput(items, command.Format(req.Prefix, "a"), command.Format(req.Prefix, "ac")).Text
+		})
+	case command.ResultKindQuestionDraft:
+		return formatCommandData(result.Data, func(q control.Question) string {
+			return fmt.Sprintf("#%d 已暂存", q.ID)
+		})
+	case command.ResultKindAnswers:
+		return formatCommandData(result.Data, func(d control.ConfirmAnswersResult) string {
+			return fmt.Sprintf("%d 题待发", len(d.QuestionIDs))
+		})
 	case command.ResultKindText:
 		if req.Name == "detail" {
 			if content, ok := confirmationTextData(result.Data); ok {
