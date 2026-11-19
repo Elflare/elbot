@@ -109,23 +109,23 @@ func usageEntry(model, prompt, total string) logging.LogEntry {
 }
 
 func TestUsageUnknownAndOverflowRemainNull(t *testing.T) {
-	provider := &logStub{result: logging.LogQueryResult{Entries: []logging.LogEntry{usageEntry("m", "3", "10"), usageEntry("m", "null", "20"), usageEntry("other", "0", "9223372036854775807")}, DamagedCount: 2}}
+	provider := &logStub{result: logging.LogQueryResult{Entries: []logging.LogEntry{usageEntry("m", "3", "10"), usageEntry("m", "null", "0"), usageEntry("other", "0", "9223372036854775807")}, DamagedCount: 2}}
 	m, _ := testSupervisor(t, SupervisorDeps{Logs: provider})
 	fields := map[string]string{"event": "wrong"}
-	result, err := m.QueryUsage(testContext(true), QueryUsageRequest{Query: logging.LogQuery{Fields: fields}, GroupBy: "model", First: 1, Last: 3})
+	result, err := m.QueryUsage(testContext(true), QueryUsageRequest{Query: logging.LogQuery{Fields: fields}, GroupBy: "model", First: 1, Last: 100000})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fields["event"] != "wrong" || provider.query.Fields["event"] != "llm_usage" || provider.query.Prefix != "audit" {
 		t.Fatal("usage query mutated input or failed to fix event")
 	}
-	if result.Status != operationresult.Success || result.Data.Total.Calls != 3 || result.Data.Total.PromptTokens != nil || result.Data.Total.TotalTokens != nil || result.Data.DamagedCount != 2 || result.Data.RangeTruncated {
+	if result.Status != operationresult.Success || result.Data.Total.Calls != 3 || result.Data.Total.PromptTokens != nil || result.Data.Total.TotalTokens != nil || result.Data.DamagedCount != 2 {
 		t.Fatalf("totals: %+v", result)
 	}
 	if result.Data.Total.CompletionTokens == nil || *result.Data.Total.CompletionTokens != 0 {
 		t.Fatal("explicit zero became unknown")
 	}
-	if len(result.Data.Items) != 2 || result.Data.Items[0].PromptTokens != nil || result.Data.Items[0].TotalTokens == nil || *result.Data.Items[0].TotalTokens != 30 {
+	if len(result.Data.Items) != 2 || result.Data.Items[0].PromptTokens != nil || result.Data.Items[0].TotalTokens == nil || *result.Data.Items[0].TotalTokens != 10 {
 		t.Fatalf("buckets: %+v", result.Data.Items)
 	}
 	if result.Data.Items[1].TotalTokens == nil || *result.Data.Items[1].TotalTokens != math.MaxInt64 {
@@ -138,12 +138,16 @@ func TestUsageUnknownAndOverflowRemainNull(t *testing.T) {
 	if selected.Status != operationresult.Success || selected.Data.Total.PromptTokens == nil || *selected.Data.Total.PromptTokens != 3 || selected.Data.Total.Calls != 1 {
 		t.Fatalf("selected range: %+v", selected)
 	}
-	if provider.query.Limit != 1 || selected.Data.AvailableCalls != 1 || selected.Data.RangeTruncated {
+	if provider.query.Limit != 1 {
 		t.Fatal("single-call range queried more than one entry")
 	}
 	selected, err = m.QueryUsage(testContext(true), QueryUsageRequest{First: 2, Last: 5, GroupBy: "day"})
-	if err != nil || selected.Status != operationresult.Success || !selected.Data.RangeTruncated || selected.Data.Total.Calls != 2 {
-		t.Fatalf("truncation: %+v %v", selected, err)
+	if err != nil || selected.Status != operationresult.Success || selected.Data.Total.Calls != 2 || selected.Data.Total.TotalTokens == nil || *selected.Data.Total.TotalTokens != math.MaxInt64 {
+		t.Fatalf("partial range: %+v %v", selected, err)
+	}
+	selected, err = m.QueryUsage(testContext(true), QueryUsageRequest{First: 4, Last: 5, GroupBy: "day"})
+	if err != nil || selected.Status != operationresult.Success || selected.Data.Total.Calls != 0 || len(selected.Data.Items) != 0 {
+		t.Fatalf("empty range: %+v %v", selected, err)
 	}
 }
 

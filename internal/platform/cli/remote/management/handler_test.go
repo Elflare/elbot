@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/logging"
 	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
@@ -125,6 +129,33 @@ func TestWriteControlResultErrorPreservesGoErrorAndRejectsUnknownStatus(t *testi
 	}
 	if !handled || response.Code != http.StatusInternalServerError || body["error"]["code"] != "internal_error" {
 		t.Fatalf("unknown status response = handled:%v status:%d body:%s", handled, response.Code, response.Body.String())
+	}
+}
+
+func TestUsageBeforeFirstLog(t *testing.T) {
+	dir := t.TempDir()
+	supervisor, err := control.NewSupervisor(&config.Config{ConfigPath: filepath.Join(dir, "app.toml")}, control.SupervisorDeps{Logs: logging.Reader{Dir: dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(HandlerOptions{
+		Control: supervisor,
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
+			actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Role: contextinfo.RoleSuperadmin}
+			return contextinfo.WithActor(ctx, actor), true, nil
+		},
+	})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/usage", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+	var body control.QueryUsageResult
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.GroupBy != "model" || body.Items == nil || len(body.Items) != 0 || body.Total.Calls != 0 || body.DamagedCount != 0 {
+		t.Fatalf("empty usage: %s", response.Body)
 	}
 }
 

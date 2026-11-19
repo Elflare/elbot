@@ -383,12 +383,10 @@ type UsageBucket struct {
 	ElapsedMS        *int64 `json:"elapsed_ms"`
 }
 type QueryUsageResult struct {
-	GroupBy        string        `json:"group_by"`
-	Items          []UsageBucket `json:"items"`
-	Total          UsageBucket   `json:"total"`
-	DamagedCount   int           `json:"damaged_count"`
-	AvailableCalls int           `json:"available_calls"`
-	RangeTruncated bool          `json:"range_truncated"`
+	GroupBy      string        `json:"group_by"`
+	Items        []UsageBucket `json:"items"`
+	Total        UsageBucket   `json:"total"`
+	DamagedCount int           `json:"damaged_count"`
 }
 
 type ListFilesRequest struct {

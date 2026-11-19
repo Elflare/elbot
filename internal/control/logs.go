@@ -82,8 +82,6 @@ func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (ope
 	}
 	result.GroupBy = req.GroupBy
 	result.DamagedCount = listed.DamagedCount
-	result.AvailableCalls = len(listed.Entries)
-	result.RangeTruncated = result.AvailableCalls < req.Last
 	selected := listed.Entries[min(req.First-1, len(listed.Entries)):min(req.Last, len(listed.Entries))]
 	buckets := map[string]*usageAccumulator{}
 	grand := &usageAccumulator{}

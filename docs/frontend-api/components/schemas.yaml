@@ -516,9 +516,7 @@ schemas:
         items: { type: array, items: { $ref: '#/schemas/UsageBucket' } }
         total: { $ref: '#/schemas/UsageBucket' }
         damaged_count: { type: integer }
-        available_calls: { type: integer }
-        range_truncated: { type: boolean }
-      required: [group_by, items, total, damaged_count, available_calls, range_truncated]
+      required: [group_by, items, total, damaged_count]
     ConfigurationIssue:
       type: object
       properties:

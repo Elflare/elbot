@@ -168,7 +168,7 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 | `--token <name>` | elwisp | HTTP 认证 token 的配置名，不包含 token 原文。 |
 | `--tag <tag>` | elwisp | 包含指定标签，可重复，要求全部匹配。 |
 | `-d, --days <n>` | usage | 汇总最近 n 天，默认 1。 |
-| `-n <x[-y]>` | usage | 汇总倒数第 x 到第 y 次模型调用（含两端），序号 1–100000；省略 y 只取第 x 次。 |
+| `-n <x[-y]>` | usage | 汇总倒数第 x 到第 y 次模型调用（含两端），序号 1–100000；省略 y 只取第 x 次。只汇总区间内已有的调用，没有命中时显示 `nil`。 |
 | `-m, --model <name>` | usage | 模型名。 |
 | `-s, --session <id>` | usage | Session ID。 |
 | `--by <key>` | usage | `model`（默认）、`day`、`session`。 |
