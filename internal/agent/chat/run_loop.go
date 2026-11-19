@@ -118,9 +118,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err := s.requestCtx.Err(); err != nil {
 			return failedLoop(err)
 		}
-		assistantText := result.Text
-		assistantRawText := result.RawText
-		finalReasoningContent = result.ReasoningContent
 		if result.Usage != nil {
 			s.usage = result.Usage
 		}
@@ -145,11 +142,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
-			finalRawText = strings.TrimSpace(assistantRawText)
-			platformFinalText = strings.TrimSpace(assistantText)
+			finalReasoningContent = result.ReasoningContent
+			finalRawText = strings.TrimSpace(result.RawText)
+			platformFinalText = strings.TrimSpace(result.Text)
 			break
 		}
-		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: assistantText}); err != nil {
+		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: result.Text}); err != nil {
 			return failedLoop(err)
 		}
 		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: laterOutputs}); err != nil {
@@ -165,7 +163,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.output.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 跳过后续工具，生成总结", r.Tools.MaxRoundsPerTurn()))
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
 			committer := r.NewToolTranscriptCommitter()
-			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls, result.ReasoningContent)
+			head := agentshare.ToolCallStorageMessage(s.session.ID, result.RawText, result.RawText, result.ToolCalls, result.ReasoningContent)
 			if err := committer.Begin(s.requestCtx, &head); err != nil {
 				return failedLoop(err)
 			}
@@ -230,7 +228,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		toolRounds++
 		committer := r.NewToolTranscriptCommitter()
-		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, result.ReasoningContent, s.output, committer)
+		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, result.RawText, result.RawText, result.ReasoningContent, s.output, committer)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}

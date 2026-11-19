@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextmgr"
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -44,8 +43,7 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 	if selection.Client == nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Unavailable, Message: "压缩模型未配置"}, nil
 	}
-	compressor := Compressor{ClientFor: func(string) llm.Client { return selection.Client }}
-	result, err := compressor.Compact(ctx, CompactRequest{Provider: selection.Provider, Model: selection.Model, Messages: messages})
+	result, err := compact(ctx, selection, messages)
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}

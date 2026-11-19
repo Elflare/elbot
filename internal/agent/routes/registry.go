@@ -31,24 +31,15 @@ func (r *Registry) binding(apiType llm.APIType) (Binding, error) {
 
 func (r *Registry) LoopFor(apiType llm.APIType) (agentshare.Loop, error) {
 	binding, err := r.binding(apiType)
-	if err != nil {
-		return nil, err
-	}
-	return binding.Loop, nil
+	return binding.Loop, err
 }
 
 func (r *Registry) CompactorFor(origin llm.Origin) (contextmgr.Compactor, error) {
 	binding, err := r.binding(origin.APIType)
-	if err != nil {
-		return nil, err
-	}
-	return binding.Compactor, nil
+	return binding.Compactor, err
 }
 
 func (r *Registry) MaterialFor(origin llm.Origin) (session.MaterialPreparer, error) {
 	binding, err := r.binding(origin.APIType)
-	if err != nil {
-		return nil, err
-	}
-	return binding.Material, nil
+	return binding.Material, err
 }

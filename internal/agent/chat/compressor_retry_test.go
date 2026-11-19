@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 )
 
 type compactRetryClient struct {
@@ -39,8 +41,8 @@ func TestCompressorRetryBudget(t *testing.T) {
 					t.Fatalf("retry=%+v", e)
 				}
 			}
-			compressor := Compressor{ClientFor: func(string) llm.Client { return client }}
-			result, err := compressor.Compact(ctx, CompactRequest{Provider: "p", Model: "m", Messages: []CompactMessage{{Role: "user", Content: "history"}}})
+			selection := modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "p", Model: "m"}, Client: client}
+			result, err := compact(ctx, selection, []CompactMessage{{Role: "user", Content: "history"}})
 			if client.calls != 3 || notices != 2 {
 				t.Fatalf("calls=%d notices=%d", client.calls, notices)
 			}

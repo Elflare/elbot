@@ -13,8 +13,7 @@ import (
 
 func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (operationresult.Result[agentshare.PreparedLoop], error) {
 	loaded := materials.Loaded
-	hasUserHistory := hasStorageUserMessage(loaded.Messages)
-	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory
+	summaryOnCurrentUser := loaded.Summary != nil && !hasStorageUserMessage(loaded.Messages)
 
 	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &preparedLoop{route: r, materials: materials, summaryOnCurrentUser: summaryOnCurrentUser}}, nil
 }
@@ -41,7 +40,6 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	}
 	userMessage, userSegments, loaded := p.materials.UserMessage, p.materials.Input.Segments, p.materials.Loaded
 	messages := append(append([]storage.Message{}, loaded.Messages...), *userMessage)
-	summaryOnCurrentUser := p.summaryOnCurrentUser
 	r.Status.Record(s.ctx, runtimestatus.Snapshot{
 		SessionID:      s.session.ID,
 		Phase:          runtimestatus.PhasePreparing,
@@ -82,7 +80,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		StageStartedAt: s.startedAt,
 	})
 	promptUserSegments := canonicalUserSegments
-	if summaryOnCurrentUser {
+	if p.summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)

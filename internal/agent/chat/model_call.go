@@ -108,7 +108,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return llmCallResult{}, err
 		}
-		completed.ProviderError, completed.Err = true, err
+		completed.ProviderError = true
 		observation.LogRecord().ResultStatus = events.ResultFailed
 		completed.ElapsedMS = elapsedMillis(startedAt)
 		return llmCallResult{}, err
@@ -127,7 +127,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
 			}
-			completed.ProviderError, completed.Err = true, chunk.Error
+			completed.ProviderError = true
 			observation.LogRecord().ResultStatus = events.ResultFailed
 			completed.ElapsedMS = elapsedMillis(startedAt)
 			return llmCallResult{Text: assistant.String(), RawText: assistant.String(), ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
@@ -156,8 +156,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 			}
 		}
 	}
-	elapsedMs := elapsedMillis(startedAt)
-	completed.ElapsedMS = elapsedMs
+	completed.ElapsedMS = elapsedMillis(startedAt)
 	content := assistant.String()
 	completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = content, content, usage, len(toolCalls)
 	completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0

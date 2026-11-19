@@ -22,7 +22,7 @@
     - [x] 第 2 批：tools、confirmation
     - [x] 第 3 批：input
     - [x] 第 4 批：execution
-    - [ ] 第 5 批：routes、chat
+    - [x] 第 5 批：routes、chat
     - [ ] 第 6 批：responses
     - [ ] 第 7 批：share（最后按实际消费者核对共享契约）
 - [ ] platform包

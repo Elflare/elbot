@@ -6,13 +6,8 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 )
-
-type CompactRequest struct {
-	Provider string
-	Model    string
-	Messages []CompactMessage
-}
 
 type CompactMessage struct {
 	Role      string
@@ -30,36 +25,28 @@ type CompactResult struct {
 	Usage   *llm.Usage
 }
 
-type Compressor struct {
-	ClientFor func(string) llm.Client
-}
-
-func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactResult, error) {
-	if len(req.Messages) == 0 {
+func compact(ctx context.Context, selection modelmgr.Selection, messages []CompactMessage) (*CompactResult, error) {
+	if len(messages) == 0 {
 		return nil, fmt.Errorf("无可压缩历史")
 	}
-	if req.Provider == "" || req.Model == "" {
+	if selection.Provider == "" || selection.Model == "" {
 		return nil, fmt.Errorf("压缩模型未配置")
 	}
 
-	client := c.ClientFor(req.Provider)
-	if client == nil {
-		return nil, fmt.Errorf("压缩模型客户端不可用")
-	}
+	client := selection.Client
 	request := llm.TextRequest{
-		Model:        req.Model,
+		Model:        selection.Model,
 		Instructions: compactSystemPrompt,
-		Input:        compactPrompt(req.Messages),
+		Input:        compactPrompt(messages),
 	}
 	result, err := llm.Retry(ctx, client, client.GenerateText, request)
-	if err == nil && strings.TrimSpace(result.Text) == "" {
+	summaryText := strings.TrimSpace(result.Text)
+	if err == nil && summaryText == "" {
 		err = fmt.Errorf("压缩模型返回空摘要")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("调用压缩模型: %w", err)
 	}
-
-	summaryText := strings.TrimSpace(result.Text)
 
 	return &CompactResult{Summary: summaryText, Usage: result.Usage}, nil
 }
