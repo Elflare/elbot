@@ -44,9 +44,9 @@ After the server validates the token, it responds with:
 
 Tokens are mapped to environment variable names by `client_id` in `[platform.cli.server.tokens]`; for configuration details, see [CLI Remote Configuration](configuration.md#cli-远程配置).
 
-The `media_token` is used only for the HTTP attachment interfaces described below and is sent via `Authorization: Bearer <media_token>`, not in the URL. It is bound to the current connection and becomes invalid upon disconnection; connections with the same `client_id` are isolated from each other.
+`media_token` is only used for the HTTP attachment interfaces described below, sent via `Authorization: Bearer <media_token>` and not included in the URL. It is bound to the current connection and becomes invalid upon disconnection; connections with the same `client_id` are isolated from each other.
 
-The `api_token` is used only to route actions back to the current connection after confirming additional input, sent via `X-CLI-Connection`, and does not grant permissions on its own. Management API requests must also carry the configured client token and `X-Client-ID: <client_id>`.
+When submitting an answer or confirming additional input, send the `api_token` via `X-CLI-Connection`, and subsequent dialogue will return to that connection. Authentication for the Management API still uses the configured client token and `X-Client-ID: <client_id>`.
 
 ## Message Format
 
@@ -104,13 +104,21 @@ Upon a successful query, the server replies with `complete_result`, with an empt
 
 ## Server → Client
 
-### chat — Official Reply
+### chat — Formal Reply
 
 ```json
 {"type": "chat", "text": "Hello! How can I help you?"}
 ```
 
-An independent, complete dialogue output, including non-streaming delivered body text, Hook output, and Cron/Elnis background reports. Background reports also enter the chat area. The optional `blocks` use the same structure as stream events and take precedence over `text` when present. Body text submitted via the `send` event of a `stream` will not be resent as a `chat` message; the client must handle both types of messages.
+Independent complete dialogue output, including non-streaming delivered body text, Hook output, and Cron/Elnis background reports. Background reports also enter the chat area. Optional `blocks` use the same structure as stream events and take precedence over `text` when present. Body text submitted via the `send` event of a `stream` will not be resent as a `chat` message; the client must handle both message types simultaneously.
+
+Questions are delivered via formal `chat` messages, where `blocks` contain one `question` block per item and `text` provides a plain text display. For example:
+
+```json
+{"kind":"question","content":{"id":19,"session_id":"s1","question":"Test scope?","options":["Related packages","Full scope"],"answer_command":"/a"}}
+```
+
+`GET .../questions` reads the current Session's in-memory draft (cleared on restart). `PUT .../questions/{id}/draft` replaces the draft: `{"choice":2,"text":"Supplement"}` or `{"text":"Free-form answer"}`. `POST .../questions/confirm` carries `X-CLI-Connection` and only submits question IDs that have been filled and are not yet queued; if the same question is modified while in the queue, the latest version is taken. Model replies are sent via WebSocket.
 
 ### attachment — File or Image Output
 
