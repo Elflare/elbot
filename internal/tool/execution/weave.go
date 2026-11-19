@@ -44,6 +44,10 @@ func (m *Manager) weaveNames(ctx context.Context, items []share.DiscoveredTool) 
 }
 
 func (m *Manager) WeaveDescription(ctx context.Context, items []share.DiscoveredTool) (string, error) {
+	defs, err := m.Registry.Query(ctx, share.ToolQuery{Names: []string{"tool_weave"}, Scope: share.QueryAvailable})
+	if err != nil || len(defs) == 0 {
+		return "", err
+	}
 	names, open, err := m.weaveNames(ctx, items)
 	if err != nil {
 		return "", err

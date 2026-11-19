@@ -143,6 +143,39 @@ print(*edits, sum("deprecated" in p for p in pages))
 	}
 }
 
+func TestWeaveDescriptionPermission(t *testing.T) {
+	child := share.DiscoveredTool{Name: "web_search", Source: share.SourceKindNative}
+	outer := share.DiscoveredTool{Name: "tool_weave", Source: share.SourceKindNative}
+	user := contextinfo.Actor{Role: contextinfo.RoleUser}
+	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
+	for _, tc := range []struct {
+		name    string
+		actor   contextinfo.Actor
+		maxRisk security.RiskLevel
+		items   []share.DiscoveredTool
+		want    string
+	}{
+		{"denied with child", user, security.RiskLow, []share.DiscoveredTool{child}, ""},
+		{"denied with cached weave", user, security.RiskLow, []share.DiscoveredTool{outer}, ""},
+		{"allowed user", user, security.RiskHigh, []share.DiscoveredTool{child}, "tool_weave 可调用：web_search"},
+		{"superadmin", admin, security.RiskLow, []share.DiscoveredTool{child}, "tool_weave 可调用：web_search"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			permission := security.DefaultPermission()
+			permission.UserMaxToolRisk = tc.maxRisk
+			catalog := registry.NewRegistry(permission)
+			env := processenv.Environment{}
+			if err := registerTestTools(catalog, weave.Definition(env), web.NewWebSearchTool(env).Definition()); err != nil {
+				t.Fatal(err)
+			}
+			got, err := newTestManager(catalog, permission).WeaveDescription(contextinfo.WithActor(t.Context(), tc.actor), tc.items)
+			if err != nil || got != tc.want {
+				t.Fatalf("description = %q, err = %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestBackgroundRejectsWeave(t *testing.T) {
 	permission := security.DefaultPermission()
 	catalog := registry.NewRegistry(permission)
