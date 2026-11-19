@@ -2,7 +2,9 @@ package responses
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -139,6 +141,115 @@ func TestArchiveFailureDoesNotReplaceRequestFailure(t *testing.T) {
 					t.Fatal("secondary archive failure was not reported")
 				}
 			})
+		}
+	}
+}
+
+type eventClient struct {
+	*api.Client
+	events []api.Event
+}
+
+func (c eventClient) StreamPrepared(context.Context, api.PreparedRequest) (<-chan api.Event, error) {
+	ch := make(chan api.Event, len(c.events))
+	for _, e := range c.events {
+		ch <- e
+	}
+	close(ch)
+	return ch, nil
+}
+
+func streamFixture(t testing.TB, events []api.Event) (*turnState, eventClient) {
+	t.Helper()
+	client, err := api.New("http://unused.invalid", "", nil, nil, api.RequestOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &turnState{ctx: t.Context(), session: &storage.Session{ID: "session"}, route: &Loop{LoopDeps: LoopDeps{Repository: &archiveRepository{}, Gate: archiveGate{}}}}, eventClient{client, events}
+}
+
+func TestPartialStreamDeliveryAndArchive(t *testing.T) {
+	failure := errors.New("interrupted")
+	for _, success := range []bool{false, true} {
+		events := []api.Event{
+			{Type: "response.content_part.added", OutputIndex: 9000, ContentIndex: 23, Raw: json.RawMessage(`{"part":{"type":"output_text","text":"","extra":"keep"}}`)},
+			{Type: "response.output_text.delta", OutputIndex: 9000, ContentIndex: 23, Delta: "a"},
+			{Type: "response.output_text.delta", OutputIndex: 9000, ContentIndex: 23, Delta: "b"},
+			{Type: "response.output_text.done", OutputIndex: 9000, ContentIndex: 23, Text: "AB"},
+			{Type: "response.refusal.delta", OutputIndex: 9000, ContentIndex: 4, Delta: "n"},
+		}
+		wantEvents := []string{"text_delta:a", "text_delta:b", "text_delta:n"}
+		if success {
+			events = append(events, api.Event{Type: "response.completed", Response: &api.Response{Status: "completed"}})
+			wantEvents = append(wantEvents, "finish:")
+		} else {
+			events = append(events, api.Event{Error: failure})
+		}
+		s, c := streamFixture(t, events)
+		var got []string
+		stream := delivery.StreamFunc(func(_ context.Context, e delivery.StreamEvent) (delivery.Receipt, error) {
+			got = append(got, string(e.Type)+":"+e.Text)
+			return delivery.Receipt{}, nil
+		})
+		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		if (success && err != nil) || (!success && !errors.Is(err, failure)) || !reflect.DeepEqual(got, wantEvents) || len(r.Items) != 1 {
+			t.Fatalf("success=%v events=%v items=%v err=%v", success, got, r.Items, err)
+		}
+		var item struct{ Content []map[string]string }
+		if err := json.Unmarshal(r.Items[0].Raw, &item); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(item.Content, []map[string]string{{"type": "refusal", "refusal": "n"}, {"type": "output_text", "text": "AB", "extra": "keep"}}) {
+			t.Fatal(item)
+		}
+	}
+}
+
+func TestItemDoneReplacesBufferedDeltas(t *testing.T) {
+	snapshot, err := api.ParseItem([]byte(`{"type":"message","role":"assistant","extra":"keep","content":[{"type":"output_text","text":"snapshot"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := api.ParseItem([]byte(`{"type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"terminal"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, success := range []bool{false, true} {
+		events := []api.Event{{Type: "response.output_text.delta", Delta: "old"}, {Type: "response.output_item.done", Item: &snapshot}}
+		failure := errors.New("disconnected")
+		wantText := "snapshot"
+		if success {
+			events = append(events, api.Event{Type: "response.completed", Response: &api.Response{Status: "completed", Output: []api.Item{terminal}}})
+			wantText = "terminal"
+		} else {
+			events = append(events, api.Event{Error: failure})
+		}
+		s, c := streamFixture(t, events)
+		stream := delivery.StreamFunc(func(context.Context, delivery.StreamEvent) (delivery.Receipt, error) { return delivery.Receipt{}, nil })
+		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		if (success && err != nil) || (!success && !errors.Is(err, failure)) || len(r.Items) != 1 || outputText(r.Items) != wantText {
+			t.Fatalf("items=%v err=%v", r.Items, err)
+		}
+		var fields struct{ Extra string }
+		if err := json.Unmarshal(r.Items[0].Raw, &fields); err != nil || fields.Extra != "keep" {
+			t.Fatalf("snapshot metadata: %s", r.Items[0].Raw)
+		}
+	}
+}
+
+func BenchmarkNativeCallDeltas(b *testing.B) {
+	events := make([]api.Event, 513)
+	for i := range 512 {
+		events[i] = api.Event{Type: "response.output_text.delta", Delta: "abcdefghijklmnop"}
+	}
+	events[512] = api.Event{Type: "response.completed", Response: &api.Response{Status: "completed"}}
+	s, c := streamFixture(b, events)
+	stream := delivery.StreamFunc(func(context.Context, delivery.StreamEvent) (delivery.Receipt, error) { return delivery.Receipt{}, nil })
+	b.ReportAllocs()
+	for b.Loop() {
+		_, err := s.nativeCall(b.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		if err != nil {
+			b.Fatal(err)
 		}
 	}
 }

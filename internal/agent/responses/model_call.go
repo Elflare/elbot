@@ -8,12 +8,14 @@ import (
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/media"
+	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -219,7 +221,7 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 	w := *s.window
 	w.Items = append([]api.Item(nil), w.Items...)
 	w.Materials = append([]material(nil), w.Materials...)
-	compatible, err := checkWindowTarget(&w, target)
+	compatible, err := modelmgr.CanSwitch(w.Origin, target)
 	if err != nil {
 		return operationresult.Result[api.Request]{}, "", err
 	}
@@ -249,39 +251,33 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 }
 
 func outputItems(response *api.Response, completed map[int]api.Item) []api.Item {
-	items := make(map[int]api.Item, len(completed))
 	if response != nil {
-		for index, item := range response.Output {
-			items[index] = item
-		}
-	}
-	for index, item := range completed {
-		if response != nil && response.Status == "completed" && index >= 0 && index < len(response.Output) {
+		for index, terminal := range response.Output {
+			item, ok := completed[index]
+			if !ok {
+				completed[index] = terminal
+				continue
+			}
+			if response.Status != "completed" {
+				continue
+			}
 			// Terminal fields replace partial fields, while item.done metadata
 			// omitted from the terminal response remains an observed native fact.
 			var content, data map[string]json.RawMessage
-			if json.Unmarshal(item.Raw, &content) == nil && content != nil && json.Unmarshal(response.Output[index].Raw, &data) == nil && data != nil {
-				for key, value := range data {
-					content[key] = value
-				}
+			if json.Unmarshal(item.Raw, &content) == nil && content != nil && json.Unmarshal(terminal.Raw, &data) == nil && data != nil {
+				maps.Copy(content, data)
 				raw, err := json.Marshal(content)
 				if err == nil {
 					if parsed, err := api.ParseItem(raw); err == nil {
-						item = parsed
+						completed[index] = parsed
 					}
 				}
 			}
 		}
-		items[index] = item
 	}
-	indices := make([]int, 0, len(items))
-	for index := range items {
-		indices = append(indices, index)
-	}
-	sort.Ints(indices)
-	result := make([]api.Item, 0, len(indices))
-	for _, index := range indices {
-		result = append(result, items[index])
+	result := make([]api.Item, 0, len(completed))
+	for _, index := range slices.Sorted(maps.Keys(completed)) {
+		result = append(result, completed[index])
 	}
 	return result
 }

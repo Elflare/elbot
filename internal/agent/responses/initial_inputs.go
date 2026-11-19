@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
-	api "elbot/internal/llm/responses"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
@@ -27,10 +27,15 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 	if err != nil {
 		return err
 	}
-	users := make([]storage.NativeInput, 0, len(inputs))
+	type userInput struct {
+		storage.NativeInput
+		raw      json.RawMessage
+		segments []llm.MessageSegment
+	}
+	users := make([]userInput, 0, len(inputs))
 	notices := 0
 	for _, input := range inputs {
-		item, _, err := decodeQueuedInput(input)
+		item, segments, err := decodeQueuedInput(input)
 		if err != nil {
 			return err
 		}
@@ -44,37 +49,28 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 			notices++
 			continue
 		}
-		users = append(users, input)
+		users = append(users, userInput{NativeInput: input, raw: item.Raw, segments: segments})
 	}
 	if notices > 1 {
 		return missing()
 	}
-	inputs = users
-	if len(inputs) != len(messages) {
+	if len(users) != len(messages) {
 		return missing()
 	}
 	for i, message := range messages {
-		input := inputs[i]
+		input := users[i]
 		if message.Role != storage.RoleUser || message.SessionID != sessionID || input.SessionID != sessionID || input.MessageID != message.ID || input.ExchangeID != "" || input.CallID != "" || input.ConsumedBy != "" {
 			return missing()
 		}
-		segments, err := inputSegments(input)
-		if err != nil {
-			return err
-		}
-		if agentshare.MessageContent(segments) != message.Content || agentshare.StoredMessageSegments(segments) != message.Segments {
+		if agentshare.MessageContent(input.segments) != message.Content || agentshare.StoredMessageSegments(input.segments) != message.Segments {
 			return missing()
 		}
-		item, err := api.ParseItem([]byte(input.ItemJSON))
-		if err != nil {
-			return err
-		}
-		want, err := nativeItem("", segments)
+		want, err := nativeItem("", input.segments)
 		if err != nil {
 			return err
 		}
 		var gotJSON, wantJSON any
-		if json.Unmarshal(item.Raw, &gotJSON) != nil || json.Unmarshal(want.Raw, &wantJSON) != nil || !reflect.DeepEqual(gotJSON, wantJSON) {
+		if json.Unmarshal(input.raw, &gotJSON) != nil || json.Unmarshal(want.Raw, &wantJSON) != nil || !reflect.DeepEqual(gotJSON, wantJSON) {
 			return missing()
 		}
 	}

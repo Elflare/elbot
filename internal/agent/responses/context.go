@@ -11,7 +11,6 @@ import (
 
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
-	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -492,8 +491,4 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 		CallsJSON:          string(snapshot),
 		MediaIDs:           w.mediaIDs(),
 	}, nil
-}
-
-func checkWindowTarget(w *nativeWindow, target llm.Origin) (operationresult.Result[struct{}], error) {
-	return modelmgr.CanSwitch(w.Origin, target)
 }

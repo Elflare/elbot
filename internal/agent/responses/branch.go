@@ -169,14 +169,10 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (ope
 		if ids[input.ID] {
 			continue
 		}
-		item, segments, err := decodeQueuedInput(input)
+		item, err := w.appendInput(input)
 		if err != nil {
 			return operationresult.Result[*session.PreparedMaterial]{}, err
 		}
-		if item.Type != "additional_tools" {
-			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
-		}
-		w.Items = append(w.Items, item)
 		continuation = append(continuation, item)
 	}
 	if err := validateCallLinks(w.Items, false); err != nil {

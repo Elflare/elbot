@@ -23,57 +23,80 @@ import (
 )
 
 func TestSupervisorNativeResponseToolTurn(t *testing.T) {
-	deps := isolatedModuleDeps(t)
-	args := contractReadFile(t)
-	var requests []struct {
-		ToolChoice struct{ Tools []struct{ Name string } } `json:"tool_choice"`
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			ToolChoice struct{ Tools []struct{ Name string } } `json:"tool_choice"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Error(err)
-			http.Error(w, "bad request", 400)
-			return
-		}
-		requests = append(requests, req)
-		raw := fmt.Sprintf(`{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call","name":"read_file","arguments":%q,"status":"completed"}]}`, args)
-		if len(requests) > 1 {
-			raw = `{"id":"response-2","status":"completed","output":[{"type":"message","id":"item-2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"native answer"}]}]}`
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":%s}\n\n", raw)
-	}))
-	t.Cleanup(server.Close)
-	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, APIMode: "response", Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = models.Close(context.Background()) })
-	deps.Models = models
-	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(requests) != 2 {
-		t.Fatalf("requests=%d", len(requests))
-	}
-	if !slices.ContainsFunc(requests[0].ToolChoice.Tools, func(tool struct{ Name string }) bool { return tool.Name == "read_file" }) {
-		t.Fatal("native schema missing")
-	}
-	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
-	if err != nil || len(rows) != 1 {
-		t.Fatal(rows, err)
-	}
-	messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if messages[len(messages)-1].Content != "native answer" || !slices.ContainsFunc(messages, func(v storage.Message) bool {
-		return v.ToolCallID == "contract-call" && strings.Contains(v.Content, "contract result")
-	}) {
-		t.Fatalf("native transcript: %#v", messages)
+	for _, tc := range []struct {
+		name           string
+		toolRounds     int
+		invalidSummary bool
+	}{
+		{"normal", 1, false}, {"summary", 3, false}, {"summary rejects tool", 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deps := isolatedModuleDeps(t)
+			args := contractReadFile(t)
+			var requests []json.RawMessage
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					ToolChoice json.RawMessage `json:"tool_choice"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Error(err)
+					http.Error(w, "bad request", 400)
+					return
+				}
+				requests = append(requests, req.ToolChoice)
+				raw := fmt.Sprintf(`{"id":"response-1","status":"completed","output":[{"type":"function_call","id":"item-1","call_id":"contract-call-%d","name":"read_file","arguments":%q,"status":"completed"}]}`, len(requests), args)
+				if len(requests) > tc.toolRounds && !tc.invalidSummary {
+					raw = `{"id":"response-2","status":"completed","output":[{"type":"message","id":"item-2","role":"assistant","status":"completed","content":[{"type":"output_text","text":"native answer"}]}]}`
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":%s}\n\n", raw)
+			}))
+			t.Cleanup(server.Close)
+			models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, APIMode: "response", Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = models.Close(context.Background()) })
+			deps.Models = models
+			m := contractSupervisor(t, deps)
+			err = m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"})
+			if tc.invalidSummary {
+				if err == nil || !strings.Contains(err.Error(), "function") {
+					t.Fatalf("expected tool rejection, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if len(requests) != tc.toolRounds+1 {
+				t.Fatalf("requests=%d", len(requests))
+			}
+			var choice struct{ Tools []struct{ Name string } }
+			if err := json.Unmarshal(requests[0], &choice); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(choice.Tools, func(tool struct{ Name string }) bool { return tool.Name == "read_file" }) {
+				t.Fatal("native schema missing")
+			}
+			if tc.toolRounds == 3 && string(requests[3]) != `"none"` {
+				t.Fatal("summary enabled tools")
+			}
+			if tc.invalidSummary {
+				return
+			}
+			rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+			if err != nil || len(rows) != 1 {
+				t.Fatal(rows, err)
+			}
+			messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if messages[len(messages)-1].Content != "native answer" || !slices.ContainsFunc(messages, func(v storage.Message) bool {
+				return v.ToolCallID == "contract-call-1" && strings.Contains(v.Content, "contract result")
+			}) {
+				t.Fatalf("native transcript: %#v", messages)
+			}
+		})
 	}
 }
 

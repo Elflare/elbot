@@ -139,18 +139,25 @@ func decodeQueuedInput(input storage.NativeInput) (api.Item, []llm.MessageSegmen
 	return item, segments, nil
 }
 
+func (w *nativeWindow) appendInput(input storage.NativeInput) (api.Item, error) {
+	item, segments, err := decodeQueuedInput(input)
+	if err != nil {
+		return api.Item{}, err
+	}
+	if item.Type != "additional_tools" {
+		w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
+	}
+	w.Items = append(w.Items, item)
+	return item, nil
+}
+
 // resolveInputs expands media once, after the actual request's prefix and pending
 // inputs have been assembled. The prefix contains only unresolved material.
 func (s *turnState) resolveInputs(ctx context.Context, inputs []storage.NativeInput, w *nativeWindow) (operationresult.Result[[]api.Item], media.UsageID, error) {
 	for _, input := range inputs {
-		item, segments, err := decodeQueuedInput(input)
-		if err != nil {
+		if _, err := w.appendInput(input); err != nil {
 			return operationresult.Result[[]api.Item]{}, "", err
 		}
-		if item.Type != "additional_tools" {
-			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
-		}
-		w.Items = append(w.Items, item)
 	}
 	return s.route.Context.Resolve(ctx, w)
 }

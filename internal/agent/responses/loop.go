@@ -85,18 +85,6 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMateria
 	if checkpoint == nil && seed != nil && seed.Consumed {
 		return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
 	}
-	if seed != nil {
-		origin, known, err := session.Origin(materials.Session)
-		if err != nil {
-			return operationresult.Result[agentshare.PreparedLoop]{}, err
-		}
-		if !known || seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
-			return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 seed 厂商或协议不匹配")
-		}
-	}
-	if checkpoint != nil && ((seed == nil && checkpoint.SeedID != "") || (seed != nil && checkpoint.SeedID != seed.ID)) {
-		return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 checkpoint 的根材料不匹配")
-	}
 	definitions := toolDefinitions{}
 	var window *nativeWindow
 	if checkpoint != nil || seed != nil {
@@ -173,6 +161,22 @@ func (s *turnState) instructions(ctx context.Context) (string, error) {
 	return text, nil
 }
 
+func (s *turnState) appendUserText(text string) error {
+	message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: text}
+	if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, message); err != nil {
+		return err
+	}
+	if err := (inputCommitter{state: s}).Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{message}}); err != nil {
+		return err
+	}
+	projected, err := agentshare.MessageFromStorage(*message)
+	if err != nil {
+		return err
+	}
+	s.projection = append(s.projection, projected)
+	return nil
+}
+
 func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	s := p.state
 	s.ctx, s.requestCtx = ctx, agentshare.WithReadOnlyCalls(requestCtx)
@@ -185,44 +189,47 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}
 	toolPhase, foregroundPrepared := false, false
 	rounds := 0
+	summarizing := false
 	for {
 		var err error
-		s.requestCtx, err = s.route.View.RefreshSession(s.requestCtx, s.session)
-		if err != nil {
-			return fail(err)
-		}
-		s.ctx = s.route.View.Context(s.ctx)
-		if session.WasPromoted(s.session) && !foregroundPrepared {
-			foregroundPrepared = true
-			s.selection = s.route.SelectionForTurn(s.requestCtx, s.session)
-			if checked := s.route.CheckSelection(s.selection); checked.Status != operationresult.Success {
-				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
-			}
-			s.requestCtx = s.route.View.WithModel(s.requestCtx, s.selection)
-			s.ctx = s.route.View.WithModel(s.ctx, s.selection)
-			s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
+		if !summarizing {
+			s.requestCtx, err = s.route.View.RefreshSession(s.requestCtx, s.session)
 			if err != nil {
 				return fail(err)
 			}
-			instructions, err := s.instructions(s.requestCtx)
-			if err != nil {
-				return fail(err)
-			}
-			updated := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
-			for _, message := range s.projection {
-				if message.Role != llm.RoleSystem {
-					updated = append(updated, message)
+			s.ctx = s.route.View.Context(s.ctx)
+			if session.WasPromoted(s.session) && !foregroundPrepared {
+				foregroundPrepared = true
+				s.selection = s.route.SelectionForTurn(s.requestCtx, s.session)
+				if checked := s.route.CheckSelection(s.selection); checked.Status != operationresult.Success {
+					return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 				}
+				s.requestCtx = s.route.View.WithModel(s.requestCtx, s.selection)
+				s.ctx = s.route.View.WithModel(s.ctx, s.selection)
+				s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
+				if err != nil {
+					return fail(err)
+				}
+				instructions, err := s.instructions(s.requestCtx)
+				if err != nil {
+					return fail(err)
+				}
+				updated := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
+				for _, message := range s.projection {
+					if message.Role != llm.RoleSystem {
+						updated = append(updated, message)
+					}
+				}
+				s.projection = updated
 			}
-			s.projection = updated
-		}
-		result.Selection = s.selection
-		compatible, err := s.route.View.CheckSelection(s.session, s.selection)
-		if err != nil {
-			return fail(err)
-		}
-		if compatible.Status != operationresult.Success {
-			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
+			result.Selection = s.selection
+			compatible, err := s.route.View.CheckSelection(s.session, s.selection)
+			if err != nil {
+				return fail(err)
+			}
+			if compatible.Status != operationresult.Success {
+				return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
+			}
 		}
 		pending := agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
 		if pending != nil {
@@ -230,23 +237,28 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 		}
 		stream := out.StartStream(s.requestCtx)
-		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
-			SessionID:      s.session.ID,
-			Phase:          runtimestatus.PhaseLLM,
-			Provider:       s.selection.Provider,
-			Model:          s.selection.Model,
-			Mode:           s.session.Mode,
-			RequestID:      in.RequestID,
-			TurnStartedAt:  in.StartedAt,
-			StageStartedAt: storage.Now(),
-			Usage:          result.Usage,
-		})
+		if !summarizing {
+			s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
+				SessionID:      s.session.ID,
+				Phase:          runtimestatus.PhaseLLM,
+				Provider:       s.selection.Provider,
+				Model:          s.selection.Model,
+				Mode:           s.session.Mode,
+				RequestID:      in.RequestID,
+				TurnStartedAt:  in.StartedAt,
+				StageStartedAt: storage.Now(),
+				Usage:          result.Usage,
+			})
+		}
 		called, err := s.call(s.requestCtx, pending, stream)
 		if err != nil {
 			return fail(err)
 		}
 		if called.Status != operationresult.Success {
 			return operationresult.Result[agentshare.LoopResult]{Status: called.Status, Message: called.Message}, nil
+		}
+		if summarizing && len(s.calls) != 0 {
+			return fail(fmt.Errorf("summary response returned function calls with no tools"))
 		}
 		final := called.Data
 		result.Usage = final.Usage
@@ -292,58 +304,11 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			s.tools = nil
 			out.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 总结", s.route.Tools.MaxRoundsPerTurn()))
-			summaryInput := &storage.Message{
-				SessionID: s.session.ID,
-				Role:      storage.RoleUser,
-				Content:   "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。",
-			}
-			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, summaryInput); err != nil {
+			if err := s.appendUserText("已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。"); err != nil {
 				return fail(err)
 			}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{summaryInput}}); err != nil {
-				return fail(err)
-			}
-			projected, err := agentshare.MessageFromStorage(*summaryInput)
-			if err != nil {
-				return fail(err)
-			}
-			s.projection = append(s.projection, projected)
-			pending = agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-			if pending != nil {
-				pending.MessageIndex = len(s.projection)
-				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
-			}
-			// The next request retains all calls and their explicit skip outputs.
-			// It sends no tools, so another function call is a provider error.
-			stream = out.StartStream(s.requestCtx)
-			summarized, err := s.call(s.requestCtx, pending, stream)
-			if err != nil {
-				return fail(err)
-			}
-			if summarized.Status != operationresult.Success {
-				return operationresult.Result[agentshare.LoopResult]{Status: summarized.Status, Message: summarized.Message}, nil
-			}
-			summary := summarized.Data
-			if len(s.calls) > 0 {
-				return fail(fmt.Errorf("summary response returned function calls with no tools"))
-			}
-			result.Usage = summary.Usage
-			immediate, later = delivery.SplitByDeliveryTiming(summary.Outputs)
-			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediate}); err != nil {
-				return fail(err)
-			}
-			result.Outcome = agentshare.Completed
-			result.Commit = agentshare.ReplyCommitInput{
-				Persistence:      replyCommitter{state: s},
-				Session:          s.session,
-				Text:             s.sourceText,
-				RawText:          s.sourceText,
-				ReasoningContent: summary.ReasoningContent,
-				PlatformText:     summary.Text,
-				Stream:           stream,
-				Outputs:          later,
-			}
-			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
+			summarizing = true
+			continue
 		}
 		if !toolPhase {
 			if !s.route.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
@@ -365,18 +330,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 		}
 		if execution.ConfirmationExtra != "" {
-			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
-			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, message); err != nil {
+			if err := s.appendUserText("补充：" + execution.ConfirmationExtra); err != nil {
 				return fail(err)
 			}
-			if err := (inputCommitter{state: s}).Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, Messages: []*storage.Message{message}}); err != nil {
-				return fail(err)
-			}
-			projected, err := agentshare.MessageFromStorage(*message)
-			if err != nil {
-				return fail(err)
-			}
-			s.projection = append(s.projection, projected)
 		}
 		s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 		if err != nil {

@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"sort"
+	"maps"
+	"slices"
+	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -55,6 +57,117 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 	return string(encoded), err
 }
 
+// A part keeps opaque provider fields intact and buffers only the active text field.
+type streamPart struct {
+	fields map[string]json.RawMessage
+	key    string
+	text   strings.Builder
+}
+
+func (p *streamPart) flush() {
+	if p.key != "" {
+		p.fields[p.key], _ = json.Marshal(p.text.String())
+		p.key = ""
+		p.text.Reset()
+	}
+}
+
+type streamItem struct {
+	snapshot *api.Item // Last complete item event; a new snapshot replaces all buffered parts.
+	header   map[string]json.RawMessage
+	parts    map[int]*streamPart
+}
+
+func (m *streamItem) update(event api.Event) error {
+	header := m.header
+	if header == nil {
+		if m.snapshot != nil {
+			if err := json.Unmarshal(m.snapshot.Raw, &header); err != nil {
+				return fmt.Errorf("responses stream item: %w", err)
+			}
+		} else {
+			header = map[string]json.RawMessage{"type": json.RawMessage(`"message"`), "role": json.RawMessage(`"assistant"`)}
+			if event.ItemID != "" {
+				header["id"], _ = json.Marshal(event.ItemID)
+			}
+		}
+		m.parts = map[int]*streamPart{}
+		var existing []map[string]json.RawMessage
+		if raw := header["content"]; len(raw) > 0 {
+			if err := json.Unmarshal(raw, &existing); err != nil {
+				return fmt.Errorf("responses stream content: %w", err)
+			}
+		}
+		for i, fields := range existing {
+			m.parts[i] = &streamPart{fields: fields}
+		}
+	}
+	p := m.parts[event.ContentIndex]
+	if p == nil {
+		p = &streamPart{fields: map[string]json.RawMessage{}}
+	}
+	switch event.Type {
+	case "response.content_part.added", "response.content_part.done":
+		p.flush()
+		fields := maps.Clone(p.fields)
+		var data struct {
+			Part json.RawMessage `json:"part"`
+		}
+		if err := json.Unmarshal(event.Raw, &data); err != nil {
+			return fmt.Errorf("responses stream part event: %w", err)
+		}
+		if err := json.Unmarshal(data.Part, &fields); err != nil {
+			return fmt.Errorf("responses stream part event: %w", err)
+		}
+		raw, _ := json.Marshal(fields)
+		var parsed api.OutputContent
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			return fmt.Errorf("responses stream partial item: %w", err)
+		}
+		p.fields = fields
+	default:
+		key, typ, done := "text", `"output_text"`, event.Text
+		if event.Type == "response.refusal.delta" || event.Type == "response.refusal.done" {
+			key, typ, done = "refusal", `"refusal"`, event.Refusal
+		}
+		if p.key != key {
+			p.flush()
+			var prefix string
+			if raw := p.fields[key]; len(raw) > 0 {
+				if err := json.Unmarshal(raw, &prefix); err != nil {
+					return fmt.Errorf("responses stream %s: %w", key, err)
+				}
+			}
+			if p.fields == nil {
+				p.fields = map[string]json.RawMessage{}
+			}
+			p.key = key
+			p.fields["type"] = json.RawMessage(typ)
+			p.text.WriteString(prefix)
+		}
+		if strings.HasSuffix(event.Type, ".done") {
+			p.text.Reset()
+			p.text.WriteString(done)
+		} else {
+			p.text.WriteString(event.Delta)
+		}
+	}
+	m.header, m.parts[event.ContentIndex] = header, p
+	return nil
+}
+
+func (m *streamItem) item() (api.Item, error) {
+	parts := make([]map[string]json.RawMessage, 0, len(m.parts))
+	for _, i := range slices.Sorted(maps.Keys(m.parts)) {
+		p := m.parts[i]
+		p.flush()
+		parts = append(parts, p.fields)
+	}
+	m.header["content"], _ = json.Marshal(parts)
+	raw, _ := json.Marshal(m.header)
+	return api.ParseItem(raw)
+}
+
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
@@ -94,12 +207,8 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	}
 	result.Exchange = exchange
 	status := "failed"
-	// Entries are snapshots of observed native items, including unfinished
-	// message content. Item/part completion replaces only the matching entry.
-	completed := map[int]api.Item{}
-	// Keep only observed content indices; a sparse upstream index must not
-	// allocate placeholders or turn an otherwise received delta into a failure.
-	parts := map[int]map[int]json.RawMessage{}
+	// Keep only observed output indices; complete item events replace their buffered deltas.
+	observed := map[int]*streamItem{}
 	result, err = func() (nativeCallResult, error) {
 		callCtx, cancel := context.WithCancel(ctx)
 		observation.LogRecord().EventName = "llm_usage"
@@ -139,7 +248,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				result.OutputStarted = true
 			}
 			if (event.Type == "response.output_item.added" || event.Type == "response.output_item.done") && event.Item != nil {
-				completed[event.OutputIndex] = *event.Item
+				observed[event.OutputIndex] = &streamItem{snapshot: event.Item}
 			}
 			if event.Error != nil {
 				if event.Type != "" {
@@ -159,94 +268,14 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				if event.OutputIndex < 0 || event.ContentIndex < 0 {
 					return failStream(fmt.Errorf("responses stream: negative output or content index"))
 				}
-				item := completed[event.OutputIndex]
-				content := map[string]json.RawMessage{}
-				if len(item.Raw) > 0 {
-					if err := json.Unmarshal(item.Raw, &content); err != nil {
-						return failStream(fmt.Errorf("responses stream item: %w", err))
-					}
-				} else {
-					content["type"] = json.RawMessage(`"message"`)
-					content["role"] = json.RawMessage(`"assistant"`)
-					if event.ItemID != "" {
-						content["id"], _ = json.Marshal(event.ItemID)
-					}
+				m := observed[event.OutputIndex]
+				if m == nil {
+					m = &streamItem{}
+					observed[event.OutputIndex] = m
 				}
-				if parts[event.OutputIndex] == nil {
-					parts[event.OutputIndex] = map[int]json.RawMessage{}
-					var data []json.RawMessage
-					if len(content["content"]) > 0 {
-						if err := json.Unmarshal(content["content"], &data); err != nil {
-							return failStream(fmt.Errorf("responses stream content: %w", err))
-						}
-					}
-					for index, part := range data {
-						parts[event.OutputIndex][index] = part
-					}
+				if err := m.update(event); err != nil {
+					return failStream(err)
 				}
-				part := map[string]json.RawMessage{}
-				if data := parts[event.OutputIndex][event.ContentIndex]; len(data) > 0 {
-					if err := json.Unmarshal(data, &part); err != nil {
-						return failStream(fmt.Errorf("responses stream part: %w", err))
-					}
-				}
-				switch event.Type {
-				case "response.content_part.added", "response.content_part.done":
-					data := map[string]json.RawMessage{}
-					if err := json.Unmarshal(event.Raw, &data); err != nil {
-						return failStream(fmt.Errorf("responses stream part event: %w", err))
-					}
-					if err := json.Unmarshal(data["part"], &part); err != nil {
-						return failStream(fmt.Errorf("responses stream part event: %w", err))
-					}
-				case "response.output_text.delta", "response.output_text.done":
-					var text string
-					if len(part["text"]) > 0 {
-						if err := json.Unmarshal(part["text"], &text); err != nil {
-							return failStream(fmt.Errorf("responses stream text: %w", err))
-						}
-					}
-					if event.Type == "response.output_text.done" {
-						text = event.Text
-					} else {
-						text += event.Delta
-					}
-					part["type"] = json.RawMessage(`"output_text"`)
-					part["text"], _ = json.Marshal(text)
-				case "response.refusal.delta", "response.refusal.done":
-					var text string
-					if len(part["refusal"]) > 0 {
-						if err := json.Unmarshal(part["refusal"], &text); err != nil {
-							return failStream(fmt.Errorf("responses stream refusal: %w", err))
-						}
-					}
-					if event.Type == "response.refusal.done" {
-						text = event.Refusal
-					} else {
-						text += event.Delta
-					}
-					part["type"] = json.RawMessage(`"refusal"`)
-					part["refusal"], _ = json.Marshal(text)
-				}
-				parts[event.OutputIndex][event.ContentIndex], _ = json.Marshal(part)
-				indices := make([]int, 0, len(parts[event.OutputIndex]))
-				for index := range parts[event.OutputIndex] {
-					indices = append(indices, index)
-				}
-				sort.Ints(indices)
-				{
-					data := make([]json.RawMessage, 0, len(indices))
-					for _, index := range indices {
-						data = append(data, parts[event.OutputIndex][index])
-					}
-					content["content"], _ = json.Marshal(data)
-				}
-				data, _ := json.Marshal(content)
-				item, err = api.ParseItem(data)
-				if err != nil {
-					return failStream(fmt.Errorf("responses stream partial item: %w", err))
-				}
-				completed[event.OutputIndex] = item
 				result.OutputStarted = true
 			}
 			switch event.Type {
@@ -283,6 +312,26 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 		return failStream(fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF))
 	}()
+	completed := make(map[int]api.Item, len(observed))
+	for index, m := range observed {
+		if m.snapshot != nil {
+			completed[index] = *m.snapshot
+		}
+		if m.header == nil {
+			continue
+		}
+		item, buildErr := m.item()
+		if buildErr != nil {
+			if err == nil {
+				err = llm.MapStreamError(fmt.Errorf("responses stream partial item: %w", buildErr))
+				status = "failed"
+				observation.Event().ProviderError, observation.Event().Err = true, err
+				observation.LogRecord().ResultStatus = globalevents.ResultFailed
+			}
+			continue
+		}
+		completed[index] = item
+	}
 	result.Items = outputItems(result.Response, completed)
 	observation.Event().Text, observation.Event().SourceText = outputText(result.Items), outputText(result.Items)
 	observation.Event().OutputReady = len(result.Items) > 0
