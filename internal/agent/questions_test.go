@@ -251,7 +251,7 @@ func TestQuestionSubmission(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			toolText := "4 题待答"
+			toolText := "已发4题"
 			answers := fmt.Sprintf("#%d 哪些测试？\n选：2. 全量\n补：队中改选\n\n#%d 如何提交？\n答：我来审阅", first.ID, second.ID)
 			for _, want := range []struct{ role, text string }{{"tool", toolText}, {"user", "先看其他文件"}, {"user", answers}, {"user", fmt.Sprintf("#%d 分支？\n答：独立批次", queued.ID)}, {"user", fmt.Sprintf("#%d 部署？\n答：明天部署", third.ID)}} {
 				count := 0
