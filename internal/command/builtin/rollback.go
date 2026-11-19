@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"fmt"
 	"strconv"
 	"strings"
@@ -32,17 +33,17 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (comma
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindRollbacks), nil
+		return command.FromOperationResult(data, command.ResultKindRollbacks, format.Rollbacks), nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
-		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("rollback", "[编号]"))}, nil
+		return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", c.deps.CommandText("rollback", "[编号]"))), nil
 	}
 	result, err := c.deps.Control.RollbackByID(ctx, control.RollbackByIDRequest{ID: id})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(result, command.ResultKindRollback), nil
+	return command.FromOperationResult(result, command.ResultKindRollback, format.Rollback), nil
 }
 
 func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

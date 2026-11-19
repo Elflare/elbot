@@ -41,38 +41,40 @@ const (
 
 // Result 是命令唯一的业务结果载体，状态、展示消息和可选结构化数据统一保存在此。
 type Result struct {
-	Status       operationresult.Status `json:"status"`                 // Control 业务操作状态。
-	Message      string                 `json:"message,omitempty"`      // 拒绝或失败时可直接展示给用户的说明。
-	Kind         ResultKind             `json:"kind,omitempty"`         // Data 的结构类别。
-	Data         any                    `json:"data,omitempty"`         // 对应 Kind 的业务数据；仅成功时读取，可为空。
-	Confirmation *delivery.Confirmation `json:"confirmation,omitempty"` // 非 nil 表示操作等待用户确认。
-	Continuation *control.Continuation  `json:"-"`                      // 结果成功交付后继续处理的输入，不下发给客户端。
+	Status       operationresult.Status  `json:"status"` // Control 业务操作状态。
+	Blocks       []delivery.ContentBlock `json:"blocks,omitempty"`
+	Kind         ResultKind              `json:"kind,omitempty"` // Data 的结构类别。
+	Data         any                     `json:"data,omitempty"` // 对应 Kind 的业务数据；仅成功时读取，可为空。
+	Actions      []delivery.Action       `json:"actions,omitempty"`
+	Continuation *control.Continuation   `json:"-"` // 结果成功交付后继续处理的输入，不下发给客户端。
 }
 
 // FromOperationResult maps a business result to its command result without reading failed data.
-func FromOperationResult[T any](result operationresult.Result[T], kind ResultKind) Result {
+func FromOperationResult[T any](result operationresult.Result[T], kind ResultKind, render func(T) string) Result {
 	if result.Status != operationresult.Success {
-		return Result{Status: result.Status, Message: result.Message}
+		return TextResult(result.Status, result.Message)
 	}
-	return Result{Status: operationresult.Success, Kind: kind, Data: result.Data}
+	r := TextResult(result.Status, render(result.Data))
+	r.Kind, r.Data = kind, result.Data
+	return r
 }
 
 // UnmarshalJSON 保留原始 JSON，具体业务结构由最终消费端按调用操作解码。
 func (r *Result) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Status       operationresult.Status `json:"status"`
-		Message      string                 `json:"message"`
-		Kind         ResultKind             `json:"kind"`
-		Data         json.RawMessage        `json:"data"`
-		Confirmation *delivery.Confirmation `json:"confirmation"`
+		Status  operationresult.Status  `json:"status"`
+		Blocks  []delivery.ContentBlock `json:"blocks,omitempty"`
+		Kind    ResultKind              `json:"kind"`
+		Data    json.RawMessage         `json:"data"`
+		Actions []delivery.Action       `json:"actions,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	r.Status = raw.Status
-	r.Message = raw.Message
+	r.Blocks = raw.Blocks
 	r.Kind = raw.Kind
-	r.Confirmation = raw.Confirmation
+	r.Actions = raw.Actions
 	r.Continuation = nil
 	r.Data = nil
 	if raw.Status == operationresult.Success && len(raw.Data) > 0 && string(raw.Data) != "null" {
@@ -81,7 +83,10 @@ func (r *Result) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// TextData 保存没有其他业务结构的纯文字成功结果。
-type TextData struct {
-	Content string `json:"content"` // 纯文字正文。
+func TextResult(status operationresult.Status, text string) Result {
+	r := Result{Status: status}
+	if text != "" {
+		r.Blocks = []delivery.ContentBlock{{Kind: delivery.ContentText, Content: text}}
+	}
+	return r
 }

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"fmt"
 	"strconv"
 	"strings"
@@ -19,13 +20,13 @@ func NewSessions(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
-			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 		}
 		sessions, err := listSessionPage(ctx, deps, query, page, false, false, all)
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionsResult(sessions), nil
+		return sessionsResult(sessions, deps.CommandText, "sessions", query, all), nil
 	})
 }
 
@@ -45,7 +46,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (command
 	arg := strings.TrimSpace(req.Args)
 	page, all, target, pageSet, err := parseResumeArgs(arg)
 	if err != nil {
-		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+		return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 	}
 	if pageSet {
 		return resumePage(ctx, deps, page, all)
@@ -54,13 +55,13 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (command
 		return resumePage(ctx, deps, 0, all)
 	}
 	if all && target != "last" {
-		return command.Result{Status: operationresult.InvalidArguments, Message: "-a/--all is only valid for the resume list or last"}, nil
+		return command.TextResult(operationresult.InvalidArguments, "-a/--all is only valid for the resume list or last"), nil
 	}
 	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, MessageLimit: resumeHistoryTurns * 2, AllPlatforms: all})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return sessionChange(data), nil
+	return sessionChange(req.Name, data), nil
 }
 
 func resumePage(ctx context.Context, deps Deps, page int, all bool) (command.Result, error) {
@@ -68,7 +69,7 @@ func resumePage(ctx context.Context, deps Deps, page int, all bool) (command.Res
 	if err != nil {
 		return command.Result{}, err
 	}
-	return sessionsResult(sessions), nil
+	return sessionsResult(sessions, deps.CommandText, "resume", "", all), nil
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -98,13 +99,13 @@ func NewArchives(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
-			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 		}
 		sessions, err := listSessionPage(ctx, deps, query, page, true, false, all)
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionsResult(sessions), nil
+		return sessionsResult(sessions, deps.CommandText, "archives", query, all), nil
 	})
 }
 
@@ -165,7 +166,7 @@ func NewMessages(deps Deps) command.Handler {
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
 			if err != nil || parsed < 1 {
-				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("page must be a positive number")}, nil
+				return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("page must be a positive number")), nil
 			}
 			page = parsed
 		}
@@ -173,7 +174,9 @@ func NewMessages(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindMessages), nil
+		return command.FromOperationResult(data, command.ResultKindMessages, func(d control.SessionMessagesResult) string {
+			return format.Messages(d, format.MessagesOptions{PreviewLimit: 40})
+		}), nil
 	})
 }
 
@@ -184,12 +187,12 @@ func NewFork(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
-			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("fork", "<message_id>"))}, nil
+			return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", deps.CommandText("fork", "<message_id>"))), nil
 		}
 		data, err := deps.Control.ForkSession(ctx, control.ForkSessionRequest{MessageID: messageID, MessageLimit: resumeHistoryTurns * 2})
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionChange(data), nil
+		return sessionChange(req.Name, data), nil
 	})
 }

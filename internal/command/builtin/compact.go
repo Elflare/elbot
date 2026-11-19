@@ -20,7 +20,7 @@ func NewCompact(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindCompact), nil
+		return command.FromOperationResult(data, command.ResultKindCompact, func(d control.SessionChangeResult) string { return "compacted → " + d.SessionID }), nil
 	})
 }
 

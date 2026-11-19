@@ -5,6 +5,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"fmt"
 	"sort"
@@ -27,7 +28,9 @@ func NewRequests(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(result, command.ResultKindRequests), nil
+		return command.FromOperationResult(result, command.ResultKindRequests, func(d control.ListRequestsResult) string {
+			return format.Requests(d, format.RequestsOptions{ShowSessionTitle: true})
+		}), nil
 	})
 }
 func NewStop(deps Deps) command.Handler { return stopCommand{deps: deps} }
@@ -52,24 +55,24 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (command.R
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(result, command.ResultKindStop), nil
+		return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
 	}
 	items, err := stoppableRequests(ctx, c.deps)
 	if err != nil {
 		return command.Result{}, err
 	}
 	if items.Status != operationresult.Success {
-		return command.Result{Status: items.Status, Message: items.Message}, nil
+		return command.TextResult(items.Status, items.Message), nil
 	}
 	id, ok := resolveRequestArg(items.Data, arg)
 	if !ok {
-		return command.Result{Status: operationresult.NotFound, Message: fmt.Sprintf("request not found: %s", arg)}, nil
+		return command.TextResult(operationresult.NotFound, fmt.Sprintf("request not found: %s", arg)), nil
 	}
 	result, err := c.deps.Control.StopRequest(ctx, control.StopRequestRequest{RequestID: id})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(result, command.ResultKindStop), nil
+	return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
 }
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	token := command.CurrentCompletionToken(req)
@@ -88,7 +91,7 @@ func NewStopAll(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(result, command.ResultKindStop), nil
+		return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
 	})
 }
 func stoppableRequests(ctx context.Context, deps Deps) (operationresult.Result[[]control.RequestData], error) {

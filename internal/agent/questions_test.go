@@ -110,7 +110,7 @@ func TestQuestionSubmission(t *testing.T) {
 			case <-ctx.Done():
 				t.Fatal(ctx.Err())
 			}
-			if len(out.Actions) != 6 || !strings.Contains(out.Text, "/ac") {
+			if len(out.Actions) != 6 || strings.Count(delivery.OutputBody(out, false), "/ac") != 1 {
 				t.Fatal(out)
 			}
 			wire, err := json.Marshal(out.Blocks)
@@ -118,7 +118,7 @@ func TestQuestionSubmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			var blocks []delivery.ContentBlock
-			if err := json.Unmarshal(wire, &blocks); err != nil || delivery.ContentBlocksText(blocks) != out.Text {
+			if err := json.Unmarshal(wire, &blocks); err != nil || delivery.ContentBlocksText(blocks) != delivery.ContentBlocksText(out.Blocks) {
 				t.Fatalf("question blocks did not round trip: %s, %v", wire, err)
 			}
 			first := blocks[0].Content.(delivery.QuestionContent)

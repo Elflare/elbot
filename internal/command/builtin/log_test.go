@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"reflect"
 	"strings"
 	"testing"
@@ -60,7 +61,7 @@ func TestLogCommandsUseCategoryDefaultsAndRejectInvalidFilters(t *testing.T) {
 			t.Fatalf("%s request=%+v", tc.name, service.request)
 		}
 	}
-	if result, err := NewAudit(Deps{CommandText: testCommandText, Control: &logControlStub{}}).Handle(t.Context(), command.Request{Args: "--run_source other"}); err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "invalid --run_source") {
+	if result, err := NewAudit(Deps{CommandText: testCommandText, Control: &logControlStub{}}).Handle(t.Context(), command.Request{Args: "--run_source other"}); err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(delivery.ContentBlocksText(result.Blocks), "invalid --run_source") {
 		t.Fatalf("invalid run source: %+v, %v", result, err)
 	}
 }

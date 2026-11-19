@@ -20,13 +20,10 @@ import (
 
 type doctorCommandReply struct{ text string }
 
-func (r *doctorCommandReply) SendCommandResult(_ context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (r *doctorCommandReply) SendCommandResult(_ context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	if len(outputs) > 0 {
-		r.text = outputs[0].Text
+		r.text = delivery.FallbackText(outputs[0])
 	}
 	return delivery.Receipt{}, nil
 }

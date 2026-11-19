@@ -70,14 +70,14 @@ func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServe
 	return s
 }
 
-func dialTestRemote(t *testing.T, s *RemoteServer) *websocket.Conn {
+func dialTestRemote(t *testing.T, s *RemoteServer, protocols ...string) *websocket.Conn {
 	t.Helper()
 	s.mu.Lock()
 	address := s.listener.Addr().String()
 	s.mu.Unlock()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, "ws://"+address+defaultRemotePath, nil)
+	conn, _, err := websocket.Dial(ctx, "ws://"+address+defaultRemotePath, &websocket.DialOptions{Subprotocols: protocols})
 	if err != nil {
 		t.Fatal(err)
 	}

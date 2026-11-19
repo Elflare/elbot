@@ -78,7 +78,7 @@ type ToolCapabilities interface {
 // PlatformCapabilities supplies platform-owned input normalization, identity, and delivery.
 type PlatformCapabilities interface {
 	NormalizeInput(context.Context, []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error)
-	SendCommandResult(context.Context, command.Request, command.Result, error) (delivery.Receipt, error)
+	SendCommandResult(context.Context, command.Result, error) (delivery.Receipt, error)
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"fmt"
 	"strings"
 
@@ -40,18 +41,18 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (command.
 	info := c.Info()
 	deps := c.deps
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(c.deps.CommandText, info), nil
+		return formatCommandHelp(req.Prefix, info), nil
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
+		return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))), nil
 	}
 	listed, err := deps.Control.ListModels(ctx, control.ListModelsRequest{})
 	if err != nil {
 		return command.Result{}, err
 	}
 	if listed.Status != operationresult.Success {
-		return command.FromOperationResult(listed, command.ResultKindModel), nil
+		return command.FromOperationResult(listed, command.ResultKindModels, format.Models), nil
 	}
 	var selected *control.ModelData
 	index, indexErr := strconv.Atoi(args)
@@ -59,19 +60,19 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (command.
 		item := &listed.Data.Items[i]
 		if (indexErr == nil && item.Index == index) || (indexErr != nil && (item.Model == args || item.Provider+"/"+item.Model == args)) {
 			if selected != nil {
-				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("model %q matches multiple models; use provider/model", args)}, nil
+				return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("model %q matches multiple models; use provider/model", args)), nil
 			}
 			selected = item
 		}
 	}
 	if selected == nil {
-		return command.Result{Status: operationresult.NotFound, Message: fmt.Sprintf("model %q: not found", args)}, nil
+		return command.TextResult(operationresult.NotFound, fmt.Sprintf("model %q: not found", args)), nil
 	}
 	result, err := deps.Control.SelectModel(ctx, control.SelectModelRequest{Target: string(target), Provider: selected.Provider, Model: selected.Model})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(result, command.ResultKindModel), nil
+	return command.FromOperationResult(result, command.ResultKindModel, format.Model), nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -178,7 +179,7 @@ func NewCheckModel(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindModels), nil
+		return command.FromOperationResult(data, command.ResultKindModels, format.Models), nil
 	})
 }
 

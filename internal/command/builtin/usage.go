@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"fmt"
 	"strconv"
@@ -40,11 +41,11 @@ func (c usageCommand) Info() command.Info { return usageInfo() }
 
 func (c usageCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(c.deps.CommandText, c.Info()), nil
+		return formatCommandHelp(req.Prefix, c.Info()), nil
 	}
 	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {
-		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+		return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 	}
 	first, last := 1, usageQueryLimit
 	if callRange != nil {
@@ -54,7 +55,7 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (command.
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(data, command.ResultKindUsage), nil
+	return command.FromOperationResult(data, command.ResultKindUsage, format.Usage), nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

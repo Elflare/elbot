@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"bytes"
+	controlshare "elbot/internal/control/share"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -17,11 +18,13 @@ type ContentBlock struct {
 }
 
 const (
-	ContentQuestion ContentBlockKind = "question"
-	ContentText     ContentBlockKind = "text"
-	ContentDiff     ContentBlockKind = "diff"
-	ContentFields   ContentBlockKind = "fields"
-	ContentCode     ContentBlockKind = "code"
+	ContentSessionList ContentBlockKind = "session_list"
+	ContentPreview     ContentBlockKind = "preview"
+	ContentQuestion    ContentBlockKind = "question"
+	ContentText        ContentBlockKind = "text"
+	ContentDiff        ContentBlockKind = "diff"
+	ContentFields      ContentBlockKind = "fields"
+	ContentCode        ContentBlockKind = "code"
 )
 
 // ContentField is an independently renderable confirmation field.
@@ -48,6 +51,10 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	}
 	var target any
 	switch raw.Kind {
+	case ContentSessionList:
+		target = new(controlshare.ListSessionsResult)
+	case ContentPreview:
+		target = new([]ContentBlock)
 	case ContentQuestion:
 		target = new(QuestionContent)
 	case ContentFields:
@@ -66,6 +73,10 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	}
 	b.Kind = raw.Kind
 	switch value := target.(type) {
+	case *controlshare.ListSessionsResult:
+		b.Content = *value
+	case *[]ContentBlock:
+		b.Content = *value
 	case *QuestionContent:
 		b.Content = *value
 	case *[]ContentField:
@@ -84,6 +95,10 @@ func ContentBlocksText(blocks []ContentBlock) string {
 	for _, block := range blocks {
 		var content string
 		switch block.Kind {
+		case ContentSessionList:
+			content = SessionListText(block.Content.(controlshare.ListSessionsResult))
+		case ContentPreview:
+			content = previewOperation(operationPreviewBody(block.Content.([]ContentBlock)))
 		case ContentQuestion:
 			content = block.Content.(QuestionContent).text()
 		case ContentFields:
@@ -123,4 +138,72 @@ func ContentBlocksText(blocks []ContentBlock) string {
 // 等待、授权和执行由各自业务负责，Action.ID 不是授权凭据。
 type Confirmation struct {
 	Actions []Action `json:"actions"` // 由业务生成的可选命令操作，展示方直接提交 Command。
+}
+
+// Prefer changed lines over file metadata in a text-only operation preview.
+func operationPreviewBody(blocks []ContentBlock) string {
+	var path, diff string
+	for _, block := range blocks {
+		switch block.Kind {
+		case ContentFields:
+			for _, field := range block.Content.([]ContentField) {
+				if field.Key == "path" {
+					path, _ = field.Value.(string)
+				}
+			}
+		case ContentDiff:
+			if diff == "" {
+				diff = block.Content.(string)
+			}
+		}
+	}
+	if diff == "" {
+		return ContentBlocksText(blocks)
+	}
+	var lines []string
+	if path != "" {
+		lines = append(lines, path)
+	}
+	inHunk := false
+	for line := range strings.SplitSeq(diff, "\n") {
+		if strings.HasPrefix(line, "@@ ") {
+			inHunk = true
+		}
+		if inHunk && (strings.HasPrefix(line, "+") || strings.HasPrefix(line, "-")) {
+			lines = append(lines, line)
+			if len(lines) == 5 {
+				break
+			} // One extra line signals truncation.
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+func previewOperation(s string) string {
+	lines := strings.SplitN(s, "\n", 5)
+	clipped := len(lines) > 4
+	if clipped {
+		s = strings.Join(lines[:4], "\n")
+	}
+	r := []rune(s)
+	if len(r) > 240 || clipped && len(r) == 240 {
+		r = r[:239]
+		clipped = true
+	}
+	if clipped {
+		return string(r) + "…"
+	}
+	return string(r)
+}
+func ActionHints(actions []Action) string {
+	parts := make([]string, 0, len(actions))
+	for _, a := range actions {
+		parts = append(parts, a.Command+" "+a.Label)
+	}
+	return strings.Join(parts, " · ")
+}
+func WithActionHints(body string, actions []Action) string {
+	if hints := ActionHints(actions); hints != "" {
+		return strings.TrimSpace(body + "\n\n" + hints)
+	}
+	return body
 }

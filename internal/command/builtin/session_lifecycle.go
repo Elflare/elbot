@@ -38,7 +38,7 @@ func NewArchive(deps Deps) command.Handler {
 			if err != nil {
 				return command.Result{}, err
 			}
-			return sessionChange(session), nil
+			return sessionChange(req.Name, session), nil
 		},
 	}
 }
@@ -56,7 +56,7 @@ func NewUnarchive(deps Deps) command.Handler {
 			if err != nil {
 				return command.Result{}, err
 			}
-			return sessionChange(session), nil
+			return sessionChange(req.Name, session), nil
 		},
 	}
 }
@@ -73,7 +73,7 @@ func NewPin(deps Deps) command.Handler {
 			if err != nil {
 				return command.Result{}, err
 			}
-			return sessionChange(session), nil
+			return sessionChange(req.Name, session), nil
 		},
 	}
 }
@@ -90,7 +90,7 @@ func NewUnpin(deps Deps) command.Handler {
 			if err != nil {
 				return command.Result{}, err
 			}
-			return sessionChange(session), nil
+			return sessionChange(req.Name, session), nil
 		},
 	}
 }
@@ -117,13 +117,13 @@ func (c renameCommand) Info() command.Info {
 func (c renameCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	target, title, ok := parseRenameArgs(req.Args)
 	if !ok {
-		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("rename", "[session_id|current_title]", "<title>"))}, nil
+		return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", c.deps.CommandText("rename", "[session_id|current_title]", "<title>"))), nil
 	}
 	session, err := c.deps.Control.RenameSession(ctx, control.RenameSessionRequest{Target: target, Title: title, PageSize: c.deps.SessionListPageSize})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return sessionChange(session), nil
+	return sessionChange(req.Name, session), nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -144,7 +144,7 @@ func NewDelete(deps Deps) command.Handler {
 		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
 			if target == "" {
-				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("delete", "<session_id>", "--confirm"))}, nil
+				return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", deps.CommandText("delete", "<session_id>", "--confirm"))), nil
 			}
 			if !confirmed {
 				content, err := confirmCommandMessage(ctx, deps, "delete", target)
@@ -157,7 +157,7 @@ func NewDelete(deps Deps) command.Handler {
 			if err != nil {
 				return command.Result{}, err
 			}
-			return sessionChange(data), nil
+			return sessionChange(req.Name, data), nil
 		},
 	}
 }
@@ -183,13 +183,13 @@ func (c cleanCommand) Info() command.Info {
 func (c cleanCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindSession, Data: control.CleanSessionsResult{}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}}, nil
+		return command.Result{Status: operationresult.Success, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "永久删除过期且未归档、未置顶的会话？"}}, Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}, nil
 	}
 	data, err := c.deps.Control.CleanSessions(ctx, control.CleanSessionsRequest{Confirmed: true, Before: storage.Now().AddDate(0, 0, -cleanupRetentionDays(c.deps))})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return sessionChange(data), nil
+	return sessionChange(req.Name, data), nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -325,11 +325,11 @@ func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) 
 		return command.Result{}, err
 	}
 	if row.Status != operationresult.Success {
-		return command.Result{Status: row.Status, Message: row.Message}, nil
+		return command.TextResult(row.Status, row.Message), nil
 	}
 	data := row.Data
 	action := deps.CommandText(name, data.ID, "--confirm")
-	return command.Result{Status: operationresult.Success, Kind: command.ResultKindSession, Data: control.SessionChangeResult{Session: &data, SessionID: data.ID}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
+	return command.Result{Status: operationresult.Success, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: fmt.Sprintf("%s? %s · %s", name, data.Title, data.ID)}}, Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}, nil
 }
 
 func emptyTitle(title string) string {

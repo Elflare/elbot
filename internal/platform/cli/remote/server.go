@@ -95,6 +95,7 @@ type RemoteServer struct {
 }
 
 type remoteClientConn struct {
+	writeMu    sync.Mutex                 // Keep CLI chunks of one JSON envelope consecutive.
 	mediaToken string                     // 本连接的 HTTP 附件凭据，断连即撤销。
 	apiToken   string                     // 本连接的管理 API 路由凭据，断连即撤销。
 	files      map[string]*remoteMediaRef // 本连接的附件授权，由 server.mu 保护。
@@ -176,7 +177,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platformshar
 			s.work.Done()
 		}
 	}()
-	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	conn, err := websocket.Accept(w, req, &websocket.AcceptOptions{InsecureSkipVerify: true, Subprotocols: []string{cliChunksProtocol}})
 	if err != nil {
 		return
 	}
@@ -428,7 +429,7 @@ func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClient
 	return nil
 }
 
-func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
+func (c *remoteClientConn) write(ctx context.Context, msg any) error {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
 	var data bytes.Buffer
@@ -437,7 +438,23 @@ func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
 	if err := encoder.Encode(msg); err != nil {
 		return err
 	}
-	return c.conn.Write(writeCtx, websocket.MessageText, data.Bytes())
+	payload := data.Bytes()
+	if c.conn.Subprotocol() != cliChunksProtocol {
+		return c.conn.Write(writeCtx, websocket.MessageText, payload)
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if len(payload) <= cliChunkSize {
+		return c.conn.Write(writeCtx, websocket.MessageText, payload)
+	}
+	// A short binary chunk terminates the JSON envelope (empty for exact multiples).
+	for len(payload) >= cliChunkSize {
+		if err := c.conn.Write(writeCtx, websocket.MessageBinary, payload[:cliChunkSize]); err != nil {
+			return err
+		}
+		payload = payload[cliChunkSize:]
+	}
+	return c.conn.Write(writeCtx, websocket.MessageBinary, payload)
 }
 
 func (s *RemoteServer) addClient(client *remoteClientConn) bool {
@@ -516,7 +533,7 @@ func (s *RemoteServer) validToken(clientID, token string) bool {
 
 func outputMessage(kind string, out delivery.Output) remoteMessage {
 	text := out.Text
-	if len(out.Blocks) == 0 {
+	if out.Kind != delivery.KindText {
 		text = delivery.FallbackText(out)
 	}
 	return remoteMessage{Type: kind, Text: text, Blocks: out.Blocks, Actions: out.Actions}
@@ -527,14 +544,12 @@ type remoteCommandReply struct {
 	requestID string
 }
 
-func (r remoteCommandReply) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
-	defer cancel()
+func (r remoteCommandReply) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
 	var message *string
 	if failure != nil {
 		text := failure.Error()
 		message = &text
 	}
-	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: req, Result: result, Error: message})
+	err := r.client.write(ctx, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Result: result, Error: message})
 	return delivery.Receipt{}, err
 }

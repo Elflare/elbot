@@ -200,7 +200,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if mc.Conversation.ReplyToSenderID != "bot" || mc.Reply.Text != "hook text" || !strings.Contains(mc.ContextText, "hook text") || mc.ResumeSessionID != "" || mc.ForkFromMessageID != "" {
 		t.Errorf("hook reply=%+v, context=%q, sender=%q", mc.Reply, mc.ContextText, mc.Conversation.ReplyToSenderID)
 	}
-	_, err = a.SendCommandResult(h.ctx, command.Request{}, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "status"}}, nil)
+	_, err = a.SendCommandResult(h.ctx, command.TextResult(operationresult.Success, "status"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

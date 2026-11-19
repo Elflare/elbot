@@ -236,7 +236,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		blocks := <-output.blocks
-		if len(blocks) != 2 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" {
+		if len(blocks) != 2 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentPreview || delivery.ContentBlocksText(blocks[1].Content.([]delivery.ContentBlock)) != "detail" {
 			t.Fatalf("confirmation blocks=%#v", blocks)
 		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {
@@ -257,7 +257,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 			t.Fatalf("actions=%#v", actions)
 		}
 		for i, name := range want {
-			if actions[i].ID != name || actions[i].Label == "" || actions[i].Command != "!"+name {
+			if actions[i].ID != name || actions[i].Label == "" || actions[i].Command != []string{"!detail", "!c", "!ct", "!ca", "!reject", "!stop"}[i] {
 				t.Fatalf("action=%#v", actions[i])
 			}
 		}

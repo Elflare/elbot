@@ -15,7 +15,7 @@ func (q QuestionContent) text() string {
 	var text strings.Builder
 	fmt.Fprintf(&text, "#%d: %s", q.ID, q.Question.Question)
 	for i, option := range q.Options {
-		fmt.Fprintf(&text, "\n%s %d %d  %s", q.AnswerCommand, q.ID, i+1, option)
+		fmt.Fprintf(&text, "\n%d. %s", i+1, option)
 	}
 	fmt.Fprintf(&text, "\n%s %d o <回答>", q.AnswerCommand, q.ID)
 	if d := q.Draft; d != nil {
@@ -39,8 +39,7 @@ func QuestionsOutput(questions []storage.Question, answerCommand, confirmCommand
 			out.Actions = append(out.Actions, Action{ID: fmt.Sprintf("a-%d-%d", q.ID, i+1), Label: fmt.Sprintf("#%d · %s", q.ID, option), Command: fmt.Sprintf("%s %d %d", answerCommand, q.ID, i+1)})
 		}
 	}
-	out.Blocks = append(out.Blocks, ContentBlock{Kind: ContentText, Content: "选项后可加补充 · " + confirmCommand + " 提交草稿"})
+	out.Blocks = append(out.Blocks, ContentBlock{Kind: ContentText, Content: "选项后可加补充"})
 	out.Actions = append(out.Actions, Action{ID: "ac", Label: "提交草稿", Command: confirmCommand})
-	out.Text = ContentBlocksText(out.Blocks)
 	return out
 }

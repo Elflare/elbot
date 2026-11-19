@@ -139,14 +139,14 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 ### command_result — 命令结果
 
 ```json
-{"type":"command_result","request_id":"m-1","command":{"raw":"/detail","prefix":"/","Name":"detail","args":""},"result":{"status":"success","kind":"text","data":{"content":"无待确认"}}}
+{"type":"command_result","request_id":"m-1","result":{"status":"success","blocks":[{"kind":"text","content":"无待确认"}]}}
 ```
 
-`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。`command` 保留原始调用上下文，追加确认回执的 `command.Name` 为 `append`。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。
+`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。命令回执无需回传原始输入。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。
 
-工具确认详情由工具准备阶段生成，通过 `/detail` 结果的 `data.detail` 和发送事件的 `blocks` 提供，同一份内容不再自动追加原始参数。`fields` 的 `content` 是 `{key, label, value}` 数组，`key` 用于程序识别，`label` 用于展示，`value` 保留 JSON 类型；`code` 的 `content` 是 `{language, content}`；`diff` 的 `content` 是差异文本。编辑前、编辑后的文件均不超过 8 MiB 且存在差异时提供完整 `diff` 块，不再限制行数乘积或 diff 输出长度；超限仍允许操作，但不提供 `diff` 块，也不切换文字或参数兜底。消息平台在出口将内容块渲染成文本，API 保留结构，前端无需解析展示字符串。详情和执行共用准备阶段确定的值，Cron 更新展示合并后的任务定义；相对时间在准备阶段固定。HTTP API 和 WebSocket 输出不对 `<`、`>`、`&` 做 HTML 转义。
+工具确认详情由工具准备阶段生成，通过 `/detail` 结果的 `result.blocks` 和独立 `chat` 的 `blocks` 提供，同一份内容不再自动追加原始参数。`fields` 的 `content` 是 `{key, label, value}` 数组，`key` 用于程序识别，`label` 用于展示，`value` 保留 JSON 类型；`code` 的 `content` 是 `{language, content}`；`diff` 的 `content` 是差异文本。编辑前、编辑后的文件均不超过 8 MiB 且存在差异时提供完整 `diff` 块，不再限制行数乘积或 diff 输出长度；超限仍允许操作，但不提供 `diff` 块，也不切换文字或参数兜底。消息平台在出口将内容块渲染成文本，API 保留结构，前端无需解析展示字符串。详情和执行共用准备阶段确定的值，Cron 更新展示合并后的任务定义；相对时间在准备阶段固定。HTTP API 和 WebSocket 输出不对 `<`、`>`、`&` 做 HTML 转义。
 
-`result.status` 表达命令业务状态；仅 `success` 时读取 `data`，拒绝或失败展示 `result.message`。`kind` 描述成功数据的结构，`confirmation` 提供确认动作。`status` 是内部业务状态，不是 HTTP 状态或协议错误码。
+`result.status` 表达命令业务状态；仅 `success` 时读取 `data`，成功与业务失败均展示 `result.blocks`；动作来自 `result.actions`。`kind` 描述业务数据，不决定消息正文。`session_list` 保存完整列表页；`preview` 包含完整嵌套 blocks，Web 展开，文本端限 4 行、240 字符。`status` 是内部业务状态，不是 HTTP 状态或协议错误码。
 
 程序或 IO 故障通过 `error` 字符串传递原始说明；此字段存在时优先展示它，不读取 `result.data`。没有故障时省略 `error`。客户端超时或断线不代表后端执行已取消。
 

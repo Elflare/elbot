@@ -4,6 +4,7 @@ import (
 	"context"
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control/format"
 )
 
 func NewNew(deps Deps) command.Handler {
@@ -12,7 +13,7 @@ func NewNew(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionChange(result), nil
+		return sessionChange(req.Name, result), nil
 	})
 }
 func NewStatus(deps Deps) command.Handler {
@@ -21,6 +22,6 @@ func NewStatus(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(state, command.ResultKindStatus), nil
+		return command.FromOperationResult(state, command.ResultKindStatus, format.Status), nil
 	})
 }

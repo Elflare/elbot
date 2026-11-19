@@ -17,24 +17,17 @@ type CommandExecutor struct {
 }
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
-	if !e.deps.Router.IsCommand(text) && !agentshare.IsAppendConfirm(text) {
+	isCommand := e.deps.Router.IsCommand(text)
+	if !isCommand && !agentshare.IsAppendConfirm(text) {
 		return ctx, false, nil
 	}
 	origin := ctx
-	parsed := e.deps.Router.Parse(text)
-	req := command.Request{Raw: text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args}
-	if info, ok := e.deps.Router.CommandInfo(parsed.Name); ok {
-		req.Name = info.Name
-	}
-	ctx, result, handled, err := e.execute(ctx, text, parsed.OK)
+	ctx, result, handled, err := e.execute(ctx, text, isCommand)
 	if !handled {
 		return ctx, false, err
 	}
-	if !parsed.OK {
-		req.Name = "append"
-	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
-	if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
+	if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, result, err); sendErr != nil {
 		result.Continuation.CancelReservation()
 		return ctx, true, sendErr
 	}
@@ -54,8 +47,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 			return next, true, err
 		}
 		if continued.Status != operationresult.Success {
-			result = command.Result{Status: continued.Status, Message: continued.Message}
-			if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, req, result, nil); sendErr != nil {
+			result = command.TextResult(continued.Status, continued.Message)
+			if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, result, nil); sendErr != nil {
 				return next, true, sendErr
 			}
 		}
@@ -71,7 +64,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 	if current.Status == operationresult.Success {
 		ctx = session.WithBinding(ctx, current.Data.Binding)
 	} else if current.Status != operationresult.NoCurrentSession {
-		return ctx, command.Result{Status: current.Status, Message: current.Message}, true, nil
+		return ctx, command.TextResult(current.Status, current.Message), true, nil
 	}
 	if !isCommand {
 		current, err := e.deps.Confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
@@ -79,7 +72,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 			return ctx, command.Result{}, true, err
 		}
 		if current.Status != operationresult.Success {
-			return ctx, command.Result{Status: current.Status, Message: current.Message}, true, nil
+			return ctx, command.TextResult(current.Status, current.Message), true, nil
 		}
 		if current.Data.Kind != "append" {
 			return ctx, command.Result{}, false, nil
@@ -89,17 +82,17 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 			return ctx, command.Result{}, true, err
 		}
 		if result.Status != operationresult.Success {
-			return ctx, command.Result{Status: result.Status, Message: result.Message}, true, nil
+			return ctx, command.TextResult(result.Status, result.Message), true, nil
 		}
 		data := result.Data
-		return ctx, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "追加输入已接受"}, Continuation: data.Continuation}, true, nil
+		return ctx, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "追加输入已接受"}}, Continuation: data.Continuation}, true, nil
 	}
 	result, err := e.deps.Router.Dispatch(ctx, text)
 	return ctx, result, true, err
 }
 
 type CommandOutput interface {
-	SendCommandResult(context.Context, command.Request, command.Result, error) (delivery.Receipt, error)
+	SendCommandResult(context.Context, command.Result, error) (delivery.Receipt, error)
 }
 type CommandConfirmations interface {
 	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error)
@@ -111,8 +104,6 @@ type CommandInput interface {
 type CommandExecutorDeps struct {
 	Router interface {
 		IsCommand(string) bool
-		Parse(string) command.Parsed
-		CommandInfo(string) (command.Info, bool)
 		Dispatch(context.Context, string) (command.Result, error)
 	}
 	Sessions interface {

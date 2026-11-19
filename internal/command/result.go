@@ -1,9 +1,11 @@
 // result.go 公开统一命令结果契约。
 package command
 
-import "elbot/internal/command/share"
+import (
+	"elbot/internal/command/share"
+	"elbot/internal/operationresult"
+)
 
-type TextData = share.TextData
 type Result = share.Result
 type ResultKind = share.ResultKind
 
@@ -30,3 +32,7 @@ const (
 	ResultKindCompact       = share.ResultKindCompact
 	ResultKindHelp          = share.ResultKindHelp
 )
+
+func TextResult(status operationresult.Status, text string) Result {
+	return share.TextResult(status, text)
+}

@@ -15,7 +15,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/operationresult"
@@ -119,17 +118,14 @@ func TestSendDetailCommandUsesRawBlocksAndActions(t *testing.T) {
 	adapter.cfg.MarkdownByDefault = &markdown
 	adapter.cfg.EnableKeyboard = &keyboard
 	actions := []delivery.Action{{ID: "confirm", Label: "确认本次", Command: "/confirm"}}
-	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
-		ToolName: "edit_file",
-		Risk:     "high",
-		Detail: []delivery.ContentBlock{
-			{Kind: delivery.ContentDiff, Content: "--- a/file\n+++ b/file\n-old\n+new"},
-			{Kind: delivery.ContentFields, Content: []delivery.ContentField{{Key: "path", Label: "文件", Value: "file"}, {Key: "options", Label: "选项", Value: map[string]any{"text": "a>b && c<d"}}}},
-		},
+	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{
+		{Kind: delivery.ContentDiff, Content: "--- a/file\n+++ b/file\n-old\n+new"},
+		{Kind: delivery.ContentFields, Content: []delivery.ContentField{{Key: "path", Label: "文件", Value: "file"}, {Key: "options", Label: "选项", Value: map[string]any{"text": "a>b && c<d"}}}},
+	},
 		Actions: actions,
-	}}
+	}
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "1"}, PlatformMessageID: "incoming"})
-	if _, err := adapter.SendCommandResult(ctx, command.Request{Name: "detail"}, result, nil); err != nil {
+	if _, err := adapter.SendCommandResult(ctx, result, nil); err != nil {
 		t.Fatal(err)
 	}
 	if body.Markdown == nil || !strings.Contains(body.Markdown.Content, "-old\n+new") || !strings.Contains(body.Markdown.Content, "文件：file") || !strings.Contains(body.Markdown.Content, `"text":"a>b && c<d"`) || strings.Contains(body.Markdown.Content, `\u003`) {

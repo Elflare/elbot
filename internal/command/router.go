@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	share "elbot/internal/command/share"
 	"fmt"
 	"slices"
 	"sort"
@@ -78,15 +79,12 @@ func RegisterHandlers(registrar interface{ Register(Handler) error }, handlers .
 func (r *Router) Dispatch(ctx context.Context, raw string) (Result, error) {
 	parsed := r.Parse(raw)
 	if !parsed.OK {
-		return Result{Status: operationresult.Rejected, Message: "not a command"}, nil
+		return share.TextResult(operationresult.Rejected, "not a command"), nil
 	}
 	h, ok := r.handlers[parsed.Name]
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if !ok || !CanAccess(h.Info(), actor) {
-		return Result{
-			Status:  operationresult.Rejected,
-			Message: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help")),
-		}, nil
+		return share.TextResult(operationresult.Rejected, fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))), nil
 	}
 	return h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
 }

@@ -375,11 +375,8 @@ func (r *Runtime) SendReply(ctx context.Context, outputs []delivery.Output) erro
 	return err
 }
 
-func (r *Runtime) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (r *Runtime) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	return r.SendTo(ctx, delivery.Target{}, outputs)
 }
 

@@ -3,6 +3,10 @@
 package remote
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/coder/websocket"
 	"time"
 
 	"elbot/internal/command"
@@ -30,7 +34,6 @@ const (
 
 type remoteMessage struct {
 	RequestID  string                  `json:"request_id,omitempty"`
-	Command    command.Request         `json:"command,omitempty"`
 	Result     *command.Result         `json:"result,omitempty"`
 	Error      *string                 `json:"error,omitempty"`
 	MediaToken string                  `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
@@ -62,9 +65,32 @@ type remoteAttachment struct {
 }
 
 type commandResultMessage struct {
-	Type      string          `json:"type"`            // 结构化命令响应帧。
-	RequestID string          `json:"request_id"`      // 发起输入的客户端关联 ID。
-	Command   command.Request `json:"command"`         // 本次命令调用上下文。
-	Result    command.Result  `json:"result"`          // 命令业务结果。
-	Error     *string         `json:"error,omitempty"` // 执行故障的原始说明。
+	Type      string         `json:"type"`            // 结构化命令响应帧。
+	RequestID string         `json:"request_id"`      // 发起输入的客户端关联 ID。
+	Result    command.Result `json:"result"`          // 命令业务结果。
+	Error     *string        `json:"error,omitempty"` // 执行故障的原始说明。
+}
+
+const cliChunksProtocol = "elbot.cli-chunks"
+const cliChunkSize = 32 * 1024
+
+func readServerMessage(ctx context.Context, conn *websocket.Conn, msg *remoteMessage) error {
+	kind, data, err := conn.Read(ctx)
+	if err != nil {
+		return err
+	}
+	if kind == websocket.MessageBinary {
+		for n := len(data); n == cliChunkSize; {
+			k, chunk, err := conn.Read(ctx)
+			if err != nil {
+				return err
+			}
+			if k != websocket.MessageBinary {
+				return fmt.Errorf("interrupted CLI message")
+			}
+			data = append(data, chunk...)
+			n = len(chunk)
+		}
+	}
+	return json.Unmarshal(data, msg)
 }

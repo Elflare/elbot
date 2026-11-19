@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"strings"
 
@@ -86,25 +87,25 @@ func (c logCommand) Info() command.Info { return c.info }
 
 func (c logCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(c.deps.CommandText, c.info), nil
+		return formatCommandHelp(req.Prefix, c.info), nil
 	}
 	if c.audit {
 		query, err := parseAuditQuery(req.Args)
 		if err != nil {
-			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 		}
 		return queryLogs(ctx, c.deps, query, "audit")
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
-			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 		}
 		return queryLogs(ctx, c.deps, query, "elnis")
 	}
 	query, err := parseLogQuery(req.Args)
 	if err != nil {
-		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+		return command.TextResult(operationresult.InvalidArguments, err.Error()), nil
 	}
 	return queryLogs(ctx, c.deps, query, "log")
 }
@@ -212,7 +213,9 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, category 
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(data, command.ResultKindLogs), nil
+	return command.FromOperationResult(data, command.ResultKindLogs, func(d control.QueryLogsResult) string {
+		return format.Logs(map[string]string{"audit": "audit events", "elnis": "elwisp logs", "log": "runtime logs"}[category], d)
+	}), nil
 }
 
 type LogModule struct{}

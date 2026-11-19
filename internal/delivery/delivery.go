@@ -79,8 +79,9 @@ type Action struct {
 }
 
 type Output struct {
-	Kind Kind
-	Text string
+	ShowActionHints bool `json:"-"` // Show typed commands even when buttons are available.
+	Kind            Kind
+	Text            string
 	// Blocks preserves typed message content until the receiving platform renders it.
 	Blocks                   []ContentBlock
 	Name                     string
@@ -226,10 +227,7 @@ func FallbackText(out Output) string {
 	var label string
 	switch out.Kind {
 	case KindText:
-		if len(out.Blocks) > 0 {
-			return ContentBlocksText(out.Blocks)
-		}
-		return out.Text
+		return OutputBody(out, false)
 	case KindEmoticon:
 		return fmt.Sprintf("[表情: %s]", strings.TrimSpace(out.Name))
 	case KindAt:
@@ -262,4 +260,15 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func OutputBody(out Output, buttons bool) string {
+	body := out.Text
+	if len(out.Blocks) > 0 {
+		body = ContentBlocksText(out.Blocks)
+	}
+	if !buttons || out.ShowActionHints {
+		body = WithActionHints(body, out.Actions)
+	}
+	return body
 }

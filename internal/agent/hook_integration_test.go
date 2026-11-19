@@ -55,11 +55,8 @@ func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outpu
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
-func (p *integrationPlatform) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (p *integrationPlatform) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	p.mu.Lock()
 	if len(outputs) > 0 {
 		p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)

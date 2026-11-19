@@ -13,11 +13,8 @@ import (
 	"strings"
 )
 
-func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (a *Adapter) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	return a.SendTo(ctx, delivery.Target{}, outputs)
 }
 
@@ -97,7 +94,7 @@ func (a *Adapter) telegramReceipt(receipt delivery.Receipt, target target, media
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
-		return a.sendText(ctx, t, delivery.FallbackText(out), 0, out.Actions)
+		return a.sendText(ctx, t, delivery.OutputBody(out, true), 0, out.Actions)
 	case delivery.KindReply:
 		replyID, err := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
 		if err != nil {
@@ -116,6 +113,7 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 }
 
 func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, error) {
+	text, actions = keyboardActions(text, actions)
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return delivery.Receipt{}, nil

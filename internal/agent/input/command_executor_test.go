@@ -27,7 +27,6 @@ type commandExecutorProbe struct {
 	currentErr     error
 	respond        operationresult.Result[control.RespondConfirmationResult]
 	respondErr     error
-	request        command.Request
 	result         command.Result
 	sentResult     []command.Result
 	failure        error
@@ -46,9 +45,9 @@ func (p *commandExecutorProbe) CurrentBound(context.Context, session.Scope) (ope
 	return operationresult.Result[session.CurrentBoundData]{Status: operationresult.Success, Data: session.CurrentBoundData{Session: p.row}}, nil
 }
 func (*commandExecutorProbe) Scope(context.Context) session.Scope { return session.Scope{} }
-func (p *commandExecutorProbe) SendCommandResult(_ context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
+func (p *commandExecutorProbe) SendCommandResult(_ context.Context, result command.Result, failure error) (delivery.Receipt, error) {
 	p.order = append(p.order, "send")
-	p.request, p.result, p.failure = req, result, failure
+	p.result, p.failure = result, failure
 	p.sentResult = append(p.sentResult, result)
 	if len(p.sentResult) > p.sendErrAfter {
 		return delivery.Receipt{}, p.sendErr
@@ -91,7 +90,7 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 		continuation := control.Continuation{Kind: "input", SessionID: "s", Text: "next"}
 		if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
 			probe.order = append(probe.order, "execute")
-			return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
+			return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "accepted"}}, Continuation: &continuation}, nil
 		})); err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +153,7 @@ func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
 			router := command.NewRouter([]string{"/"})
 			continuation := control.Continuation{Kind: tc.kind, SessionID: "missing", Text: "next"}
 			if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
-				return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
+				return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "accepted"}}, Continuation: &continuation}, nil
 			})); err != nil {
 				t.Fatal(err)
 			}
@@ -179,7 +178,7 @@ func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
 				t.Fatalf("handled=%v results=%+v order=%v err=%v", handled, probe.sentResult, probe.order, err)
 			}
 			if tc.continueErr == nil {
-				if got := probe.sentResult[1]; got.Status != operationresult.NotFound || got.Message != "session disappeared" || got.Data != nil {
+				if got := probe.sentResult[1]; got.Status != operationresult.NotFound || delivery.ContentBlocksText(got.Blocks) != "session disappeared" || got.Data != nil {
 					t.Fatalf("continuation result=%+v", got)
 				}
 			}
@@ -198,7 +197,7 @@ func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
 	_, handled, err := executor.Handle(t.Context(), "/detail")
-	if !handled || err != nil || probe.failure != nil || !reflect.DeepEqual(probe.order, []string{"send"}) || probe.result.Data != (command.TextData{Content: "无待确认"}) {
+	if !handled || err != nil || probe.failure != nil || !reflect.DeepEqual(probe.order, []string{"send"}) || delivery.ContentBlocksText(probe.result.Blocks) != "无待确认" {
 		t.Fatalf("handled=%v result=%+v failure=%+v order=%v err=%v", handled, probe.result, probe.failure, probe.order, err)
 	}
 }
@@ -213,12 +212,12 @@ func TestCommandErrorsAndBusinessRejectionsStaySeparate(t *testing.T) {
 	}{
 		{
 			name:       "business rejection",
-			result:     command.Result{Status: operationresult.Forbidden, Message: "无权执行该操作"},
+			result:     command.TextResult(operationresult.Forbidden, "无权执行该操作"),
 			wantStatus: operationresult.Forbidden,
 		},
 		{
 			name:       "program failure",
-			result:     command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "partial result"}},
+			result:     command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "partial result"}}},
 			cause:      errors.New("underlying failure"),
 			wantStatus: operationresult.Success,
 		},
@@ -253,18 +252,18 @@ func TestCommandErrorsAndBusinessRejectionsStaySeparate(t *testing.T) {
 	}
 }
 
-func TestCommandRequestIsPassedToOutput(t *testing.T) {
+func TestCommandAliasDeliversResult(t *testing.T) {
 	probe := &commandExecutorProbe{}
 	router := command.NewRouter([]string{"!"})
 	if err := router.Register(command.NewFunc(command.Info{Name: "echo", Aliases: []string{"e"}, MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "ok"}}, nil
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "ok"}}}, nil
 	})); err != nil {
 		t.Fatal(err)
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe})
 	_, handled, err := executor.Handle(t.Context(), "!e keep this")
-	if err != nil || !handled || probe.request.Name != "echo" || probe.request.Args != "keep this" || probe.request.Raw != "!e keep this" || probe.request.Prefix != "!" {
-		t.Fatalf("request=%+v handled=%v err=%v", probe.request, handled, err)
+	if err != nil || !handled || delivery.ContentBlocksText(probe.result.Blocks) != "ok" {
+		t.Fatalf("result=%+v handled=%v err=%v", probe.result, handled, err)
 	}
 }
 

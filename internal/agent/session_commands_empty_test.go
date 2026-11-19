@@ -18,7 +18,6 @@ import (
 )
 
 type capturedCommandReply struct {
-	request command.Request
 	result  command.Result
 	failure error
 	outputs []delivery.Output
@@ -28,13 +27,10 @@ type commandCapturePlatform struct {
 	replies []capturedCommandReply
 }
 
-func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	p.replies = append(p.replies, capturedCommandReply{request: req, result: result, failure: failure, outputs: outputs})
-	return p.PlatformCapabilities.SendCommandResult(ctx, req, result, failure)
+func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
+	p.replies = append(p.replies, capturedCommandReply{result: result, failure: failure, outputs: outputs})
+	return p.PlatformCapabilities.SendCommandResult(ctx, result, failure)
 }
 
 func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
@@ -82,7 +78,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 						t.Fatalf("error=%v", err)
 					}
 					reply := platform.replies[prior]
-					if reply.result.Status == operationresult.Success || reply.result.Message == "" || reply.failure != nil || len(reply.outputs) != 1 || reply.outputs[0].Text != reply.result.Message || reply.outputs[0].Text == "nil" {
+					if reply.result.Status == operationresult.Success || delivery.ContentBlocksText(reply.result.Blocks) == "" || reply.failure != nil || len(reply.outputs) != 1 || delivery.FallbackText(reply.outputs[0]) != delivery.ContentBlocksText(reply.result.Blocks) || delivery.FallbackText(reply.outputs[0]) == "nil" {
 						t.Fatalf("replies=%+v", platform.replies)
 					}
 					current, _ := m.sessions.CurrentBound(ctx, scope)
@@ -102,7 +98,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 					t.Fatalf("error=%v replies=%+v", err, platform.replies)
 				}
 				reply := platform.replies[prior]
-				if len(reply.outputs) != 1 || reply.outputs[0].Text != reply.result.Message || reply.outputs[0].Text == "nil" {
+				if len(reply.outputs) != 1 || delivery.FallbackText(reply.outputs[0]) != delivery.ContentBlocksText(reply.result.Blocks) || delivery.FallbackText(reply.outputs[0]) == "nil" {
 					t.Fatalf("unexpected command output: %+v", reply.outputs)
 				}
 				if text == "-fork missing-message" {
@@ -140,11 +136,8 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := platform.replies[0]
-	text, err := platformshare.FormatCommandResult(reply.request, reply.result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reply.request.Name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(text, "!!stop [request_id|number]") || !strings.Contains(text, "!!help <command>") || strings.Contains(text, "/help") {
+	text := platformshare.FormatCommandResult(reply.result)
+	if reply.result.Kind != command.ResultKindHelp || !strings.Contains(text, "!!stop [request_id|number]") || !strings.Contains(text, "!!help <command>") || strings.Contains(text, "/help") {
 		t.Fatalf("reply=%+v formatted=%q", reply, text)
 	}
 }

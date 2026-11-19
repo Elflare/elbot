@@ -4,6 +4,7 @@ import (
 	"context"
 	command "elbot/internal/command/share"
 	"elbot/internal/control"
+	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
@@ -22,21 +23,21 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindHooks), nil
+		return command.FromOperationResult(data, command.ResultKindHooks, format.Hooks), nil
 	}
 	switch fields[0] {
 	case "reload":
 		if len(fields) != 1 {
-			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", "reload"))}, nil
+			return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", "reload"))), nil
 		}
 		data, err := c.deps.Control.ReloadHooks(ctx)
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindHooks), nil
+		return command.FromOperationResult(data, command.ResultKindHooks, format.HookReload), nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
-			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", fields[0], "<id>"))}, nil
+			return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", fields[0], "<id>"))), nil
 		}
 		var result operationresult.Result[struct{}]
 		var err error
@@ -52,18 +53,18 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.
 			return command.Result{}, err
 		}
 		if result.Status != operationresult.Success {
-			return command.Result{Status: result.Status, Message: result.Message}, nil
+			return command.TextResult(result.Status, result.Message), nil
 		}
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}}, nil
+		return command.TextResult(operationresult.Success, fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])), nil
 	default:
 		if len(fields) != 1 {
-			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", c.Info().Args))}, nil
+			return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", c.Info().Args))), nil
 		}
 		data, err := c.deps.Control.GetHook(ctx, control.GetHookRequest{HookID: fields[0]})
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.FromOperationResult(data, command.ResultKindHooks), nil
+		return command.FromOperationResult(data, command.ResultKindHooks, format.HookDetail), nil
 	}
 }
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

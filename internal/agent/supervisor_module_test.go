@@ -199,11 +199,8 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 	}
 }
 
-func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	sent, err := p.SendTo(ctx, delivery.Target{}, outputs)
 	if err != nil {
 		return delivery.Receipt{}, err

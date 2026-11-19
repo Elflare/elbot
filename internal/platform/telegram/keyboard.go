@@ -18,3 +18,16 @@ func commandKeyboard(actions []delivery.Action) *replyMarkup {
 func commandButton(label, command string) inlineKeyboardButton {
 	return inlineKeyboardButton{Text: label, CallbackData: command}
 }
+
+// Telegram limits callback_data to 64 bytes, not 64 characters.
+func keyboardActions(text string, actions []delivery.Action) (string, []delivery.Action) {
+	var buttons []delivery.Action
+	for _, a := range actions {
+		if len(a.Command) > 64 {
+			text += "\n\n" + a.Label + "（按钮命令过长，请手动输入）：\n" + a.Command
+		} else {
+			buttons = append(buttons, a)
+		}
+	}
+	return text, buttons
+}

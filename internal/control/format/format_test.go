@@ -1,6 +1,7 @@
 package format
 
 import (
+	"elbot/internal/delivery"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestMessagePreviewsIncludeAttachments(t *testing.T) {
 		change := control.SessionChangeResult{Session: &control.SessionData{ID: "s"}, Messages: []control.MessageData{message}}
 		texts := []string{
 			Messages(control.SessionMessagesResult{Items: []control.MessageData{message}}, MessagesOptions{PreviewLimit: 40}),
-			Sessions(control.ListSessionsResult{Items: []control.SessionSummaryData{{Messages: []control.MessageData{message}}}}, SessionsOptions{MessageLimit: 4, PreviewLimit: 24}),
+			delivery.SessionListText(control.ListSessionsResult{Items: []control.SessionSummaryData{{Messages: []control.MessageData{message}}}}),
 			SessionChange("resume", change, MessagesOptions{PreviewLimit: 80}),
 			SessionChange("fork", change, MessagesOptions{PreviewLimit: 80}),
 		}
@@ -54,18 +55,6 @@ func TestSessionsPreviewKeepsNewestMessages(t *testing.T) {
 	text := formatTestResult(&testResult{Data: d})
 	if !strings.HasPrefix(text, "[s-id] title\n") || strings.Count(text, "s-id") != 1 || strings.Contains(text, "omitted") || !strings.Contains(text, "... / bot: second / user: third / bot: fourth / user: latest") {
 		t.Fatalf("sessions preview=%q", text)
-	}
-}
-
-func TestSessionsPageLinksUseCallerCommands(t *testing.T) {
-	d := control.ListSessionsResult{Page: control.Page{Page: 2, PageSize: 10, HasNext: true}}
-	text := Sessions(d, SessionsOptions{PrevCommand: "!sessions 1 -k query text", NextCommand: "!sessions 3 -k query text"})
-	if !strings.Contains(text, "prev: !sessions 1 -k query text") || !strings.Contains(text, "next: !sessions 3 -k query text") {
-		t.Fatal(text)
-	}
-	text = Sessions(d, SessionsOptions{PrevCommand: "!resume --page 1", NextCommand: "!resume --page 3"})
-	if !strings.Contains(text, "prev: !resume --page 1") || !strings.Contains(text, "next: !resume --page 3") {
-		t.Fatal(text)
 	}
 }
 
@@ -218,7 +207,7 @@ func formatTestResult(r *testResult) string {
 	case control.CheckConfigurationResult:
 		return Doctor(d)
 	case control.ListSessionsResult:
-		return Sessions(d, SessionsOptions{MessageLimit: 4, PreviewLimit: 24})
+		return delivery.SessionListText(d)
 	case control.QueryLogsResult:
 		return Logs("audit events", d)
 	case control.QueryUsageResult:

@@ -38,7 +38,7 @@ func TestToolsCommandConfirmsBeforeCallingControl(t *testing.T) {
 	controlStub := &toolControlStub{}
 	handler := NewTools(Deps{CommandText: testCommandText, Control: controlStub})
 	result, err := handler.Handle(t.Context(), command.Request{Args: "remove echo"})
-	if err != nil || result.Status != operationresult.Rejected || result.Confirmation == nil || len(result.Confirmation.Actions) != 1 || result.Confirmation.Actions[0].Command != "/tools remove echo --confirm" {
+	if err != nil || result.Status != operationresult.Rejected || len(result.Actions) == 0 || len(result.Actions) != 1 || result.Actions[0].Command != "/tools remove echo --confirm" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if controlStub.removed.Name != "" {

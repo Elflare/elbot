@@ -3,6 +3,7 @@ package share
 import (
 	"elbot/internal/command"
 	"elbot/internal/control"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/tool"
@@ -14,7 +15,7 @@ import (
 
 func TestFormatCommandResultPreservesRawAcrossTransport(t *testing.T) {
 	raw := control.ListSessionsResult{Items: []control.SessionSummaryData{{SessionData: control.SessionData{ID: "s"}, Messages: []control.MessageData{{Content: strings.Repeat("正文", 40), Segments: []llm.MessageSegment{{Type: llm.SegmentFile, Name: "note.txt", MediaID: "private-reference"}}}}}}}
-	result := &command.Result{Status: operationresult.Success, Kind: command.ResultKindSessions, Data: raw}
+	result := &command.Result{Status: operationresult.Success, Kind: command.ResultKindSessions, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentSessionList, Content: raw}}}
 	bytes, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
@@ -23,12 +24,8 @@ func TestFormatCommandResultPreservesRawAcrossTransport(t *testing.T) {
 	if err := json.Unmarshal(bytes, &remote); err != nil {
 		t.Fatal(err)
 	}
-	req := command.Request{Name: "sessions", Prefix: "!"}
-	text, err := FormatCommandResult(req, *result)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, err := FormatCommandResult(req, remote); err != nil || got != text {
+	text := FormatCommandResult(*result)
+	if got := FormatCommandResult(remote); got != text {
 		t.Fatalf("local=%q remote=%q", text, got)
 	}
 	if !strings.Contains(text, "note.txt") || !strings.Contains(string(bytes), "private-reference") || !strings.Contains(string(bytes), strings.Repeat("正文", 40)) {
@@ -41,73 +38,59 @@ func TestFormatCommandResultPreservesRawAcrossTransport(t *testing.T) {
 }
 
 func TestCommandResultOutputsUsesBusinessMessageAndGoError(t *testing.T) {
-	request := command.Request{Name: "messages"}
-	result := command.Result{Status: operationresult.NoCurrentSession, Message: "当前没有会话", Kind: command.ResultKindMessages, Data: struct{}{}}
-	outputs, err := CommandResultOutputs(request, result, nil)
-	if err != nil || len(outputs) != 1 || outputs[0].Text != result.Message {
-		t.Fatalf("business outputs=%+v err=%v", outputs, err)
+	result := command.TextResult(operationresult.NoCurrentSession, "当前没有会话")
+	outputs := CommandResultOutputs(result, nil)
+	if len(outputs) != 1 || delivery.FallbackText(outputs[0]) != "当前没有会话" {
+		t.Fatal(outputs)
 	}
-
 	failure := errors.New("database unavailable")
-	outputs, err = CommandResultOutputs(request, command.Result{}, failure)
-	if err != nil || len(outputs) != 1 || outputs[0].Text != failure.Error() {
-		t.Fatalf("error outputs=%+v err=%v", outputs, err)
+	outputs = CommandResultOutputs(command.Result{}, failure)
+	if len(outputs) != 1 || outputs[0].Text != failure.Error() {
+		t.Fatal(outputs)
 	}
-
-	outputs, err = CommandResultOutputs(request, command.Result{Status: operationresult.Success, Kind: command.ResultKindMessages, Data: control.SessionMessagesResult{}}, nil)
-	if err != nil || len(outputs) != 0 {
-		t.Fatalf("empty success outputs=%+v err=%v", outputs, err)
+	if outputs = CommandResultOutputs(command.Result{Status: operationresult.Success}, nil); len(outputs) != 0 {
+		t.Fatal(outputs)
 	}
 }
-
-func TestFormatCommandResultUsesCallingOperation(t *testing.T) {
-	for _, tc := range []struct {
-		req    command.Request
-		result command.Result
-		want   string
-	}{
-		{command.Request{Name: "new"}, command.Result{Status: operationresult.Success, Kind: command.ResultKindSession, Data: control.NewSessionResult{}}, "New Session"},
-		{command.Request{Name: "hooks", Args: "reload"}, command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: control.ReloadHooksResult{Notices: []string{"warning"}}}, "warning"},
-		{command.Request{Name: "tools", Args: "reload"}, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "skills reloaded"}}, "skills reloaded"},
-	} {
-		got, err := FormatCommandResult(tc.req, tc.result)
-		if err != nil || !strings.Contains(got, tc.want) {
-			t.Fatalf("got=%q want=%q", got, tc.want)
-		}
-	}
-}
-
-func TestSessionPaginationPreservesAllPlatformsFlag(t *testing.T) {
-	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindSessions, Data: control.ListSessionsResult{
-		Page: control.Page{Page: 1, PageSize: 1, HasNext: true, TotalPages: 2},
-	}}
-	got, err := FormatCommandResult(command.Request{Name: "sessions", Prefix: "/", Args: "-a"}, result)
-	if err != nil || !strings.Contains(got, "next: /sessions 2 --all") {
-		t.Fatalf("pagination dropped --all: %q", got)
-	}
-	resume, err := FormatCommandResult(command.Request{Name: "resume", Prefix: "/", Args: "--all"}, result)
-	if err != nil || !strings.Contains(resume, "next: /resume --page 2 --all") {
-		t.Fatalf("resume pagination dropped --all: %q", resume)
-	}
-}
-
 func TestFormatDetailCommandCombinesStructuredBlocks(t *testing.T) {
-	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
-		ToolName: "edit_file",
-		Risk:     "high",
-		Detail: []tool.ConfirmationDetailBlock{
-			{Kind: tool.ConfirmationDetailText, Content: "edit_file [high]: confirm"},
-			{Kind: tool.ConfirmationDetailFields, Content: []tool.ConfirmationField{{Key: "path", Label: "文件", Value: "notes.md"}}},
-			{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
-		},
+	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []tool.ConfirmationDetailBlock{
+		{Kind: tool.ConfirmationDetailText, Content: "edit_file [high]: confirm"},
+		{Kind: tool.ConfirmationDetailFields, Content: []tool.ConfirmationField{{Key: "path", Label: "文件", Value: "notes.md"}}},
+		{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
 	}}
-	got, err := FormatCommandResult(command.Request{Name: "detail"}, result)
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := FormatCommandResult(result)
 	for _, want := range []string{"edit_file [high]", "文件：notes.md", "-before\n+after"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("detail output %q does not contain %q", got, want)
 		}
+	}
+}
+
+func TestRiskPreviewDoesNotTrimWireOrDetail(t *testing.T) {
+	diff := "--- a/example.go\n+++ b/example.go\n@@ -1,2 +1,82 @@\n context\n---old\n+++new\n" + strings.Repeat("+变更\n", 80) + "+last"
+	detail := []delivery.ContentBlock{
+		{Kind: delivery.ContentFields, Content: []delivery.ContentField{{Key: "path", Label: "文件", Value: "example.go"}, {Key: "created", Label: "创建文件", Value: false}}},
+		{Kind: delivery.ContentDiff, Content: diff},
+	}
+	out := delivery.Output{Kind: delivery.KindText, ShowActionHints: true, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "edit [high]"}, {Kind: delivery.ContentPreview, Content: detail}, {Kind: delivery.ContentText, Content: "risk reason"}}, Actions: []delivery.Action{{Command: "-c", Label: "确认"}}}
+	for _, buttons := range []bool{false, true} {
+		s := delivery.OutputBody(out, buttons)
+		if strings.Contains(s, "+last") || !strings.Contains(s, "example.go\n---old\n+++new\n+变更…") || strings.Contains(s, "创建文件") || !strings.Contains(s, "risk reason") || !strings.Contains(s, "-c 确认") {
+			t.Fatal(s)
+		}
+	}
+	wire, err := json.Marshal(out.Blocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blocks []delivery.ContentBlock
+	if err = json.Unmarshal(wire, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	if blocks[1].Content.([]delivery.ContentBlock)[1].Content != diff {
+		t.Fatal("wire diff trimmed")
+	}
+	if !strings.Contains(FormatCommandResult(command.Result{Blocks: detail}), diff) {
+		t.Fatal("detail trimmed")
 	}
 }

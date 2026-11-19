@@ -4,6 +4,7 @@ package remote
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -89,7 +90,7 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 	if err != nil {
 		return err
 	}
-	conn, response, err := websocket.Dial(ctx, c.client.URL, nil)
+	conn, response, err := websocket.Dial(ctx, c.client.URL, &websocket.DialOptions{Subprotocols: []string{cliChunksProtocol}})
 	if err != nil {
 		var dialError *net.OpError
 		if response == nil && errors.As(err, &dialError) && dialError.Op == "dial" && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -188,7 +189,7 @@ func (c *RemoteClient) Complete(ctx context.Context, req completion.Request) ([]
 func (c *RemoteClient) readLoop(ctx context.Context) error {
 	for {
 		var msg remoteMessage
-		if err := wsjson.Read(ctx, c.conn, &msg); err != nil {
+		if err := readServerMessage(ctx, c.conn, &msg); err != nil {
 			return err
 		}
 		c.handleServerMessage(msg)
@@ -203,17 +204,13 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 			return
 		}
 		if msg.Result != nil {
-			text, err := platformshare.FormatCommandResult(msg.Command, *msg.Result)
-			if err != nil {
-				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: err.Error(), Level: slog.LevelError.String()})
-				return
-			}
+			text := platformshare.FormatCommandResult(*msg.Result)
 			if text != "" {
 				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: text})
 			}
 		}
 	case remoteMsgChat:
-		c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: msg.Text})
+		c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: delivery.OutputBody(delivery.Output{Text: msg.Text, Blocks: msg.Blocks, Actions: msg.Actions}, false)})
 	case remoteMsgNotice:
 		c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: msg.Text, Level: msg.Level})
 	case remoteMsgStatus:

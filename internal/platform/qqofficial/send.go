@@ -14,11 +14,8 @@ import (
 	"elbot/internal/storage"
 )
 
-func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
+func (a *Adapter) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs := platformshare.CommandResultOutputs(result, failure)
 	return a.sendContextOutput(ctx, outputs, true)
 }
 
@@ -91,10 +88,7 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 	t.recordHistory = t.Kind == targetGroup && (t.recordHistory || out.Delivery.HookPoint != "")
 	switch out.Kind {
 	case delivery.KindText:
-		if len(out.Blocks) == 0 {
-			return a.sendText(ctx, t, out.Text, out.Actions...)
-		}
-		return a.sendText(ctx, t, delivery.ContentBlocksText(out.Blocks), out.Actions...)
+		return a.sendText(ctx, t, delivery.OutputBody(out, a.cfg.markdownByDefault() && a.cfg.enableKeyboard()), out.Actions...)
 	case delivery.KindReply:
 		text := delivery.FallbackText(out)
 		return a.sendText(ctx, t, text, out.Actions...)
@@ -136,6 +130,21 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, 
 		err := fmt.Errorf("qqofficial proactive messages are disabled")
 		return delivery.Receipt{}, err
 	}
+	const pageSize = 2000
+	var receipt delivery.Receipt
+	chars := []rune(text)
+	for start := 0; start < len(chars); start += pageSize {
+		page := string(chars[start:min(start+pageSize, len(chars))])
+		part, err := a.sendTextPage(ctx, target, page, actions)
+		if err != nil {
+			return receipt, err
+		}
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, part.PlatformMessageIDs...)
+		actions = nil
+	}
+	return receipt, nil
+}
+func (a *Adapter) sendTextPage(ctx context.Context, target sendTarget, text string, actions []delivery.Action) (delivery.Receipt, error) {
 	msg := a.baseMessage(target)
 	if a.cfg.markdownByDefault() {
 		msg.MsgType = msgTypeMarkdown

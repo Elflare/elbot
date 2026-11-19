@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"strings"
 
@@ -33,7 +34,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (command.R
 	if err != nil {
 		return command.Result{}, err
 	}
-	return command.FromOperationResult(data, command.ResultKindHelp), nil
+	return command.FromOperationResult(data, command.ResultKindHelp, func(d control.ListCommandsResult) string { return format.Help(req.Prefix, d) }), nil
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

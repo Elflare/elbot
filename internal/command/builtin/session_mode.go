@@ -22,7 +22,7 @@ func NewWork(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionChange(data), nil
+		return sessionChange(req.Name, data), nil
 	})
 }
 
@@ -39,6 +39,6 @@ func NewChat(deps Deps) command.Handler {
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionChange(data), nil
+		return sessionChange(req.Name, data), nil
 	})
 }

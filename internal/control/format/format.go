@@ -27,13 +27,6 @@ func Rollback(data fileops.RollbackResult) string {
 	return fmt.Sprintf("restored: %s · rev=%s", data.Path, data.Revision)
 }
 
-// SessionsOptions 只影响文字展示，不改变原始结果。
-type SessionsOptions struct {
-	MessageLimit int    // 每个会话展示的最近消息数量；0 不展示消息。
-	PreviewLimit int    // 每条消息正文的 rune 数量；0 展示全文。
-	PrevCommand  string // 上一页操作提示；空字符串不展示。
-	NextCommand  string // 下一页操作提示；空字符串不展示。
-}
 type MessagesOptions struct {
 	PreviewLimit int // 每条消息正文的 rune 数量；0 展示全文。
 }

@@ -299,8 +299,12 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	defer wait.Cancel()
 	if ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-		blocks := riskConfirmationDetails(call.Name, string(assessment.Level), detail, assessment.Reasons)
-		sent, err := c.output.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Blocks: blocks, Actions: riskConfirmationActions(c.commandText)}})
+		preview := []delivery.ContentBlock{}
+		if len(detail) > 0 {
+			preview = append(preview, delivery.ContentBlock{Kind: delivery.ContentPreview, Content: detail})
+		}
+		blocks := riskConfirmationDetails(call.Name, string(assessment.Level), preview, assessment.Reasons)
+		sent, err := c.output.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, ShowActionHints: true, Blocks: blocks, Actions: riskConfirmationActions(c.commandText)}})
 		if err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {

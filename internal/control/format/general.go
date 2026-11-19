@@ -1,6 +1,7 @@
 package format
 
 import (
+	"elbot/internal/delivery"
 	"fmt"
 	"strings"
 
@@ -141,7 +142,7 @@ func Hooks(d control.ListHooksResult) string {
 		if item.ID == "" {
 			fmt.Fprintf(&out, "  %s  [%s]  priority=%d", item.Name, item.Point, item.Priority)
 			if item.Description != "" {
-				fmt.Fprintf(&out, " - %s", preview(item.Description, 60))
+				fmt.Fprintf(&out, " - %s", delivery.Preview(item.Description, 60))
 			}
 			if item.Active > 0 {
 				fmt.Fprintf(&out, " · active=%d", item.Active)
@@ -185,7 +186,7 @@ func Hooks(d control.ListHooksResult) string {
 			description = stateful.Description
 		}
 		if description != "" {
-			fmt.Fprintf(&out, " - %s", preview(description, 60))
+			fmt.Fprintf(&out, " - %s", delivery.Preview(description, 60))
 		}
 		for _, entry := range d.Items[i:end] {
 			if entry.Mode != "" {

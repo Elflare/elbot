@@ -110,6 +110,7 @@ func (s *messageStream) sendFinal(ctx context.Context, text string, actions []de
 	if s.finished {
 		return delivery.Receipt{}, nil
 	}
+	text, actions = keyboardActions(text, actions)
 	text = strings.TrimSpace(text)
 	if text == "" {
 		err := s.reset(ctx)

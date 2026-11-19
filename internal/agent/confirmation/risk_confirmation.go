@@ -1,26 +1,17 @@
 package confirmation
 
 import (
+	command "elbot/internal/command/share"
 	"elbot/internal/delivery"
 )
 
-type riskConfirmationCommand struct {
-	Name        string
-	Aliases     []string
-	Description string
-}
-
-func riskConfirmationCommands() []riskConfirmationCommand {
-	return []riskConfirmationCommand{
-		{Name: "detail", Aliases: []string{"details"}, Description: "详情"},
-		{Name: "confirm", Aliases: []string{"c"}, Description: "确认本次"},
-		{Name: "confirmtool", Aliases: []string{"ct"}, Description: "确认工具"},
-		{Name: "confirmall", Aliases: []string{"ca"}, Description: "确认全部"},
-		{Name: "reject", Description: "拒绝"},
-		{Name: "stop", Description: "停止"},
+func riskConfirmationCommands() []command.Info {
+	var infos []command.Info
+	for _, spec := range command.ConfirmationCommands() {
+		infos = append(infos, spec.Info)
 	}
+	return append(infos, command.Info{Name: "stop", Description: "停止"})
 }
-
 func RiskConfirmationCommandNames() []string {
 	commands := riskConfirmationCommands()
 	names := make([]string, 0, len(commands)*2)
@@ -34,7 +25,13 @@ func RiskConfirmationCommandNames() []string {
 func riskConfirmationActions(commandText func(string, ...string) string) []delivery.Action {
 	var actions []delivery.Action
 	for _, item := range riskConfirmationCommands() {
-		actions = append(actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(item.Name)})
+		name := item.Name
+		for _, alias := range item.Aliases {
+			if len(alias) < len(name) {
+				name = alias
+			}
+		}
+		actions = append(actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(name)})
 	}
 	return actions
 }

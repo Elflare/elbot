@@ -3,7 +3,7 @@ package builtin
 import (
 	"context"
 	command "elbot/internal/command/share"
-	"elbot/internal/contextinfo"
+
 	"elbot/internal/control"
 	"elbot/internal/operationresult"
 )
@@ -23,46 +23,40 @@ func (c confirmationCommand) Handle(ctx context.Context, req command.Request) (c
 			return command.Result{}, err
 		}
 		if current.Status != operationresult.Success {
-			return command.Result{Status: current.Status, Message: current.Message}, nil
+			return command.TextResult(current.Status, current.Message), nil
 		}
 		if current.Data.Kind != "tool" {
-			return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "无待确认"}}, nil
+			return command.TextResult(operationresult.Success, "无待确认"), nil
 		}
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: current.Data}, nil
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: current.Data.Detail, Actions: current.Data.Actions}, nil
 	}
 	result, err := c.deps.Control.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: c.decision, Scope: c.scope, Extra: req.Args})
 	if err != nil {
 		return command.Result{}, err
 	}
 	if result.Status != operationresult.Success {
-		return command.Result{Status: result.Status, Message: result.Message}, nil
+		return command.TextResult(result.Status, result.Message), nil
 	}
 	data := result.Data
-	return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: data, Continuation: data.Continuation}, nil
+	text := ""
+	if data.Accepted {
+		text = "已确认"
+		if c.decision == "reject" {
+			text = "已拒绝"
+		}
+	}
+	r := command.TextResult(result.Status, text)
+	r.Data = data
+	r.Kind = command.ResultKindText
+	r.Continuation = data.Continuation
+	return r, nil
 }
 
 type ConfirmationModule struct{}
 
 func (ConfirmationModule) RegisterCommands(registrar Registrar, deps Deps) error {
-	for _, item := range []struct {
-		name                         string
-		aliases                      []string
-		description, scope, decision string
-	}{
-		{"detail", []string{"details"}, "确认详情", "", ""},
-		{"confirm", []string{"c"}, "确认本次", "current", "approve"},
-		{"confirmtool", []string{"ct"}, "确认工具", "tool", "approve"},
-		{"confirmall", []string{"ca"}, "确认全部", "all", "approve"},
-		{"reject", nil, "拒绝", "current", "reject"},
-	} {
-		args := "[附加输入]"
-		if item.name == "detail" {
-			args = ""
-		}
-		if item.name == "reject" {
-			args = "[原因]"
-		}
-		if err := registrar.Register(confirmationCommand{deps: deps, info: command.Info{Name: item.name, Aliases: item.aliases, Args: args, Description: item.description, MinRole: contextinfo.RoleUser}, scope: item.scope, decision: item.decision}); err != nil {
+	for _, item := range command.ConfirmationCommands() {
+		if err := registrar.Register(confirmationCommand{deps: deps, info: item.Info, scope: item.Scope, decision: item.Decision}); err != nil {
 			return err
 		}
 	}
