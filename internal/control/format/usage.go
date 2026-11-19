@@ -9,17 +9,14 @@ import (
 
 func Usage(d control.QueryUsageResult) string {
 	var out strings.Builder
-	if len(d.Items) == 0 && d.Total.Calls == 0 {
-		out.WriteString("-\n")
+	if d.Total.Calls == 0 {
+		out.WriteString("nil\n")
 	} else {
 		fmt.Fprintf(&out, "usage · by=%s\n", d.GroupBy)
 		for _, item := range d.Items {
 			formatUsageBucket(&out, item)
 		}
 		formatUsageBucket(&out, d.Total)
-	}
-	if d.RangeTruncated {
-		fmt.Fprintf(&out, "仅有 %d 次调用\n", d.AvailableCalls)
 	}
 	if d.DamagedCount > 0 {
 		fmt.Fprintf(&out, "warn: damaged=%d · usage incomplete", d.DamagedCount)

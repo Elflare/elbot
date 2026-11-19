@@ -93,13 +93,13 @@ func TestDamagedLogsReportHiddenSamples(t *testing.T) {
 	}
 }
 
-func TestEmptyUsageRetainsNotices(t *testing.T) {
+func TestEmptyUsageRetainsDamageWarning(t *testing.T) {
 	for _, tc := range []struct {
 		data control.QueryUsageResult
 		want string
 	}{
-		{control.QueryUsageResult{}, "-"},
-		{control.QueryUsageResult{RangeTruncated: true, AvailableCalls: 3, DamagedCount: 2}, "-\n仅有 3 次调用\nwarn: damaged=2 · usage incomplete"},
+		{control.QueryUsageResult{}, "nil"},
+		{control.QueryUsageResult{DamagedCount: 2}, "nil\nwarn: damaged=2 · usage incomplete"},
 	} {
 		if got := formatTestResult(&testResult{Data: tc.data}); got != tc.want {
 			t.Fatalf("usage=%q, want %q", got, tc.want)
