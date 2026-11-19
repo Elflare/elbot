@@ -36,7 +36,16 @@ Responses 每轮通过 `tool_choice` 限定当前可调用工具；历史中保�
 
 ## 用 Python 编排工具
 
-模型把循环、并发调用和结果处理写进一段 Python，交给 `tool_weave` 一次执行。各个工具的返回值由脚本直接处理，模型只接收脚本选出的内容。例如，批量检查几十个网页时，脚本可以把命中行写入文件，只返回命中数和文件名，既减少模型往返，也省去把网页全文放进上下文的 Token。
+模型把循环、并发调用和结果处理写进一段 Python，交给 `tool_weave` 一次执行。各个工具的返回值由脚本直接处理，模型只接收脚本选出的内容。例如，批量检查几十个网页时，脚本可以把命中行写入文件，只返回命中数和文件名，既减少模型往返，也省去把网页全文放进上下文的 Token。如：
+
+```python
+from pathlib import Path
+projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}
+news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))#函数名即为已发现工具，不用声明直接使用
+report = "\n\n".join(f"## {name}\n{text}" for name, text in zip(projects, news))
+Path("weekly.md").write_text(report, encoding="utf-8")
+print(await send_file(source="weekly.md"))
+```
 
 ## 查看图片
 
