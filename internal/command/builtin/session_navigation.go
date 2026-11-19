@@ -16,7 +16,7 @@ import (
 func NewSessions(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "sessions", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
+		Help: "页码≥1，默认1；置顶优先，其余按更新时间倒序。-k 搜索；-a 跨平台（仅超管）。",
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
@@ -95,7 +95,7 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 func NewArchives(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "archives", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
+		Help: "页码≥1，默认1；置顶优先，其余按更新时间倒序。-k 搜索；-a 跨平台（仅超管）。",
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
@@ -160,7 +160,7 @@ func hasAllPlatformsFlag(args string) bool {
 func NewMessages(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "messages", Args: "[page]", Description: "当前会话的用户与助手消息", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认最新页；页码越大越早，页内旧到新；bot 消息 ID 可用于 " + deps.CommandText("fork"),
+		Help: "页码≥1，默认最新；页码越大越早，页内旧→新。" + deps.CommandText("fork") + " 用 bot 消息 ID。",
 	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {

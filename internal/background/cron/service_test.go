@@ -491,7 +491,7 @@ func TestRunLLMReportPreservesTextWhenNeedReportFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
-	if !runner.requests[0].NeedsElyphRules || !strings.Contains(runner.requests[0].Prompt, "#task test") || !strings.Contains(runner.requests[0].Prompt, "最终回复必须是严格 JSON") {
+	if !runner.requests[0].NeedsElyphRules || !strings.Contains(runner.requests[0].Prompt, "#task test") || !strings.Contains(runner.requests[0].Prompt, "只输出严格 JSON") {
 
 		t.Fatalf("cron prompt missing ELyph rules/task/json protocol: %q", runner.requests[0].Prompt)
 	}
@@ -580,7 +580,7 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	if len(runner.requests[1].ToolListNames) != 0 {
 		t.Fatalf("retry tool list = %#v", runner.requests[1].ToolListNames)
 	}
-	if !strings.Contains(runner.requests[1].Prompt, "你返回的格式有误") {
+	if !strings.Contains(runner.requests[1].Prompt, "格式错误。只输出严格 JSON") {
 		t.Fatalf("retry prompt = %q", runner.requests[1].Prompt)
 	}
 	if updated.Report != "修正后报告" {

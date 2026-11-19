@@ -43,8 +43,8 @@ func (c stopCommand) Info() command.Info {
 		Args:        "[request_id|number]",
 		Description: "停止请求",
 		MinRole:     contextinfo.RoleUser,
-		Help: "省略=当前会话全部请求；停止主对话请求→停止该会话全部请求\n" +
-			"普通用户仅限当前会话，编号见 " + c.deps.CommandText("status") + "；超管编号见 " + c.deps.CommandText("requests"),
+		Help: "无参数或停主对话 ⇒ 停该会话全部请求。\n" +
+			"普通用户限当前会话；编号：普通用户 " + c.deps.CommandText("status") + "，超管 " + c.deps.CommandText("requests"),
 	}
 }
 

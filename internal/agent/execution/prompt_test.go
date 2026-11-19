@@ -51,14 +51,14 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(background, "路径必须为相对路径") != 1 {
+	if strings.Count(background, "仅相对路径") != 1 {
 		t.Fatalf("missing or duplicate background path rules: %s", background)
 	}
 	foreground, err := manager.Build(workspace.WithoutPathScope(testutil.ForegroundContext(ctx)), agentshare.SystemPromptRequest{Mode: storage.SessionModeWork})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(foreground, "路径必须为相对路径") {
+	if strings.Contains(foreground, "仅相对路径") {
 		t.Fatal("foreground takeover retained background path rules")
 	}
 }
@@ -286,17 +286,17 @@ func TestToolNamesTextSeparatesToolsAndSkills(t *testing.T) {
 		{
 			name:  "mixed",
 			names: agentshare.PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}},
-			want:  "tools: shell,web. skills: code_review,weather. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
+			want:  "tools: shell,web. skills: code_review,weather. 工具/Skill：已有 schema/说明 ⇒ 直用；否则 discover_tool，宁多勿漏。",
 		},
 		{
 			name:  "tools only",
 			names: agentshare.PromptToolNames{Tools: []string{"shell"}},
-			want:  "tools: shell. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
+			want:  "tools: shell. 工具/Skill：已有 schema/说明 ⇒ 直用；否则 discover_tool，宁多勿漏。",
 		},
 		{
 			name:  "skills only",
 			names: agentshare.PromptToolNames{Skills: []string{"weather"}},
-			want:  "skills: weather. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
+			want:  "skills: weather. 工具/Skill：已有 schema/说明 ⇒ 直用；否则 discover_tool，宁多勿漏。",
 		},
 		{name: "empty", names: agentshare.PromptToolNames{}, want: ""},
 	}

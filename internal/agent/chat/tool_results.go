@@ -26,7 +26,7 @@ func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMe
 			Role:       llm.RoleTool,
 			Name:       call.Name,
 			ToolCallID: call.ID,
-			Segments:   llm.TextSegments(fmt.Sprintf("tool call skipped: max_rounds_per_turn=%d reached. Please summarize current progress without calling more tools.", maxRounds)),
+			Segments:   llm.TextSegments(fmt.Sprintf("Skipped: max_rounds_per_turn=%d reached. Summarize progress; no more tools.", maxRounds)),
 		})
 	}
 	return messages

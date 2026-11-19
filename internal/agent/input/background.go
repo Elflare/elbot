@@ -154,7 +154,7 @@ func backgroundPromptWithSkills(prompt, skillPrompt string) string {
 	if skillPrompt == "" {
 		return prompt
 	}
-	return "[系统预加载资源]\n\n以下工具使用说明与 Skill 文档已由系统预加载。可调用能力以本次请求注入的 top-level tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
+	return "[系统预加载资源]\n\n可调用工具以本次顶层 tool schema 为准。\n\n" + skillPrompt + "\n\n[后台任务]\n\n" + strings.TrimSpace(prompt)
 }
 
 // NewBackgroundHandler receives only the preparation and execution capabilities it consumes.

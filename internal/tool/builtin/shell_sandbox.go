@@ -66,7 +66,7 @@ func (c *shellSandboxChecker) checkCall(call *syntax.CallExpr) {
 	}
 	name, ok := literalWord(call.Args[0])
 	if !ok || name == "" {
-		c.add("命令名包含动态结构，受限调用 无法静态确认")
+		c.add("动态命令名，受限调用无法静态确认。")
 		return
 	}
 	name = commandBase(name)

@@ -86,6 +86,6 @@ func ToolNamesText(names agentshare.PromptToolNames) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	parts = append(parts, "需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。")
+	parts = append(parts, "工具/Skill：已有 schema/说明 ⇒ 直用；否则 discover_tool，宁多勿漏。")
 	return strings.Join(parts, " ")
 }

@@ -46,7 +46,7 @@ func (s *Service) generateTitle(ctx context.Context, messages []storage.Message)
 func generate(ctx context.Context, selection modelmgr.Selection, prompt string) (TitleResult, error) {
 	request := llm.TextRequest{
 		Model:        selection.Model,
-		Instructions: "你是会话命名助手。请根据对话内容生成一个简短中文标题，只输出标题，不要解释。",
+		Instructions: "只输出会话标题。",
 		Input:        prompt,
 	}
 	result, err := llm.Retry(ctx, selection.Client, selection.Client.GenerateText, request)
@@ -56,7 +56,7 @@ func generate(ctx context.Context, selection modelmgr.Selection, prompt string) 
 // messages 已在准备阶段过滤并截取，不在提示词层重复决定准入。
 func titlePrompt(messages []storage.Message) string {
 	var out strings.Builder
-	out.WriteString("请为下面这段会话生成一个不超过20个中文字符的标题。\n")
+	out.WriteString("中文标题≤20字：\n")
 	for _, message := range messages {
 		if message.Role == storage.RoleUser {
 			out.WriteString("用户：")

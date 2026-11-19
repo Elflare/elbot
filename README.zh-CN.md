@@ -34,6 +34,8 @@ ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在�
 
 ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `discover_tool` 和当前可用工具名称；模型需要时再发现详情，由 Agent 注入对应 schema。
 
+所有工具 Schema、Prompt、消息提示精心设计，精准无歧义且大幅减少 Token。
+
 **Chat / Work 双模式**：两种模式可独立配置模型，闲聊用低成本模型，复杂任务用强模型。
 
 | 模式   | 工具               | 适用场景                                 | 第一次请求 Token 消耗      |

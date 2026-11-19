@@ -117,7 +117,7 @@ func (BackgroundPathsSystemPromptSource) Parts(ctx context.Context, _ agentshare
 	}
 	return []SystemPromptPart{{
 		Name:    "background_paths",
-		Content: "当前调用的文件与 Shell 工具（shell、read_file、edit_file、send_file）使用固定工作目录。路径必须为相对路径，不得使用绝对路径、~、冒号或 .. 路径段。Shell 不允许通过 cd 等命令切换目录。",
+		Content: "shell/read_file/edit_file/send_file：工作目录固定；仅相对路径，禁 ~、冒号、.. 路径段；shell 禁切目录。",
 	}}, nil
 }
 

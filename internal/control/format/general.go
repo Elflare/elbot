@@ -236,9 +236,9 @@ func Doctor(d control.CheckConfigurationResult) string {
 	}
 	var out strings.Builder
 	if errorCount == 0 {
-		fmt.Fprintf(&out, "未发现必要问题，有 %d 项提示，涉及 %d 个文件。", hintCount, len(groups))
+		fmt.Fprintf(&out, "无错误；%d 项提示，涉及 %d 个文件。", hintCount, len(groups))
 	} else {
-		fmt.Fprintf(&out, "发现 %d 项错误、%d 项提示，涉及 %d 个文件。", errorCount, hintCount, len(groups))
+		fmt.Fprintf(&out, "%d 项错误，%d 项提示，涉及 %d 个文件。", errorCount, hintCount, len(groups))
 	}
 	fmt.Fprintf(&out, "\n\n主配置：%s\n\n检查结果：\n", d.ConfigPath)
 	for i, group := range groups {

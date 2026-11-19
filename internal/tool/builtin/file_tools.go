@@ -438,10 +438,10 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 		warnings = append(warnings, warning)
 	}
 	if result.RollbackEvicted > 0 {
-		warnings = append(warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
+		warnings = append(warnings, fmt.Sprintf("撤销备份内存已满；已删最旧 %d 条。", result.RollbackEvicted))
 	}
 	if lease.Data != nil && !result.RollbackAvailable {
-		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
+		warnings = append(warnings, "已编辑，无撤销备份（会话失效或容量受限）。")
 	}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Warnings: warnings}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
 }

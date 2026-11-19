@@ -13,7 +13,7 @@ import (
 const AbsolutePathWorkspaceWarning = "临时绝对路径不切 workspace；多次在该目录操作 ⇒ workspace(path=该目录)"
 
 // AbsolutePathWithinWorkspaceWarning 提示在当前 workspace 中使用相对路径。
-const AbsolutePathWithinWorkspaceWarning = "已在当前目录，务必使用相对路径。"
+const AbsolutePathWithinWorkspaceWarning = "目标在 workspace 内 ⇒ 须用相对路径。"
 
 // TruncateLogContent bounds a log-only string to a positive Unicode character
 // limit, including the ellipsis. Callers choose the content and limit; business
