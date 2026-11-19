@@ -66,7 +66,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
 	definitions := builtin.NewTools(builtin.Deps{
-		Media: mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
+		CreateQuestions:  deps.CreateQuestions,
+		QuestionCommands: func() (string, string) { prefix := cfg.Commands.Prefixes[0]; return prefix + "a", prefix + "ac" },
+		Media:            mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
 		ResidentMemoryPath: residentStore.Path, ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
 		SkillRoot: skillRoot, ChatHistory: chatHistory, LongMemoryDir: filepath.Join(configDir, "long_memory"),
 		FileRollback: m.catalog.fileRollback, ProcessEnv: environment,

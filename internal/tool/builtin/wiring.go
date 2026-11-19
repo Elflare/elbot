@@ -8,6 +8,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
+	"elbot/internal/storage"
 	"elbot/internal/tool/builtin/long_memory"
 	"elbot/internal/tool/builtin/weave"
 	"elbot/internal/tool/builtin/web"
@@ -15,6 +16,8 @@ import (
 )
 
 type Deps struct {
+	CreateQuestions     func([]storage.Question)                              // Assign IDs and save one question group.
+	QuestionCommands    func() (string, string)                               // Configured answer and submit commands.
 	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
 	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。
 	LongMemoryDir       string                                                // 长期记忆资产与索引目录。
@@ -47,6 +50,7 @@ func NewTools(deps Deps) []share.ToolDefinition {
 	deps.FileRollback.CheckWrite = guard.CheckWrite
 	definitions := []share.ToolDefinition{
 		weave.Definition(deps.ProcessEnv),
+		askUserTool{deps.CreateQuestions, deps.QuestionCommands}.definition(),
 		(WorkspaceTool{}).Definition(),
 		(ViewImageTool{center: deps.Media, history: deps.ChatHistory}).Definition(),
 		(SendFileTool{media: deps.Media}).Definition(),

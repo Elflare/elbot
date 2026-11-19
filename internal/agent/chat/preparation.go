@@ -86,12 +86,13 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
+	s.messages = agentshare.AppendAnswers(s.messages, p.materials.ExtraAnswers)
 	userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
 	userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: []*storage.Message{userMessage}, ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append([]*storage.Message{userMessage}, p.materials.ExtraAnswers...), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

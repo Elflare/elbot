@@ -167,7 +167,8 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 }
 
 func (c *ExecutionCoordinator) runTurn(ctx, reqCtx context.Context, requestID string, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (context.Context, operationresult.Result[agentshare.TurnResult], turn.Input, error) {
-	prepared, err := c.deps.Dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: agentshare.InboundTurnInput(ctx, text), ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
+	input := agentshare.InboundTurnInput(ctx, text)
+	prepared, err := c.deps.Dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: input, ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		return reqCtx, operationresult.Result[agentshare.TurnResult]{}, turn.Input{}, err
 	}
@@ -175,7 +176,7 @@ func (c *ExecutionCoordinator) runTurn(ctx, reqCtx context.Context, requestID st
 	if current.Attempt != turn.AttemptFromContext(ctx) || current.Phase == turn.PhaseStopping {
 		return reqCtx, operationresult.Result[agentshare.TurnResult]{}, turn.Input{}, context.Canceled
 	}
-	reqCtx, result, err := c.deps.Dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, RequestID: requestID, Prepared: prepared}, out)
+	reqCtx, result, err := c.deps.Dialogue.RunTurn(ctx, reqCtx, agentshare.TurnInput{Session: session, Text: text, Selection: selection, Input: input, RequestID: requestID, Prepared: prepared}, out)
 	if err != nil {
 		if reqCtx.Err() != nil && errors.Is(err, reqCtx.Err()) {
 			c.handleTurnContextDone(ctx, session.ID, reqCtx.Err())

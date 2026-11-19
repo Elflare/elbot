@@ -1,3 +1,57 @@
+  /sessions/{session_id}/questions:
+    parameters:
+      - $ref: '../components/transport.yaml#/parameters/sessionID'
+    get:
+      operationId: listQuestions
+      summary: List in-memory questions and drafts for this session
+      responses:
+        '200':
+          description: Questions in display order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '../components/schemas.yaml#/schemas/Question' } }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/questions/{id}/draft:
+    parameters:
+      - $ref: '../components/transport.yaml#/parameters/sessionID'
+      - { in: path, name: id, required: true, schema: { type: integer, minimum: 1 } }
+    put:
+      operationId: saveQuestionDraft
+      summary: Replace the complete answer draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/QuestionDraft' }
+      responses:
+        '200':
+          description: Question with its updated draft.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/Question' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/questions/confirm:
+    parameters:
+      - $ref: '../components/transport.yaml#/parameters/sessionID'
+      - $ref: '../components/transport.yaml#/parameters/connectionRequired'
+    post:
+      operationId: confirmAnswers
+      summary: Queue filled drafts not already pending; each submission is a separate user message
+      responses:
+        '200':
+          description: Queued question IDs. Edits before handoff use the latest draft.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [question_ids]
+                properties:
+                  question_ids: { type: array, items: { type: integer, format: int64 } }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions:
     get:
       operationId: listSessions

@@ -4,6 +4,7 @@ package turn
 import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 	"elbot/internal/turn/share"
 )
 
@@ -45,12 +46,14 @@ type Snapshot struct {
 	Tools        map[string]int
 	// AttemptDone closes when the current attempt has finished its actual work.
 	// It is nil when a confirmation is waiting without an active attempt.
-	AttemptDone <-chan struct{}
-	Execution   *Execution // Logical execution owning this snapshot.
-	Attempt     string     // Current attempt; empty during a continuation reservation.
+	AttemptDone     <-chan struct{}
+	ReservationDone <-chan struct{} // Ordinary input waits for a reserved execution to start or cancel.
+	Execution       *Execution      // Logical execution owning this snapshot.
+	Attempt         string          // Current attempt; empty during a continuation reservation.
 }
 
 type Input struct {
+	Answers []*storage.AnswerBatch // Deferred user messages, one per /ac.
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string

@@ -43,10 +43,11 @@ type TurnInput struct {
 	Prepared                 PreparedTurn
 }
 type TurnMaterials struct {
-	Session     *storage.Session
-	Input       turn.Input
-	UserMessage *storage.Message
-	Loaded      *contextmgr.LoadedContext
+	Session      *storage.Session
+	Input        turn.Input
+	UserMessage  *storage.Message
+	ExtraAnswers []*storage.Message
+	Loaded       *contextmgr.LoadedContext
 }
 type LoopInput struct {
 	Session   *storage.Session
@@ -102,7 +103,34 @@ func BufferAssistantOutput(ctx context.Context) bool {
 	return ok && msg.BufferAssistantOutput
 }
 
+// ResolveAnswers turns each confirmed batch into one user message at handoff.
+// When there is no ordinary input the first answer uses the normal input path.
+func ResolveAnswers(sid string, in *turn.Input) (extra []*storage.Message) {
+	for _, batch := range in.Answers {
+		text := batch.Text()
+		if text == "" {
+			continue
+		}
+		if in.Text == "" && len(in.Segments) == 0 {
+			in.Text = text
+			in.PlatformText = text
+			in.Segments = llm.TextSegments(text)
+		} else {
+			extra = append(extra, &storage.Message{SessionID: sid, Role: storage.RoleUser, Content: text})
+		}
+	}
+	return extra
+}
+func AppendAnswers(messages []llm.LLMMessage, extra []*storage.Message) []llm.LLMMessage {
+	for _, m := range extra {
+		messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(m.Content)})
+	}
+	return messages
+}
+
 type PendingUserMessage struct {
+	ExtraAnswers []*storage.Message
+	Answers      []*storage.AnswerBatch
 	// NeedsElyphRules is resolved after input hooks and before persistence.
 	NeedsElyphRules bool
 	Message         storage.Message
@@ -115,6 +143,7 @@ func DrainPending(turns interface {
 	DrainMergedInput(string, string) turn.Input
 }, sessionID string, expected string) *PendingUserMessage {
 	pending := turns.DrainMergedInput(sessionID, expected)
+	extra := ResolveAnswers(sessionID, &pending)
 	if pending.Text == "" && len(pending.Segments) == 0 {
 		return nil
 	}
@@ -128,7 +157,7 @@ func DrainPending(turns interface {
 		Content:   MessageContent(segments),
 		Segments:  StoredMessageSegments(segments),
 	}
-	return &PendingUserMessage{Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
+	return &PendingUserMessage{ExtraAnswers: extra, Answers: pending.Answers, Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }
 
 // ForegroundNotice is appended to the request tail as a synthetic user message;

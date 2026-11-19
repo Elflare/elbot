@@ -46,6 +46,7 @@ func DefaultModules() []Module {
 		ToolModule{},
 		HookModule{},
 		ConfirmationModule{},
+		questionsModule{},
 	}
 }
 

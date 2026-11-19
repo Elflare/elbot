@@ -88,9 +88,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
 		}
 		var pending *agentshare.PendingUserMessage
-		if inToolPhase {
-			s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
-		}
+		s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 		stream = s.output.StartStream(s.requestCtx)
 		llmStageStartedAt := storage.Now()
 		r.Status.Record(s.ctx, runtimestatus.Snapshot{
