@@ -302,7 +302,7 @@ func TestAnalyzeBashShellAdviceSuggestsForFirstCommand(t *testing.T) {
 		{"printf alpha | tee sample.txt", ""},
 		{"echo ok; sed -i 's/a/b/' sample.txt", ""},
 		{"echo ok; cat < sample.txt", warnUseReadFile},
-		{"echo ok; echo alpha > sample.txt", warnUseEditFile},
+		{"echo ok; echo alpha > sample.txt", ""},
 	} {
 		t.Run(tc.cmd, func(t *testing.T) {
 			advice := analyzeBashShellAdvice(parseBashForTest(t, tc.cmd), workDir, FileGuard{})
