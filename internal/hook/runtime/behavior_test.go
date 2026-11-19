@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -197,46 +198,34 @@ func TestShutdownUsesSingleBudget(t *testing.T) {
 	}
 }
 
-func TestShutdownResponseBeforeExitIsNotLoggedAsFailure(t *testing.T) {
-	logs := make(chan events.LogRecord, 8)
-	_, w := behaviorWorkerWithLog(t, "ack", 100*time.Millisecond, func(_ context.Context, record events.LogRecord) {
-		logs <- record
-	})
-	if err := w.stop(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	for {
-		select {
-		case record := <-logs:
-			if record.EventName == "hook_worker_shutdown_request_failed" {
-				t.Fatalf("acknowledged shutdown logged as failure: %+v", record)
-			}
-		default:
-			return
-		}
-	}
-}
-
-func TestShutdownExitWithoutResponseLogsHookID(t *testing.T) {
-	logs := make(chan events.LogRecord, 8)
-	_, w := behaviorWorkerWithLog(t, "shutdown-no-response", time.Second, func(_ context.Context, record events.LogRecord) {
-		logs <- record
-	})
-	if err := w.stop(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	for {
-		select {
-		case record := <-logs:
-			if record.EventName == "hook_worker_shutdown_request_failed" {
-				if !strings.Contains(record.Content, "hook=shutdown-no-response") || !strings.Contains(record.Content, "process exited while waiting for system.shutdown") {
-					t.Fatalf("shutdown diagnostic = %+v", record)
+func TestShutdownWarnsOnlyOnForcedStop(t *testing.T) {
+	for _, mode := range []string{"ack", "shutdown-no-response", "shutdown-ignore"} {
+		t.Run(mode, func(t *testing.T) {
+			warnings := make(chan string, 8)
+			_, w := behaviorWorkerWithLog(t, mode, time.Second, func(_ context.Context, record events.LogRecord) {
+				if record.Level >= slog.LevelWarn {
+					warnings <- record.EventName
 				}
-				return
+			})
+			if err := w.stop(t.Context()); err != nil {
+				t.Fatal(err)
 			}
-		default:
-			t.Fatal("missing shutdown failure diagnostic")
-		}
+			if mode == "shutdown-ignore" {
+				select {
+				case name := <-warnings:
+					if name != "hook_worker_forced_stop" {
+						t.Fatalf("unexpected warning: %s", name)
+					}
+				default:
+					t.Fatal("missing forced stop warning")
+				}
+			}
+			select {
+			case name := <-warnings:
+				t.Fatalf("unexpected warning: %s", name)
+			default:
+			}
+		})
 	}
 }
 

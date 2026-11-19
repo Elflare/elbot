@@ -300,7 +300,7 @@ func (w *worker) restartLater() {
 	})
 }
 
-func (w *worker) stop(ctx context.Context) (err error) {
+func (w *worker) stop(ctx context.Context) error {
 	w.mu.Lock()
 	if w.stopping {
 		done := w.done
@@ -334,10 +334,7 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	w.setStatus(StatusStopping, "")
 	shutdownCtx, cancel := context.WithTimeout(ctx, w.shutdownTimeout)
 	defer cancel()
-	_, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
-	if err != nil {
-		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: fmt.Sprintf("hook=%s error=%v", w.config.ID, err), ResultStatus: globalevents.LogStatus(err)})
-	}
+	_, _ = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	graceful := true
 	select {
 	case <-done:
