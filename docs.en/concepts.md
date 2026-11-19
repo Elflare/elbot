@@ -38,7 +38,16 @@ Tools can restrict the applicable API types: discovery, completion, preloading, 
 
 ## Orchestrating Tools with Python
 
-The model writes loops, concurrent calls, and result processing into a Python script and hands it over to `tool_weave` for a single execution. The return values of various tools are processed directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename, which both reduces model round-trips and saves tokens that would be spent putting the full text of the webpages into the context.
+The model writes loops, concurrent calls, and result processing into a Python script, which is then executed in one go by `tool_weave`. The return values of various tools are handled directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename. This reduces model round-trips and saves tokens that would otherwise be spent putting the full text of the webpages into the context. Example:
+
+```python
+from pathlib import Path
+projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}
+news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))# Function names are discovered tools; use them directly without declaration
+report = "\n\n".join(f"## {name}\n{text}" for name, text in zip(projects, news))
+Path("weekly.md").write_text(report, encoding="utf-8")
+print(await send_file(source="weekly.md"))
+```
 
 ## View Images
 

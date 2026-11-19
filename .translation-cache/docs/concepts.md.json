@@ -8,6 +8,14 @@
       "translation": "## Logs and Auditing\n\n| Type | Purpose |\n| --- | --- |\n| runtime log | Troubleshoot runtime issues such as startup, model requests, platform connections, and persistence. |\n| audit log | Track critical behaviors such as permission denials, tool calls, danger confirmations, and Cron deliveries. |\n\nFor query and filter options, see [Logs and Auditing](commands.md#日志和审计).\n\nThe runtime and audit logs of Agent events uniformly carry available `session_id`, `run_id`, `attempt`, `request_id`, and `root_request_id`, used to associate the same Session, logical execution, execution attempt, and parent-child requests; Fields without a corresponding identity are omitted.\n",
       "updated_at": 1793353326
     },
+    "docs/concepts.md:section:0b2ae4073db95efc32d1664f0e85d2b638ba5702a05f71d3f88b757f489d37ca": {
+      "kind": "section",
+      "source": "## 用 Python 编排工具\n\n模型把循环、并发调用和结果处理写进一段 Python，交给 `tool_weave` 一次执行。各个工具的返回值由脚本直接处理，模型只接收脚本选出的内容。例如，批量检查几十个网页时，脚本可以把命中行写入文件，只返回命中数和文件名，既减少模型往返，也省去把网页全文放进上下文的 Token。如：\n\n```python\nfrom pathlib import Path\nprojects = {\"Go\": \"go.dev\", \"Rust\": \"blog.rust-lang.org\", \"Python\": \"blog.python.org\"}\nnews = await asyncio.gather(*(web_search(query=f\"{name} release\", include_domains=[site], time_range=\"week\", max_results=3) for name, site in projects.items()))#函数名即为已发现工具，不用声明直接使用\nreport = \"\\n\\n\".join(f\"## {name}\\n{text}\" for name, text in zip(projects, news))\nPath(\"weekly.md\").write_text(report, encoding=\"utf-8\")\nprint(await send_file(source=\"weekly.md\"))\n```\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "2995589a3348c9048beade62883c3ea7560d312a509475b6fdee3f1be2fb42fa",
+      "translation": "## Orchestrating Tools with Python\n\nThe model writes loops, concurrent calls, and result processing into a Python script, which is then executed in one go by `tool_weave`. The return values of various tools are handled directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename. This reduces model round-trips and saves tokens that would otherwise be spent putting the full text of the webpages into the context. Example:\n\n```python\nfrom pathlib import Path\nprojects = {\"Go\": \"go.dev\", \"Rust\": \"blog.rust-lang.org\", \"Python\": \"blog.python.org\"}\nnews = await asyncio.gather(*(web_search(query=f\"{name} release\", include_domains=[site], time_range=\"week\", max_results=3) for name, site in projects.items()))# Function names are discovered tools; use them directly without declaration\nreport = \"\\n\\n\".join(f\"## {name}\\n{text}\" for name, text in zip(projects, news))\nPath(\"weekly.md\").write_text(report, encoding=\"utf-8\")\nprint(await send_file(source=\"weekly.md\"))\n```\n\n",
+      "updated_at": 1795092480
+    },
     "docs/concepts.md:section:0bb2b531c8ddc9a9f12e7595834d5b0930325b2467767a324f2560501b1c3c65": {
       "kind": "section",
       "source": "## Agent Core\n\nAgent Core 是对话与编排中心：接收平台输入 → 解析 slash 命令 → 管理 Session 上下文 → 构建 Prompt → 调用 LLM → 处理工具调用循环 → 统一输出最终回复。\n\n平台适配层只负责把平台消息转成统一输入、把输出意图发回平台。Agent Core 不依赖具体平台。\n\n",
@@ -120,14 +128,6 @@
       "translation": "## Session\n\nA Session is a persistent session unit: the context, mode, message history, and tool call records of a single continuous conversation.\n\nDifferent platforms and different scopes use their own Sessions to avoid cross-contamination of context; the CLI is a high-privilege entry point that allows cross-platform viewing and management.\n\nRules for creating, restoring, archiving, pinning, and deleting, as well as restoring a Session via quoted replies, can be found in [Command Quick Reference: Session](commands.md#session).\n\n",
       "updated_at": 1793353326
     },
-    "docs/concepts.md:section:aa7c394b44aea0de28f0228be58ca104d8eaddc1beea1ca9a234f7094803477c": {
-      "kind": "section",
-      "source": "## 用 Python 编排工具\n\n模型把循环、并发调用和结果处理写进一段 Python，交给 `tool_weave` 一次执行。各个工具的返回值由脚本直接处理，模型只接收脚本选出的内容。例如，批量检查几十个网页时，脚本可以把命中行写入文件，只返回命中数和文件名，既减少模型往返，也省去把网页全文放进上下文的 Token。\n\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "7189af23aa57b7e07f9b9b812d566fd981f1da0b95f5e2af18fdcb1e640f4e0c",
-      "translation": "## Orchestrating Tools with Python\n\nThe model writes loops, concurrent calls, and result processing into a Python script and hands it over to `tool_weave` for a single execution. The return values of various tools are processed directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename, which both reduces model round-trips and saves tokens that would be spent putting the full text of the webpages into the context.\n\n",
-      "updated_at": 1794984252
-    },
     "docs/concepts.md:section:aca8b03e2086d273e93c40cf7c6217223b978dc69ca962fd8806dcfbe366fd6f": {
       "kind": "section",
       "source": "## Tool Runtime\n\nTool Runtime 管理工具的注册、发现、权限、风险评估和执行。\n\n工具可以来自内置能力、Skill、外部扩展或监听事件。ElBot 不会默认把所有工具细节都塞进上下文，而是通过工具发现和预载机制按需暴露。\n\n工具执行期间收到的新消息不会打断正在运行的工具。下一次模型请求尚未开始时，多条消息会按顺序合并后注入该请求；如果最终模型请求已经开始并直接结束了当前轮次，这些消息会在回复发出后自动作为一条新用户消息开启下一轮。\n\n",
@@ -194,8 +194,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "3c239b07eddca01db1049f93c64685061db12413c6e211c75b7dc44c800afe5e",
+  "source_hash": "8b52d5f8a39fdf903a3bf3d3c18296c7f8242d560af50a15d9f3eedd5ee130cc",
   "target": "docs.en/concepts.md",
-  "updated_at": 1794984252,
+  "updated_at": 1795092480,
   "version": 3
 }
