@@ -64,10 +64,10 @@ func (t askUserTool) prepare(_ context.Context, req share.CallRequest, info shar
 			questions[i].SessionID = facts.SessionID
 		}
 		t.create(questions)
-		status := fmt.Sprintf("%d 题待答", len(questions))
+		status := fmt.Sprintf("已发%d题", len(questions))
 		answer, confirm := t.commands()
 		out := delivery.QuestionsOutput(questions, answer, confirm)
-		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: status, Outputs: []delivery.Output{out}}}, status, nil
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: status + ".可等也可继续任务。用户作答以user消息显示。", Outputs: []delivery.Output{out}}}, status, nil
 	})
 	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: prepared}, nil
 }
