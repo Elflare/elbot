@@ -78,6 +78,19 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 | `/stop [request_id\|ID]` | Stop a specified request; the ID is taken from `/requests`; Stops the request of the current Session when no parameters are passed. A one-time exec Hook will terminate the entire process tree, while a persistent Worker only cancels the current call. |
 | `/stopall` | Stop all active requests of the current process. |
 
+## Answering Model Questions
+
+In work mode, the model can call `ask_user` to pose multiple questions at once. Each question has a fixed question number; ordinary chat messages are handled as usual.
+
+| Command | Effect |
+| --- | --- |
+| `/a` | View questions and drafts. |
+| `/a 19 2 [supplement]` | Select option 2 for question 19. |
+| `/a 19 o <answer>` | Free-form answer. |
+| `/ac` | Submit filled questions that are not yet queued. |
+
+Each `/ac` corresponds to one `user` message; multiple batches can be sent with a single model request. If the same question is modified in the queue, the latest version is used; newly filled questions require another `/ac`. Use `/stop` before sending to cancel the queue while preserving drafts. Questions and drafts are stored in memory by Session: they are preserved when switching away and cleared upon restart. Telegram and QQ official keyboard buttons are equivalent to these commands.
+
 ## Additional Input
 
 New input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.
@@ -135,12 +148,12 @@ Available to superadmins only.
 
 | Command | Description |
 | --- | --- |
-| `/log [options]` | runtime log. |
-| `/audit [options]` | audit log. |
+| `/log [options]` | Runtime log. |
+| `/audit [options]` | Audit log. |
 | `/elwisp [name] [options]` | Elnis/Elwisp event log. |
-| `/usage [options]` | Summarize token consumption from audit logs (superadmin only). |
+| `/usage [options]` | Summarize token consumption from the audit log (superadmin only). |
 
-Log queries and usage statistics read current JSONL records; the body can be text or JSON. Unparseable records are counted as corrupted records; `--raw` allows viewing a limited number of raw samples.
+Log queries and usage statistics read current JSONL records; the body can be text or JSON. Records that cannot be parsed are counted as corrupted records; `--raw` can be used to view a limited number of raw samples.
 
 Options (if the "Applicable" column is omitted, it applies to all three):
 
@@ -161,16 +174,16 @@ Options (if the "Applicable" column is omitted, it applies to all three):
 | `--run_source <source>` | audit | `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
 | `--event <name>` | audit | e.g., `tool_call_completed`, `llm_usage`, `permission_denied`. |
 | `--risk <level>` | audit | Risk level. |
-| `--platform <name>` / `--actor-id <id>` / `--actor-name <name>` | audit | Exact match for participant's platform, native ID, display name; can be used in combination. |
+| `--platform <name>` / `--actor-id <id>` / `--actor-name <name>` | audit | Exact match for participant's platform, native ID, and display name; can be used in combination. |
 | `--session <id>` / `--tool <name>` | audit | Filter by Session or tool name. |
 | `[name]`, `--name`, `--elwisp <name>` | elwisp | Filter by Elwisp name; these three formats are equivalent. |
 | `--source` / `--id` (= `--source-id`) | elwisp | Filter by event source / external event ID. |
-| `--mode <record\|direct\|llm>` | elwisp | event mode. |
+| `--mode <record\|direct\|llm>` | elwisp | Event mode. |
 | `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / internal event ID. |
 | `--token <name>` | elwisp | Configuration name of the HTTP authentication token, does not include the token text itself. |
-| `--tag <tag>` | elwisp | Contains specified tag, can be repeated, requires all to match. |
+| `--tag <tag>` | elwisp | Contains specified tag; can be repeated, requires all to match. |
 | `-d, --days <n>` | usage | Summarize the last n days, default 1. |
-| `-n <x[-y]>` | usage | Summarize model calls from the x-th to the y-th from the end (inclusive), index 1–100000; if y is omitted, only the x-th call is taken. |
+| `-n <x[-y]>` | usage | Summarize model calls from the x-th to the y-th most recent (inclusive), index 1–100000; omitting y only takes the x-th. Only summarizes existing calls within the range; displays `nil` if no hits. |
 | `-m, --model <name>` | usage | Model name. |
 | `-s, --session <id>` | usage | Session ID. |
 | `--by <key>` | usage | `model` (default), `day`, `session`. |
@@ -178,8 +191,8 @@ Options (if the "Applicable" column is omitted, it applies to all three):
 
 Examples: `/log -w -n 10` · `/log --system` · `/audit --event tool_call_completed --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`.
 
-- `/usage` aggregates from `llm_usage` events in the audit log, grouping statistics for prompt, completion, total, cache, and duration by model/day/session; unknown, illegal, or overflowing values are displayed as `null` and passed to the affected group and total items; explicit zeros are counted normally; calls with unknown usage are still counted in the number of calls; if corrupted records are encountered during scanning, a prompt will indicate that statistics may be incomplete.
-- Tool parameter logs are limited to 512 runes, and tool return log summaries are limited to 1024 runes; truncation ellipses are counted towards the limit (Chinese characters count as 1 rune); actual call parameters and results returned to the model are not affected by log length limits.
+- `/usage` aggregates from `llm_usage` events in the audit log, grouping statistics for prompt, completion, total, cache, and duration by model/day/session; unknown, illegal, or overflowing values are displayed as `null` and passed to the affected group and total items; explicit zeros are counted normally; calls with unknown usage are still counted in the number of calls; a warning is shown if corrupted records are encountered during scanning, indicating statistics may be incomplete.
+- Tool parameter logs are limited to 512 runes, and tool return log summaries are limited to 1024 runes; truncation ellipses count toward the limit (Chinese characters count as 1 rune); actual call parameters and results returned to the model are not affected by log length limits.
 
 ## High-risk Tool Confirmation
 
