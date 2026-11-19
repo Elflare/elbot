@@ -204,13 +204,14 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 	for _, format := range []string{"plain", "html", "rich"} {
 		for _, hasActions := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/actions=%t", format, hasActions), func(t *testing.T) {
-				var bodies []struct {
-					ReplyMarkup *replyMarkup `json:"reply_markup"`
+				type payload struct {
+					Text        string           `json:"text"`
+					RichMessage inputRichMessage `json:"rich_message"`
+					ReplyMarkup *replyMarkup     `json:"reply_markup"`
 				}
+				var bodies []payload
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					var body struct {
-						ReplyMarkup *replyMarkup `json:"reply_markup"`
-					}
+					var body payload
 					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 						t.Error(err)
 					}
@@ -224,6 +225,7 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 				out := delivery.Text("高风险工具调用等待确认 /confirm\n" + strings.Repeat("a", telegramRichTextRunes+1))
 				if hasActions {
 					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
+					out.ShowActionHints = true
 					out.Actions = actions
 				}
 				if _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{out}); err != nil {
@@ -233,6 +235,9 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 					t.Fatalf("pages=%d", len(bodies))
 				}
 				for i, body := range bodies {
+					if strings.Contains(body.Text+body.RichMessage.Markdown, actions[0].Command) {
+						t.Fatalf("page %d repeats button command in body", i)
+					}
 					if (body.ReplyMarkup != nil) != (hasActions && i == 0) {
 						t.Fatalf("page %d markup=%#v", i, body.ReplyMarkup)
 					}

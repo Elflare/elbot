@@ -81,11 +81,20 @@ func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
 			adapter.cfg.MarkdownByDefault = &test.markdown
 			adapter.cfg.EnableKeyboard = &test.enabled
 			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "1"}, PlatformMessageID: "incoming"})
-			if _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: test.text, Actions: test.actions}}); err != nil {
+			if _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: test.text, ShowActionHints: true, Actions: test.actions}}); err != nil {
 				t.Fatal(err)
 			}
 			if (body.Keyboard != nil) != test.want {
 				t.Fatalf("keyboard=%#v", body.Keyboard)
+			}
+			text := body.Content
+			if body.Markdown != nil {
+				text = body.Markdown.Content
+			}
+			for _, action := range test.actions {
+				if strings.Contains(text, action.Command) == test.want {
+					t.Fatalf("keyboard=%t text=%q command=%q", test.want, text, action.Command)
+				}
 			}
 			if !test.want {
 				return

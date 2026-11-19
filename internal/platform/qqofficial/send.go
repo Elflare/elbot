@@ -88,6 +88,7 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 	t.recordHistory = t.Kind == targetGroup && (t.recordHistory || out.Delivery.HookPoint != "")
 	switch out.Kind {
 	case delivery.KindText:
+		out.ShowActionHints = false
 		return a.sendText(ctx, t, delivery.OutputBody(out, a.cfg.markdownByDefault() && a.cfg.enableKeyboard()), out.Actions...)
 	case delivery.KindReply:
 		text := delivery.FallbackText(out)
