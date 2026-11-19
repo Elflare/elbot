@@ -30,6 +30,21 @@ import (
 	"elbot/internal/turn"
 )
 
+func TestRiskReasonsText(t *testing.T) {
+	for _, tc := range []struct {
+		reasons []string
+		want    string
+	}{
+		{nil, ""},
+		{[]string{"rm"}, "\nrisk: rm"},
+		{[]string{" rm -rf ", "", "git reset --hard"}, "\nrisk: rm -rf、git reset --hard"},
+	} {
+		if got := riskReasonsText(tc.reasons); got != tc.want {
+			t.Errorf("riskReasonsText(%q) = %q; want %q", tc.reasons, got, tc.want)
+		}
+	}
+}
+
 func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 	for _, command := range []string{"/confirm extra", "/confirmtool extra", "/confirmall extra", "/reject reason"} {
 		t.Run(command, func(t *testing.T) {
