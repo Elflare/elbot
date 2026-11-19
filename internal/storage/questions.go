@@ -11,7 +11,7 @@ import (
 
 // Question stays with its originating Session until its answer is submitted.
 type Question struct {
-	ID        int64          `json:"id"` // Process-local question number.
+	ID        int64          `json:"id"` // One-based number within this Session.
 	SessionID string         `json:"session_id"`
 	Question  string         `json:"question"`
 	Options   []string       `json:"options"`         // In the one-based order displayed to the user.
@@ -26,9 +26,14 @@ type QuestionDraft struct {
 // QuestionSet is process-local. Pending entries refer to live drafts, not copies.
 type QuestionSet struct {
 	mu       sync.Mutex
-	next     int64
+	next     map[string]int64
 	sessions map[string][]Question
-	claims   map[int64]*AnswerBatch
+	claims   map[questionKey]*AnswerBatch
+}
+
+type questionKey struct {
+	session string
+	id      int64
 }
 
 type AnswerBatch struct {
@@ -44,12 +49,13 @@ func (s *QuestionSet) Create(items []Question) {
 	defer s.mu.Unlock()
 	if s.sessions == nil {
 		s.sessions = make(map[string][]Question)
-		s.claims = make(map[int64]*AnswerBatch)
+		s.next = make(map[string]int64)
+		s.claims = make(map[questionKey]*AnswerBatch)
 	}
 	for i := range items {
-		s.next++
-		items[i].ID = s.next
 		id := items[i].SessionID
+		s.next[id]++
+		items[i].ID = s.next[id]
 		s.sessions[id] = append(s.sessions[id], items[i])
 	}
 }
@@ -66,7 +72,7 @@ func (s *QuestionSet) Save(sid string, id int64, d QuestionDraft) operationresul
 		if q.ID != id {
 			continue
 		}
-		if b := s.claims[id]; b != nil && b.handedOff && b.active() {
+		if b := s.claims[questionKey{sid, id}]; b != nil && b.handedOff && b.active() {
 			return operationresult.Result[Question]{Status: operationresult.Conflict, Message: "答案发送中"}
 		}
 		d.Text = strings.TrimSpace(d.Text)
@@ -97,10 +103,10 @@ func (s *QuestionSet) Claim(sid string) *AnswerBatch {
 		if q.Draft == nil {
 			continue
 		}
-		if old := s.claims[q.ID]; old != nil && old.active() {
+		if old := s.claims[questionKey{q.SessionID, q.ID}]; old != nil && old.active() {
 			continue
 		}
-		s.claims[q.ID] = b
+		s.claims[questionKey{q.SessionID, q.ID}] = b
 		b.IDs = append(b.IDs, q.ID)
 	}
 	return b
@@ -114,7 +120,7 @@ func (b *AnswerBatch) Pending() bool {
 	s := b.set
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.claims[b.IDs[0]] == b
+	return s.claims[questionKey{b.session, b.IDs[0]}] == b
 }
 func (b *AnswerBatch) Text() string {
 	s := b.set
@@ -123,7 +129,7 @@ func (b *AnswerBatch) Text() string {
 	b.handedOff = true
 	var parts []string
 	for _, q := range s.sessions[b.session] {
-		if s.claims[q.ID] != b {
+		if s.claims[questionKey{q.SessionID, q.ID}] != b {
 			continue
 		}
 		d := q.Draft
@@ -143,10 +149,10 @@ func (b *AnswerBatch) Finish(sent bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[b.session] = slices.DeleteFunc(s.sessions[b.session], func(q Question) bool {
-		if s.claims[q.ID] != b {
+		if s.claims[questionKey{q.SessionID, q.ID}] != b {
 			return false
 		}
-		delete(s.claims, q.ID)
+		delete(s.claims, questionKey{q.SessionID, q.ID})
 		return sent
 	})
 	if len(s.sessions[b.session]) == 0 {
