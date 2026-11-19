@@ -58,7 +58,7 @@ func FormatCommandResult(req command.Request, result command.Result) (string, er
 		})
 	case command.ResultKindAnswers:
 		return formatCommandData(result.Data, func(d control.ConfirmAnswersResult) string {
-			return fmt.Sprintf("%d 题待发", len(d.QuestionIDs))
+			return fmt.Sprintf("%d 题正在发送", len(d.QuestionIDs))
 		})
 	case command.ResultKindText:
 		if req.Name == "detail" {
