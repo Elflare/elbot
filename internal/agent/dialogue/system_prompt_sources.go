@@ -103,8 +103,12 @@ func (s SoulSystemPromptSource) Parts(ctx context.Context, req agentshare.System
 	return []SystemPromptPart{{Name: "soul", Content: content}}, nil
 }
 
+type toolNameProvider interface {
+	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (agentshare.PromptToolNames, error)
+}
+
 type ToolNamesSystemPromptSource struct {
-	Tools agentshare.ToolNameProvider
+	Tools toolNameProvider
 }
 
 // Runtime path rules belong to the prompt, not to a function's stable schema.

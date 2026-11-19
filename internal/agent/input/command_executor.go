@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
@@ -10,6 +9,7 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"log/slog"
+	"strings"
 )
 
 type CommandExecutor struct {
@@ -18,7 +18,7 @@ type CommandExecutor struct {
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
 	isCommand := e.deps.Router.IsCommand(text)
-	if !isCommand && !agentshare.IsAppendConfirm(text) {
+	if !isCommand && !strings.EqualFold(strings.TrimSpace(text), "y") {
 		return ctx, false, nil
 	}
 	origin := ctx

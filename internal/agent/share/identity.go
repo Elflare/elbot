@@ -68,9 +68,3 @@ func NewIdentityResolver(deps IdentityResolverDeps) *IdentityResolver {
 		permission:      deps.Permission,
 	}
 }
-
-// ExecutionMode 只供 Agent 内部编排消费已建立的执行模式。
-func ExecutionMode(ctx context.Context) string {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	return facts.Mode
-}

@@ -247,7 +247,7 @@ type RunnerDeps struct {
 		DecodeState(string) (tool.State, error)
 	}
 	ToolDeps     agentshare.ToolDepsFactory
-	ToolProvider agentshare.ToolNameProvider
+	ToolProvider toolNameProvider
 	// MaxRounds bounds tool batches within one turn.
 	MaxRounds int
 	SoulPath  string

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	agentshare "elbot/internal/agent/share"
@@ -166,9 +167,21 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 	return nil
 }
 
+func inboundReplyMessageID(ctx context.Context) string {
+	msg, ok := agentshare.MessageContextFrom(ctx)
+	if !ok {
+		return ""
+	}
+	if id := strings.TrimSpace(msg.Reply.MessageID); id != "" {
+		return id
+	}
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	return strings.TrimSpace(info.ReplyToMessageID)
+}
+
 func (c *ExecutionCoordinator) runTurn(ctx, reqCtx context.Context, requestID string, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (context.Context, operationresult.Result[agentshare.TurnResult], turn.Input, error) {
 	input := agentshare.InboundTurnInput(ctx, text)
-	prepared, err := c.deps.Dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: input, ReplyToPlatformMessageID: agentshare.InboundReplyMessageID(ctx), Selection: selection})
+	prepared, err := c.deps.Dialogue.PrepareTurn(ctx, agentshare.TurnInput{Session: session, Text: text, Input: input, ReplyToPlatformMessageID: inboundReplyMessageID(ctx), Selection: selection})
 	if err != nil {
 		return reqCtx, operationresult.Result[agentshare.TurnResult]{}, turn.Input{}, err
 	}

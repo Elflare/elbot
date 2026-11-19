@@ -3,7 +3,6 @@ package execution
 import (
 	"bytes"
 	"context"
-	"elbot/internal/media"
 	"io"
 	"log/slog"
 	"net/http"
@@ -35,24 +34,6 @@ func TestInboundTurnInputRoundTripWithoutPlatformContext(t *testing.T) {
 	got := agentshare.InboundTurnInput(agentshare.WithInboundTurnInput(context.Background(), want), "fallback")
 	if got.Text != want.Text || got.PlatformText != want.PlatformText || len(got.Segments) != 2 || got.Segments[1].URL != want.Segments[1].URL {
 		t.Fatalf("inbound turn input = %#v, want %#v", got, want)
-	}
-}
-
-func TestReplaceInboundTextSegmentsPreservesImage(t *testing.T) {
-	ctx := agentshare.WithMessageContext(context.Background(), agentshare.MessageContext{Segments: []agentshare.MessageSegment{
-		{Type: "text", Text: "@tool:web 看看"},
-		{Type: "image", Media: media.PlatformMedia{Type: "image", URL: "data:image/png;base64,YWJj", MIMEType: "image/png"}},
-	}})
-
-	segments := agentshare.ReplaceInboundTextSegments(ctx, "看看")
-	if len(segments) != 2 {
-		t.Fatalf("segments len = %d, want 2", len(segments))
-	}
-	if segments[0].Type != llm.SegmentText || segments[0].Text != "看看" {
-		t.Fatalf("text segment = %#v, want replaced text", segments[0])
-	}
-	if segments[1].Type != llm.SegmentImage || segments[1].URL == "" {
-		t.Fatalf("image segment = %#v, want preserved image", segments[1])
 	}
 }
 

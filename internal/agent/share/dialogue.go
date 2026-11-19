@@ -93,11 +93,6 @@ type Output interface {
 	SendPreview(ctx context.Context, text ...string)
 }
 
-func BufferAssistantOutput(ctx context.Context) bool {
-	msg, ok := MessageContextFrom(ctx)
-	return ok && msg.BufferAssistantOutput
-}
-
 // ResolveAnswers turns each confirmed batch into one user message at handoff.
 // When there is no ordinary input the first answer uses the normal input path.
 func ResolveAnswers(sid string, in *turn.Input) (extra []*storage.Message) {
@@ -184,10 +179,6 @@ type ReplyCommitResult struct {
 	MessageID string
 	RawText   string
 	Receipt   delivery.Receipt
-}
-
-type ToolNameProvider interface {
-	ToolNames(ctx context.Context, mode string, session *storage.Session, scope session.Scope) (PromptToolNames, error)
 }
 
 type SystemPromptRequest struct {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/turn"
@@ -49,29 +48,6 @@ func WithInboundTurnInput(ctx context.Context, input turn.Input) context.Context
 	return WithMessageContext(ctx, msg)
 }
 
-func InboundContextSegments(ctx context.Context, text string) []llm.MessageSegment {
-	if msg, ok := MessageContextFrom(ctx); ok {
-		if len(msg.ContextSegments) > 0 {
-			return PlatformSegmentsToLLM(msg.ContextSegments, msg.ContextText)
-		}
-		if strings.TrimSpace(msg.ContextText) != "" {
-			return llm.TextSegments(msg.ContextText)
-		}
-	}
-	return InboundSegments(ctx, text)
-}
-
-func InboundReplyMessageID(ctx context.Context) string {
-	if msg, ok := MessageContextFrom(ctx); ok {
-		if id := strings.TrimSpace(msg.Reply.MessageID); id != "" {
-			return id
-		}
-		info, _ := contextinfo.ConversationFromContext(ctx)
-		return strings.TrimSpace(info.ReplyToMessageID)
-	}
-	return ""
-}
-
 func WithInboundSegments(ctx context.Context, segments []llm.MessageSegment) context.Context {
 	input := InboundTurnInput(ctx, llm.SegmentsTextOnly(segments))
 	input.Text = llm.SegmentsTextOnly(segments)
@@ -85,71 +61,6 @@ func WithInboundSegments(ctx context.Context, segments []llm.MessageSegment) con
 	msg.ContextText = ""
 	msg.ContextSegments = nil
 	return WithMessageContext(ctx, msg)
-}
-
-func ReplaceInboundTextSegments(ctx context.Context, text string) []llm.MessageSegment {
-	segments := InboundSegments(ctx, text)
-	if llm.SegmentsTextOnly(segments) == text {
-		return segments
-	}
-	var original strings.Builder
-	for _, segment := range segments {
-		if segment.Type == llm.SegmentText {
-			original.WriteString(segment.Text)
-		}
-	}
-	before, after := []rune(original.String()), []rune(text)
-	if len(before) == 0 {
-		if text != "" {
-			return append([]llm.MessageSegment{{Type: llm.SegmentText, Text: text}}, segments...)
-		}
-		return segments
-	}
-	// Locate the changed text span, retaining the surrounding text in its
-	// original segments. Prefix/directive removal must not move quoted images.
-	start := 0
-	for start < len(before) && start < len(after) && before[start] == after[start] {
-		start++
-	}
-	end, newEnd := len(before), len(after)
-	for end > start && newEnd > start && before[end-1] == after[newEnd-1] {
-		end--
-		newEnd--
-	}
-	replacement := string(after[start:newEnd])
-	out := make([]llm.MessageSegment, 0, len(segments))
-	offset := 0
-	inserted := false
-	for _, segment := range segments {
-		if segment.Type != llm.SegmentText {
-			out = append(out, segment)
-			continue
-		}
-		runes := []rune(segment.Text)
-		left := min(max(start-offset, 0), len(runes))
-		right := min(max(end-offset, 0), len(runes))
-		updated := string(runes[:left])
-		if !inserted && offset+len(runes) >= start {
-			updated += replacement
-			inserted = true
-		}
-		updated += string(runes[right:])
-		offset += len(runes)
-		if updated != "" {
-			segment.Text = updated
-			out = append(out, segment)
-		}
-	}
-	return out
-}
-
-func HasInboundNonTextSegment(ctx context.Context) bool {
-	for _, segment := range InboundSegments(ctx, "") {
-		if segment.Type != llm.SegmentText {
-			return true
-		}
-	}
-	return false
 }
 
 func llmSegmentsToPlatform(segments []llm.MessageSegment) []MessageSegment {

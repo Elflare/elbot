@@ -58,7 +58,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 	if hookChangedSegments {
 		segments = result.Segments
 	} else {
-		segments = agentshare.InboundContextSegments(ctx, text)
+		segments = inboundContextSegments(ctx, text)
 	}
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
@@ -71,7 +71,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 		return ctx, false, nil
 	}
 	text = agentshare.StripWakeupPrefix(ctx, text)
-	segments = agentshare.ReplaceInboundTextSegments(ctx, text)
+	segments = replaceInboundTextSegments(ctx, text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	ctx, handled, err := h.deps.Commands.Handle(ctx, text)
 	if handled {
@@ -118,6 +118,74 @@ type MessageHandlerDeps struct {
 }
 
 // NewMessageHandler initializes MessageHandler without installing cross-service callbacks.
+func replaceInboundTextSegments(ctx context.Context, text string) []llm.MessageSegment {
+	segments := agentshare.InboundSegments(ctx, text)
+	if llm.SegmentsTextOnly(segments) == text {
+		return segments
+	}
+	var original strings.Builder
+	for _, segment := range segments {
+		if segment.Type == llm.SegmentText {
+			original.WriteString(segment.Text)
+		}
+	}
+	before, after := []rune(original.String()), []rune(text)
+	if len(before) == 0 {
+		if text != "" {
+			return append([]llm.MessageSegment{{Type: llm.SegmentText, Text: text}}, segments...)
+		}
+		return segments
+	}
+	// Locate the changed text span, retaining the surrounding text in its
+	// original segments. Prefix/directive removal must not move quoted images.
+	start := 0
+	for start < len(before) && start < len(after) && before[start] == after[start] {
+		start++
+	}
+	end, newEnd := len(before), len(after)
+	for end > start && newEnd > start && before[end-1] == after[newEnd-1] {
+		end--
+		newEnd--
+	}
+	replacement := string(after[start:newEnd])
+	out := make([]llm.MessageSegment, 0, len(segments))
+	offset := 0
+	inserted := false
+	for _, segment := range segments {
+		if segment.Type != llm.SegmentText {
+			out = append(out, segment)
+			continue
+		}
+		runes := []rune(segment.Text)
+		left := min(max(start-offset, 0), len(runes))
+		right := min(max(end-offset, 0), len(runes))
+		updated := string(runes[:left])
+		if !inserted && offset+len(runes) >= start {
+			updated += replacement
+			inserted = true
+		}
+		updated += string(runes[right:])
+		offset += len(runes)
+		if updated != "" {
+			segment.Text = updated
+			out = append(out, segment)
+		}
+	}
+	return out
+}
+
+func inboundContextSegments(ctx context.Context, text string) []llm.MessageSegment {
+	if msg, ok := agentshare.MessageContextFrom(ctx); ok {
+		if len(msg.ContextSegments) > 0 {
+			return agentshare.PlatformSegmentsToLLM(msg.ContextSegments, msg.ContextText)
+		}
+		if strings.TrimSpace(msg.ContextText) != "" {
+			return llm.TextSegments(msg.ContextText)
+		}
+	}
+	return agentshare.InboundSegments(ctx, text)
+}
+
 func NewMessageHandler(deps MessageHandlerDeps) *MessageHandler {
 	return &MessageHandler{deps: deps}
 }

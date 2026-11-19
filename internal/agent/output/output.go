@@ -59,8 +59,13 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
+func isBackground(ctx context.Context) bool {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	return facts.Mode == "background"
+}
+
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
-	if target.Empty() && (agentshare.ExecutionMode(ctx) == "background") {
+	if target.Empty() && (isBackground(ctx)) {
 		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 	}
 	sent, err := o.dispatcher.SendTo(ctx, target, outputs)
@@ -79,7 +84,7 @@ func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (strin
 }
 
 func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string) {
-	if (agentshare.ExecutionMode(ctx) == "background") || strings.TrimSpace(text) == "" {
+	if (isBackground(ctx)) || strings.TrimSpace(text) == "" {
 		return
 	}
 	globalevents.Notify(ctx, globalevents.NewNotification(ctx, level, text))
@@ -89,7 +94,7 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 // any multiline body. General workflow notices also occupy one argument.
 // It prefixes each nonblank notice once, joins them, and runs the output Hook once.
 func (o *OutputSender) Preview(ctx context.Context, text ...string) {
-	if agentshare.ExecutionMode(ctx) == "background" {
+	if isBackground(ctx) {
 		return
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
@@ -123,11 +128,11 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 	var platformStream delivery.MessageStream
 	closed := false
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (receipt delivery.Receipt, err error) {
-		if closed || agentshare.ExecutionMode(ctx) == "background" {
+		if closed || isBackground(ctx) {
 			return receipt, nil
 		}
-		buffered := agentshare.BufferAssistantOutput(ctx)
-		if buffered && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras && event.Type != delivery.StreamToolCalls && event.Type != delivery.StreamToolCall && event.Type != delivery.StreamToolResult {
+		msg, _ := agentshare.MessageContextFrom(ctx)
+		if msg.BufferAssistantOutput && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras && event.Type != delivery.StreamToolCalls && event.Type != delivery.StreamToolCall && event.Type != delivery.StreamToolResult {
 			return receipt, nil
 		}
 		defer func() {
@@ -162,7 +167,7 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 				return receipt, err
 			}
 		}
-		if buffered && event.Type == delivery.StreamSend {
+		if msg.BufferAssistantOutput && event.Type == delivery.StreamSend {
 			sent, err := o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
 			if err != nil {
 				return receipt, err

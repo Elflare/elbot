@@ -106,7 +106,7 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	if resumed.Status != operationresult.Success {
 		return ctx, operationresult.Result[struct{}]{Status: resumed.Status, Message: resumed.Message}, nil
 	}
-	segments := agentshare.ReplaceInboundTextSegments(ctx, continuation.Text)
+	segments := replaceInboundTextSegments(ctx, continuation.Text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	next, err := c.handleSessionInput(ctx, resumed.Data, continuation.Text)
 	if err != nil {
@@ -169,11 +169,11 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		if directives.WeaveDescription != "" {
 			text = strings.TrimSpace(text + "\n\n" + directives.WeaveDescription)
 		}
-		ctx = agentshare.WithInboundSegments(ctx, agentshare.ReplaceInboundTextSegments(ctx, text))
+		ctx = agentshare.WithInboundSegments(ctx, replaceInboundTextSegments(ctx, text))
 		input := agentshare.InboundTurnInput(ctx, text)
 		input.NeedsElyphRules = input.NeedsElyphRules || directives.NeedsElyphRules || skillDirectives.NeedsElyphRules
 		ctx = agentshare.WithInboundTurnInput(ctx, input)
-		if strings.TrimSpace(text) == "" && !agentshare.HasInboundNonTextSegment(ctx) {
+		if strings.TrimSpace(text) == "" && !hasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(skillDirectives.Skills) > 0 {
 				binding, _ := sessionpkg.BindingFromContext(ctx)
 				return ctx, c.deps.Sessions.RecordActivity(ctx, binding)
@@ -210,6 +210,15 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 }
 
 // NewInputCoordinator initializes InputCoordinator; platform-specific normalization is optional.
+func hasInboundNonTextSegment(ctx context.Context) bool {
+	for _, segment := range agentshare.InboundSegments(ctx, "") {
+		if segment.Type != llm.SegmentText {
+			return true
+		}
+	}
+	return false
+}
+
 func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 	return &InputCoordinator{deps: deps}
 }

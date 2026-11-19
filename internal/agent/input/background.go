@@ -102,7 +102,7 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	prompt := backgroundPromptWithSkills(req.Prompt, preloaded.SkillPrompt)
 	input := agentshare.InboundTurnInput(ctx, prompt)
 	if strings.TrimSpace(preloaded.SkillPrompt) != "" {
-		input.Segments = agentshare.ReplaceInboundTextSegments(ctx, prompt)
+		input.Segments = replaceInboundTextSegments(ctx, prompt)
 		input.Text = llm.SegmentsTextOnly(input.Segments)
 	}
 	input.NeedsElyphRules = req.NeedsElyphRules || preloaded.NeedsElyphRules
