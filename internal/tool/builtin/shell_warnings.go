@@ -91,9 +91,7 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 		a.blocked = checked
 		return
 	}
-	if strings.Contains(op, ">") {
-		a.addWarning(warnUseEditFile)
-	} else if strings.Contains(op, "<") {
+	if strings.Contains(op, "<") {
 		a.addWarning(warnUseReadFile)
 	}
 }
