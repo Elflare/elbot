@@ -81,7 +81,7 @@ type Runner struct {
 	}
 	Calls    *CallProcessor
 	System   SystemPromptManager
-	Routes   agentshare.LoopResolver
+	Routes   loopResolver
 	Preparer *Preparer
 	Messages *MessageStore
 	Replies  *ReplyCommitter
@@ -200,13 +200,16 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 }
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.
+type loopResolver interface {
+	LoopFor(llm.APIType) (agentshare.Loop, error)
+}
 type RunnerDeps struct {
 	NewMessageID func(context.Context) (string, error) // 根部注入，供消息创建与提交共用。
 	Status       interface {
 		Record(context.Context, runtimestatus.Snapshot)
 		RecordUsage(context.Context, string, *llm.Usage)
 	}
-	Routes    agentshare.LoopResolver
+	Routes    loopResolver
 	Dialogues interface {
 		Commit(context.Context, storage.DialogueCommit) error
 	}

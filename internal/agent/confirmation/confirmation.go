@@ -18,6 +18,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -194,7 +195,7 @@ func (c *ConfirmationCoordinator) confirmationContext(ctx context.Context) (cont
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
 	content := map[string]string{"tool": confirmation.ToolName, "risk": confirmation.Risk, "action": action, "extra": extra}
 	for key, value := range content {
-		content[key] = agentshare.TruncateLogContent(value, 2048)
+		content[key] = logging.TruncateContent(value, 2048)
 	}
 	data, _ := json.Marshal(content)
 	record := &events.LogRecord{
@@ -242,7 +243,7 @@ func (c *ConfirmationCoordinator) setToolAutoConfirmed(sessionID, toolName strin
 func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reasons []string) {
 	content := map[string]string{"tool": call.Name, "risk": string(risk), "arguments": call.Arguments, "risk_reasons": strings.Join(reasons, "; ")}
 	for key, value := range content {
-		content[key] = agentshare.TruncateLogContent(value, 2048)
+		content[key] = logging.TruncateContent(value, 2048)
 	}
 	data, _ := json.Marshal(content)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -263,7 +264,7 @@ func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, s
 func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, action, extra, reason string, resultStatus events.ResultStatus, level slog.Level) {
 	content := map[string]string{"tool": call.Name, "risk": string(risk), "action": action, "extra": extra, "reason": reason}
 	for key, value := range content {
-		content[key] = agentshare.TruncateLogContent(value, 2048)
+		content[key] = logging.TruncateContent(value, 2048)
 	}
 	data, _ := json.Marshal(content)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)

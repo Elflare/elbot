@@ -1,8 +1,6 @@
 package responses
 
 import (
-	agentshare "elbot/internal/agent/share"
-
 	"bytes"
 
 	"encoding/json"
@@ -31,7 +29,7 @@ func (c *Context) resolveContinuation(seed *storage.NativeSeed, items []api.Item
 			return nil, fmt.Errorf("原生分支续接材料与窗口不匹配")
 		}
 	}
-	materials, err := agentshare.DecodeMaterials(seed.MaterialsJSON)
+	materials, err := decodeMaterials(seed.MaterialsJSON)
 	if err != nil {
 		return nil, err
 	}

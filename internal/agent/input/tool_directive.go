@@ -206,7 +206,7 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	if admitted.Status != operationresult.Success {
 		return ctx, operationresult.Result[toolDirectiveResult]{Status: admitted.Status, Message: admitted.Message}, skillDirectiveResult{}, nil
 	}
-	committed, err := agentshare.CommitToolState(locked, c.deps.ToolState, row, update)
+	committed, err := commitToolState(locked, c.deps.ToolState, row, update)
 	release()
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
@@ -241,4 +241,18 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 		}
 	}
 	return ctx, operationresult.Result[toolDirectiveResult]{Status: operationresult.Success, Data: tools}, skills, nil
+}
+
+func commitToolState(ctx context.Context, state interface {
+	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
+}, row *storage.Session, update tool.StateUpdate) (tool.StateCommit, error) {
+	if len(update.Tools) == 0 && len(update.Tags) == 0 {
+		return tool.StateCommit{}, nil
+	}
+	result, err := state.Commit(ctx, row.ID, update)
+	if err != nil {
+		return tool.StateCommit{}, err
+	}
+	row.Metadata = result.Metadata
+	return result, nil
 }

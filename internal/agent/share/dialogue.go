@@ -9,7 +9,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -66,10 +65,6 @@ type PreparedLoop interface {
 	PrepareInput(context.Context, context.Context, LoopInput, Output) (operationresult.Result[storage.DialogueCommit], error)
 	RunLoop(context.Context, context.Context, LoopInput, Output) (operationresult.Result[LoopResult], error)
 }
-type LoopResolver interface {
-	LoopFor(llm.APIType) (Loop, error)
-}
-
 type LoopResult struct {
 	Outcome   Outcome
 	Commit    ReplyCommitInput
@@ -238,15 +233,6 @@ func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, e
 	return &storage.ToolBatch{Call: head, Results: results}, nil
 }
 
-// Material is an archived public content fragment. Index associates it with its
-// owner's ordered records; the owner alone interprets those records.
-type Material struct {
-	Index int `json:"index"`
-	// MessageID identifies the committed source, when the fragment has one.
-	MessageID string               `json:"message_id,omitempty"`
-	Segments  []llm.MessageSegment `json:"segments"`
-}
-
 // MessageFromStorage is the sole projection of archived business messages.
 func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
 	segments, err := MessageSegmentsFromStorage(row.Segments)
@@ -272,55 +258,6 @@ func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
 	}
 	message.Segments = segments
 	return message, nil
-}
-
-// MaterialMediaIDs collects retention references without opening media entities.
-func MaterialMediaIDs(materials []Material, arguments []string, retained []string) []string {
-	seen := map[string]bool{}
-	ids := []string{}
-	add := func(id string) {
-		if id != "" && !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-	for _, id := range retained {
-		add(id)
-	}
-	for _, material := range materials {
-		for _, segment := range material.Segments {
-			add(segment.MediaID)
-		}
-	}
-	for _, argument := range arguments {
-		for _, id := range media.ArgumentMediaIDs(argument) {
-			add(id)
-		}
-	}
-	return ids
-}
-
-func EncodeMaterials(materials []Material) string {
-	if materials == nil {
-		materials = []Material{}
-	}
-	data, _ := json.Marshal(materials)
-	return string(data)
-}
-
-func DecodeMaterials(raw string) ([]Material, error) {
-	var materials []Material
-	if err := json.Unmarshal([]byte(raw), &materials); err != nil {
-		return nil, err
-	}
-	for _, material := range materials {
-		for _, segment := range material.Segments {
-			if (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) && (segment.MediaID == "" || segment.URL != "") {
-				return nil, fmt.Errorf("archived media requires a stable reference without an expanded URL")
-			}
-		}
-	}
-	return materials, nil
 }
 
 func ToolCallStorageMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest, reasoningContent string) storage.Message {

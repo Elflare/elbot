@@ -21,7 +21,7 @@ func FileRollbackContext(ctx context.Context, service interface {
 	ListBySession(string) []request.Request
 }, identity interface {
 	Scope(context.Context) session.Scope
-}, row *storage.Session, idleOnly ...bool) context.Context {
+}, row *storage.Session, idleOnly bool) context.Context {
 	if row == nil {
 		return ctx
 	}
@@ -46,7 +46,7 @@ func FileRollbackContext(ctx context.Context, service interface {
 		if err != nil {
 			return operationresult.Result[fileops.CommitAdmissionData]{}, err
 		}
-		if len(idleOnly) > 0 && idleOnly[0] && (turns.Snapshot(row.ID).Phase != turn.PhaseIdle || CompactActive(turns, requests, row.ID)) {
+		if idleOnly && (turns.Snapshot(row.ID).Phase != turn.PhaseIdle || CompactActive(turns, requests, row.ID)) {
 			release()
 			return operationresult.Result[fileops.CommitAdmissionData]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 		}

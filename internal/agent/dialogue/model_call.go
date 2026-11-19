@@ -15,6 +15,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 )
@@ -159,10 +160,10 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		record.Category, record.Type, record.EventName = events.LogCategoryLog, events.ContentJSON, "assistant_message"
 		content := map[string]any{
 			"provider": o.event.Provider, "model": o.event.Model, "elapsed_ms": o.event.ElapsedMS,
-			"text": agentshare.TruncateLogContent(o.event.Text, 512), "tool_call_count": o.event.ToolCallCount,
+			"text": logging.TruncateContent(o.event.Text, 512), "tool_call_count": o.event.ToolCallCount,
 		}
 		if o.event.Text != o.event.SourceText {
-			content["raw_text"] = agentshare.TruncateLogContent(o.event.SourceText, 512)
+			content["raw_text"] = logging.TruncateContent(o.event.SourceText, 512)
 		}
 		data, _ := json.Marshal(content)
 		record.Content = string(data)

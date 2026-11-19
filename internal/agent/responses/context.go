@@ -1,7 +1,6 @@
 package responses
 
 import (
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
 
@@ -32,7 +31,37 @@ type Context struct {
 	}
 }
 
-type material = agentshare.Material
+// material is an archived public content fragment. Index associates it with its
+// owner's ordered records; the owner alone interprets those records.
+type material struct {
+	Index int `json:"index"`
+	// MessageID identifies the committed source, when the fragment has one.
+	MessageID string               `json:"message_id,omitempty"`
+	Segments  []llm.MessageSegment `json:"segments"`
+}
+
+func encodeMaterials(materials []material) string {
+	if materials == nil {
+		materials = []material{}
+	}
+	data, _ := json.Marshal(materials)
+	return string(data)
+}
+
+func decodeMaterials(raw string) ([]material, error) {
+	var materials []material
+	if err := json.Unmarshal([]byte(raw), &materials); err != nil {
+		return nil, err
+	}
+	for _, material := range materials {
+		for _, segment := range material.Segments {
+			if (segment.Type == llm.SegmentImage || segment.Type == llm.SegmentFile) && (segment.MediaID == "" || segment.URL != "") {
+				return nil, fmt.Errorf("archived media requires a stable reference without an expanded URL")
+			}
+		}
+	}
+	return materials, nil
+}
 
 type nativeWindow struct {
 	Items            []api.Item
@@ -69,7 +98,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			return operationresult.Result[*nativeWindow]{Status: decoded.Status, Message: decoded.Message}, nil
 		}
 		w.Items = decoded.Data
-		w.Materials, err = agentshare.DecodeMaterials(seed.MaterialsJSON)
+		w.Materials, err = decodeMaterials(seed.MaterialsJSON)
 		if err != nil {
 			return operationresult.Result[*nativeWindow]{}, err
 		}
@@ -376,13 +405,30 @@ func validateCallLinks(items []api.Item, allowOpen bool) error {
 }
 
 func (w *nativeWindow) mediaIDs() []string {
-	var arguments []string
-	for _, item := range w.Items {
-		if item.Type == "function_call" {
-			arguments = append(arguments, item.Arguments)
+	seen := map[string]bool{}
+	ids := []string{}
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
 		}
 	}
-	return agentshare.MaterialMediaIDs(w.Materials, arguments, w.RetainedMediaIDs)
+	for _, id := range w.RetainedMediaIDs {
+		add(id)
+	}
+	for _, m := range w.Materials {
+		for _, segment := range m.Segments {
+			add(segment.MediaID)
+		}
+	}
+	for _, item := range w.Items {
+		if item.Type == "function_call" {
+			for _, id := range media.ArgumentMediaIDs(item.Arguments) {
+				add(id)
+			}
+		}
+	}
+	return ids
 }
 
 // Resolve obtains protocol-neutral prepared material before assembling input
@@ -468,7 +514,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if err != nil {
 		return nil, err
 	}
-	materials := agentshare.EncodeMaterials(w.Materials)
+	materials := encodeMaterials(w.Materials)
 	more, err := json.Marshal(continuation)
 	if err != nil {
 		return nil, err

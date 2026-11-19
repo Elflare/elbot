@@ -74,7 +74,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
-	materials := agentshare.EncodeMaterials([]agentshare.Material{{MessageID: messageID, Segments: segments}})
+	materials := encodeMaterials([]material{{MessageID: messageID, Segments: segments}})
 	return storage.NativeInput{
 		ID:         storage.NewID(),
 		SessionID:  sessionID,
@@ -87,7 +87,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 }
 
 func inputSegments(input storage.NativeInput) ([]llm.MessageSegment, error) {
-	materials, err := agentshare.DecodeMaterials(input.MediaJSON)
+	materials, err := decodeMaterials(input.MediaJSON)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -75,7 +76,7 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
-	ctx = agentshare.FileRollbackContext(ctx, d.FileRollback, d.Sessions, d.Turns, d.Requests, d.Identity, session)
+	ctx = agentshare.FileRollbackContext(ctx, d.FileRollback, d.Sessions, d.Turns, d.Requests, d.Identity, session, false)
 	if agentshare.IsBackgroundSession(session) {
 		return ctx
 	}
@@ -110,7 +111,7 @@ func (d toolRunDeps) PublishToolResult(ctx context.Context, toolCallID string, r
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {
 	content := map[string]any{"actor": d.Identity.Actor(ctx)}
 	for key, value := range map[string]string{"tool": call.Name, "risk": string(risk), "reason": reason} {
-		content[key] = agentshare.TruncateLogContent(value, 2048)
+		content[key] = logging.TruncateContent(value, 2048)
 	}
 	data, _ := json.Marshal(content)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)

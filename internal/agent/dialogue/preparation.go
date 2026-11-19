@@ -8,6 +8,7 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -64,7 +65,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	}
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
 	actor, _ := contextinfo.ActorFromContext(ctx)
-	content := map[string]any{"text": agentshare.TruncateLogContent(message.Content, 4096), "actor": actor, "chat": conversation.Source, "platform_message_id": conversation.PlatformMessageID}
+	content := map[string]any{"text": logging.TruncateContent(message.Content, 4096), "actor": actor, "chat": conversation.Source, "platform_message_id": conversation.PlatformMessageID}
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	record.Identity = events.LogIdentityFromContext(ctx)

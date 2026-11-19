@@ -114,7 +114,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `tool/discovery/resolve.go`：发现与依赖解析。
 - `tool/state/`：`state.go` 状态更新；`discovered.go` 已发现声明。
 - `tool/preload/`：`preload.go` 预载；`tags.go` 标签；`background.go` 后台预载。
-- `agent/input/tool_directive.go`、`agent/share/tool_state.go`：工具指令、状态提交契约。
+- `agent/input/tool_directive.go`：工具指令与工具状态提交。
 - `fileops/`：`edit_service.go` 编辑；`rollback_service.go` 撤销；`preview.go` 预览；`binding.go` 绑定；`commit.go` 提交；`atomic_write.go` 原子写入；`rollback.go` 备份。
 - `workspace/`：`workspace.go` 目录；`resolve.go` 解析；`context.go` 调用范围；`sandbox.go` 沙盒；`state.go` 状态。
 - `session/workspace.go`、`session/control/workspace.go`：工作目录入口、持久化。
