@@ -46,6 +46,13 @@ ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `disco
 **常驻记忆与长期记忆分层**： 常驻记忆只存短小稳定的每轮注入信息，内部区分需确认修改的 core 与可整理的 normal；更长记忆由 LLM 按需通过 `long_memory` 查询，底层用 Markdown 源数据和 SQLite FTS，兼顾透明与检索效率。
 
 **tool_weave** 让模型用一次工具调用完成原本需要多轮交互的任务。模型用 Python 批量或并发调用 ElBot 工具，筛选后只取所需结果，以此节省 Token 和提升速度。[^3] [了解工具编排原理](docs/concepts.md#用-python-编排工具)
+一次实测中，ElBot 和 Codex 均使用 `gpt-6.2-astra` 修复 ElBot 的同一个 bug。ElBot 少调用模型 12 次，总 Token 用量低 81.3%。
+
+| 工具 | 模型调用次数 | Token 总数 |
+| --- | ---: | ---: |
+| ElBot | 25 | 363,447 |
+| Codex | 37 | 1,945,100 |
+| **ElBot 相比 Codex** | **少 12 次** | **低 81.3%** |
 
 ### 二、强大可扩展
 
