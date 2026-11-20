@@ -10,8 +10,42 @@ import (
 	clishare "elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 )
 
+type bindingChangeRecorder struct {
+	clishare.Runtime
+	changes [][3]string
+}
+
+func (r *bindingChangeRecorder) PresentBindingChange(account, old, next string) {
+	r.changes = append(r.changes, [3]string{account, old, next})
+}
+
+func TestConnectUIForwardsOnlyBindingReplacementsOnOwnPlatform(t *testing.T) {
+	recorder := &bindingChangeRecorder{}
+	source := testAgentEvents{signal.New[StatusChangedEvent, signal.Empty]("test.status"), signal.New[BindingChangedEvent, signal.Empty]("test.binding")}
+	defer source.status.Close(t.Context())
+	defer source.binding.Close(t.Context())
+	u, err := (&Adapter{name: testPlatformName, runtime: recorder}).ConnectUI(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer u.Close(t.Context())
+	scope := session.Scope{Platform: testPlatformName, ChatID: "user"}
+	a, b := &BindingSnapshot{Scope: scope, SessionID: "A"}, &BindingSnapshot{Scope: scope, SessionID: "B"}
+	foreign := scope
+	foreign.Platform = "other"
+	for i, event := range []BindingChangedEvent{{New: a}, {Old: a, New: b}, {Old: b}, {Old: &BindingSnapshot{Scope: foreign, SessionID: "A"}, New: &BindingSnapshot{Scope: foreign, SessionID: "B"}}} {
+		event.Version = uint64(i + 1)
+		if _, err := source.binding.Emit(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(recorder.changes) != 1 || recorder.changes[0] != [3]string{"user", "A", "B"} {
+		t.Fatalf("changes = %v", recorder.changes)
+	}
+}
 func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 	d := newStatusDisplay(testPlatformName)
 	defer d.Close(context.Background())

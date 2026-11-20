@@ -17,7 +17,7 @@ func testUI(t *testing.T) (*UI, *signal.Signal[StatusChangedEvent, signal.Empty]
 	t.Helper()
 	status := signal.New[StatusChangedEvent, signal.Empty]("test.cli.status")
 	binding := signal.New[BindingChangedEvent, signal.Empty]("test.cli.binding")
-	u, err := ConnectUI(testPlatformName, testAgentEvents{status, binding})
+	u, err := (&Adapter{name: testPlatformName}).ConnectUI(testAgentEvents{status, binding})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestUIConnectFailureReleasesPartialSubscription(t *testing.T) {
 	defer status.Close(context.Background())
 	binding := signal.New[BindingChangedEvent, signal.Empty]("test.binding")
 	_ = binding.Close(context.Background())
-	u, err := ConnectUI(testPlatformName, testAgentEvents{status, binding})
+	u, err := (&Adapter{name: testPlatformName}).ConnectUI(testAgentEvents{status, binding})
 	if !errors.Is(err, signal.ErrClosed) || u == nil {
 		t.Fatal(u, err)
 	}

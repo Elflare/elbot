@@ -280,6 +280,50 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	selectID(ha.APIToken, "S1", 401)
 	selectID(hb.APIToken, "S2", 204)
 }
+func TestSessionBindingChangeTargetsOldViewWithoutMovingIt(t *testing.T) {
+	s := testRemoteServer(t)
+	s.cfg.Server.Tokens["other"] = s.cfg.Server.Tokens["user"]
+	s.control = &subscriptionProbe{}
+	if err := s.Start(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	subscribe := func(account, view string) *websocket.Conn {
+		t.Helper()
+		c, hello := dialTestAccount(t, s, account)
+		req := httptest.NewRequest("PUT", "/api/v1/view/session", strings.NewReader(fmt.Sprintf(`{"session_id":%q}`, view)))
+		req.Header.Set("Authorization", "Bearer "+hello.APIToken)
+		w := httptest.NewRecorder()
+		s.managementHandler().ServeHTTP(w, req)
+		if w.Code != 204 {
+			t.Fatal(w.Code, w.Body)
+		}
+		return c
+	}
+	a, second := subscribe("user", "A"), subscribe("user", "A")
+	b, other := subscribe("user", "B"), subscribe("other", "A")
+	s.PresentBindingChange("user", "A", "B")
+	for _, c := range []*websocket.Conn{a, second} {
+		if msg := readTestRemote(t, c); msg.Type != "session_binding_changed" || msg.SessionID != "A" || msg.NextSessionID != "B" {
+			t.Fatalf("change = %+v", msg)
+		}
+	}
+	if len(s.sessionClients("user", "A")) != 2 {
+		t.Fatal("notification changed the subscription")
+	}
+	// 标记帧在通知之后写入，其他连接的队首必须直接是标记，不靠读超时判断。
+	clients, err := s.onlineClients(func(*remoteClientConn) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.writeClients(t.Context(), clients, remoteMessage{Type: remoteMsgNotice}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []*websocket.Conn{a, second, b, other} {
+		if msg := readTestRemote(t, c); msg.Type != remoteMsgNotice {
+			t.Fatalf("unexpected frame: %+v", msg)
+		}
+	}
+}
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
 	local := &remoteClientConn{id: "local"}

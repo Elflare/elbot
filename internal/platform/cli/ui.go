@@ -20,14 +20,23 @@ type UI struct {
 }
 
 // ConnectUI 在平台开始接收输入前建立状态订阅。
-func ConnectUI(platformName string, source AgentEvents) (*UI, error) {
-	u := &UI{display: newStatusDisplay(platformName)}
+func (a *Adapter) ConnectUI(source AgentEvents) (*UI, error) {
+	u := &UI{display: newStatusDisplay(a.name)}
 	connection, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
 	if connection != nil {
 		u.connections = append(u.connections, connection)
 	}
 	if err == nil {
-		connection, err = source.ObserveBindingChanged(u.display.forget, signal.ConnectOptions{})
+		connection, err = source.ObserveBindingChanged(func(event BindingChangedEvent) {
+			u.display.forget(event)
+			old, next := event.Old, event.New
+			if old == nil || next == nil || old.Scope.Platform != a.name {
+				return
+			}
+			if remote, ok := a.runtime.(interface{ PresentBindingChange(string, string, string) }); ok {
+				remote.PresentBindingChange(old.Scope.ChatID, old.SessionID, next.SessionID)
+			}
+		}, signal.ConnectOptions{})
 		if connection != nil {
 			u.connections = append(u.connections, connection)
 		}

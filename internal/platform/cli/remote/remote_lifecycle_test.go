@@ -78,6 +78,11 @@ func dialTestRemote(t *testing.T, s *RemoteServer, protocols ...string) *websock
 
 func dialTestConnection(t *testing.T, s *RemoteServer, protocols ...string) (*websocket.Conn, remoteMessage) {
 	t.Helper()
+	return dialTestAccount(t, s, "user", protocols...)
+}
+
+func dialTestAccount(t *testing.T, s *RemoteServer, account string, protocols ...string) (*websocket.Conn, remoteMessage) {
+	t.Helper()
 	s.mu.Lock()
 	address := s.listener.Addr().String()
 	s.mu.Unlock()
@@ -88,7 +93,7 @@ func dialTestConnection(t *testing.T, s *RemoteServer, protocols ...string) (*we
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.CloseNow() })
-	if err := wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgHello, ClientID: "user", Token: "secret"}); err != nil {
+	if err := wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgHello, ClientID: account, Token: "secret"}); err != nil {
 		t.Fatal(err)
 	}
 	var hello remoteMessage

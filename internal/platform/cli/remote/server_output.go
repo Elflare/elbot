@@ -33,6 +33,17 @@ func (s *RemoteServer) PresentNotice(ctx context.Context, notice clishare.Notice
 	return s.writeClients(ctx, clients, remoteMessage{Type: remoteMsgNotice, Text: notice.Text, Level: notice.Level})
 }
 
+// PresentBindingChange 通知旧 view 的在线订阅者，不修改连接的订阅。
+func (s *RemoteServer) PresentBindingChange(account, oldID, nextID string) {
+	ctx := context.Background()
+	err := s.writeClients(ctx, s.sessionClients(account, oldID), remoteMessage{
+		Type: remoteMsgSessionBindingChanged, SessionID: oldID, NextSessionID: nextID,
+	})
+	if err != nil {
+		delivery.LogSendResult(ctx, delivery.Target{Platform: s.name, ChatType: contextinfo.ChatPrivate, ChatID: account}, delivery.Text("session_binding_changed"), err)
+	}
+}
+
 func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if target.Empty() {
 		display, ok := s.originalTarget(ctx)

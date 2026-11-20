@@ -61,7 +61,7 @@ func registrations(frontendDir string) []registration {
 			m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
 				adapter.SetCompleter(source.Complete)
 				adapter.SetControlContinuation(source.ContinueControlInput)
-				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
+				ui, err := adapter.ConnectUI(agentEvents{source})
 				if err != nil {
 					return err
 				}

@@ -43,6 +43,7 @@ ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管
 | `command_result` | 仅发给原连接。`request_id` 对应 `input.id`；优先展示 `error`，否则展示 `result.blocks`，仅在 `success` 时读取 `result.data`。`actions` 的命令作为新输入提交。 |
 | `complete` → `complete_result` | 发送 `id`、`text` 和可选的 `cursor`，按 `id` 匹配响应。`cursor`（默认末尾）及候选的 `ReplaceStart`、`ReplaceEnd` 都是 UTF-8 字节偏移，不是字符序号。 |
 | `status` / `notice` | `status.snapshot` 是可能合并的运行状态快照；`notice` 是账号级文本通知，不按会话过滤，缺省级别为 `INFO`。 |
+| `session_binding_changed` | 当前账号的绑定从 `session_id` 变为 `next_session_id`，只通知仍订阅旧 ID 的连接。服务端不代改订阅；页面若仍在看旧会话，可用 `PUT /view/session` 订阅新 ID。首次绑定、解绑、单纯切换 view 不发，断线不补发。 |
 | `error` | 展示 `text`；有 `id` 时关联原请求。断线或客户端超时不代表后台任务已取消。 |
 
 流事件中，`text_delta`、`reasoning_delta` 分别追加正文和推理，`reasoning_done` 结束推理。`reset` 清空预览以便重试；`finish` 只表示生成结束，仍须保留预览。收到 `send` 才用最终正文或 `blocks` 替换预览并提交，保留已有推理。
