@@ -39,7 +39,7 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	t.recordHistory = commandReply
+	t.commandReply = commandReply
 	return a.sendOutputs(ctx, t, outputs)
 }
 
@@ -51,11 +51,12 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	if t.Proactive && !a.cfg.allowProactive() {
 		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
 	}
+	recordHistory := t.commandReply
 	var indexes []int
 	nativeType := 0
 	for i, out := range outputs {
 		if out.Delivery.HookPoint != "" {
-			t.recordHistory = true
+			recordHistory = true
 		}
 		switch out.Kind {
 		case delivery.KindImage, delivery.KindRecord, delivery.KindFile:
@@ -139,7 +140,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 				return delivery.Receipt{}, tooLong
 			}
 		}
-		if mixed || a.cfg.markdownByDefault() {
+		if mixed || keyboard || (!t.commandReply && a.cfg.markdownByDefault()) {
 			msg.MsgType = msgTypeMarkdown
 			msg.Markdown = &messageMarkdown{Content: body, ForceVerifyImageResource: mixed}
 		} else {
@@ -159,7 +160,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	if id == "" {
 		return delivery.Receipt{}, nil
 	}
-	if t.Kind == targetGroup && t.recordHistory {
+	if t.Kind == targetGroup && recordHistory {
 		a.recordGroupOutput(ctx, t, id, text, outputs)
 	}
 	chatType := qqOfficialChatType(t)
@@ -273,12 +274,12 @@ func (a *Adapter) nextMsgSeq(msgID string) int {
 }
 
 type sendTarget struct {
-	recordHistory bool           // 群内 Hook 和命令输出没有 assistant 正文，保存实发消息供引用。
-	Kind          sendTargetKind // 私聊或群聊目标。
-	OpenID        string         // 对应用户或群的开放标识。
-	MsgID         string         // 被回复的平台消息 ID，用于被动发送及序号分配。
-	EventID       string         // 无消息 ID 时使用的事件回复标识。
-	Proactive     bool           // 是否属于显式目标的主动发送。
+	commandReply bool           // 命令回复默认纯文本；群内同时保存实发消息供引用。
+	Kind         sendTargetKind // 私聊或群聊目标。
+	OpenID       string         // 对应用户或群的开放标识。
+	MsgID        string         // 被回复的平台消息 ID，用于被动发送及序号分配。
+	EventID      string         // 无消息 ID 时使用的事件回复标识。
+	Proactive    bool           // 是否属于显式目标的主动发送。
 }
 
 type sendTargetKind string

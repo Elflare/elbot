@@ -113,6 +113,39 @@ func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
 	}
 }
 
+func TestCommandTextAndChatUseDifferentFormats(t *testing.T) {
+	var messages []messageToCreate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg messageToCreate
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			t.Error(err)
+		}
+		messages = append(messages, msg)
+		_, _ = w.Write([]byte(`{"id":"sent"}`))
+	}))
+	defer server.Close()
+	a := newQQOfficialSendTestAdapter(t, server)
+	markdown := true
+	a.cfg.MarkdownByDefault = &markdown
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: a.Name(), ChatType: contextinfo.ChatPrivate, ChatID: "1"}, PlatformMessageID: "incoming"})
+	const text = "runtime logs:\n---\n[raw] *literal*"
+	if _, err := a.SendCommandResult(ctx, command.TextResult(operationresult.Success, text), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("sent %d messages", len(messages))
+	}
+	cmd, chat := messages[0], messages[1]
+	if cmd.MsgType != msgTypeText || cmd.Markdown != nil || cmd.Content != text {
+		t.Fatalf("command = %+v", cmd)
+	}
+	if chat.MsgType != msgTypeMarkdown || chat.Markdown == nil || chat.Markdown.Content != text {
+		t.Fatalf("chat = %+v", chat)
+	}
+}
 func TestSendDetailCommandUsesRawBlocksAndActions(t *testing.T) {
 	var body messageToCreate
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
