@@ -163,7 +163,7 @@ func TestRemoteStreamAndStatusFollowReconnectedClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldConn := dialTestRemote(t, server)
-	clients, err := server.onlineClients(func(string) bool { return true })
+	clients, err := server.onlineClients(func(*remoteClientConn) bool { return true })
 	if err != nil || len(clients) != 1 {
 		t.Fatalf("connected client = %v, error = %v", clients, err)
 	}

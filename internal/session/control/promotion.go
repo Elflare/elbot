@@ -69,6 +69,20 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 	}
 	ctx, id, release := entered.Data.Context, entered.Data.ID, entered.Data.Release
 	defer release()
+	// 目标 Session 已准入；直到提交，其他视图不能同时激活它。
+	s.mu.Lock()
+	for binding := range s.idle[id] {
+		other := binding.Scope().Key()
+		if other.ViewID == scope.ViewID {
+			continue
+		}
+		other.ViewID = scope.ViewID
+		if other == scope.Key() {
+			s.mu.Unlock()
+			return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "该会话已在另一视图中打开"}, nil
+		}
+	}
+	s.mu.Unlock()
 	if s.currentBusy(scope, id) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}

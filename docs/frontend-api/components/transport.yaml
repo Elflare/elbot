@@ -14,7 +14,7 @@ parameters:
     in: header
     required: false
     schema: { type: string }
-    description: Connection api_token returned by hello_ok; associates continuations with this WebSocket.
+    description: Connection api_token returned by hello_ok; selects its current-session view and routes continuations.
   connectionRequired:
     name: X-CLI-Connection
     in: header

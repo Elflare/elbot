@@ -89,6 +89,36 @@ func (f *fixture) releaseCounts() (int, int) {
 	return len(f.releasedSessions), len(f.releasedBindings)
 }
 
+func TestViewsCompetingToResumeWhileAnotherViewRuns(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	a := privateScope()
+	a.ViewID = "A"
+	history := f.create(t, a, "history")
+	running := f.create(t, a, "running")
+	binding := f.s.CurrentBinding(a)
+	f.setBusy(running.ID)
+	start := make(chan struct{})
+	results := make(chan operationresult.Status, 2)
+	for _, view := range []string{"B", "C"} {
+		scope := a
+		scope.ViewID = view
+		go func() {
+			<-start
+			result, err := f.s.Resume(t.Context(), scope, history.ID)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- result.Status
+		}()
+	}
+	close(start)
+	counts := map[operationresult.Status]int{}
+	counts[<-results]++
+	counts[<-results]++
+	if counts[operationresult.Success] != 1 || counts[operationresult.Conflict] != 1 || f.s.CurrentBinding(a) != binding || !binding.Valid() {
+		t.Fatalf("competing resume: %v; original binding valid=%v", counts, binding.Valid())
+	}
+}
 func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := t.Context(), privateScope()

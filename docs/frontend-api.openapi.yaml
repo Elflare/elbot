@@ -10,7 +10,9 @@ info:
     with an error code and the operation message; internal operation statuses are
     not HTTP statuses or wire codes. Execution and IO faults use internal_error
     with the original error message. Optional per-item faults in successful
-    responses are plain strings.
+    responses are plain strings. Supply X-CLI-Connection from the current WebSocket
+    to operate on its hello view_id; without this header, operations that allow
+    it to be omitted use the account's default view.
 servers:
   - url: /api/v1
 security:

@@ -28,6 +28,7 @@ func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 
 		Platform:     info.Source.Platform,
 		ChatID:       info.Source.ChatID,
+		ViewID:       info.ViewID,
 		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
 	}
 }

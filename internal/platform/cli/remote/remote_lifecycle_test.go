@@ -72,6 +72,12 @@ func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServe
 
 func dialTestRemote(t *testing.T, s *RemoteServer, protocols ...string) *websocket.Conn {
 	t.Helper()
+	conn, _ := dialTestView(t, s, "", protocols...)
+	return conn
+}
+
+func dialTestView(t *testing.T, s *RemoteServer, viewID string, protocols ...string) (*websocket.Conn, remoteMessage) {
+	t.Helper()
 	s.mu.Lock()
 	address := s.listener.Addr().String()
 	s.mu.Unlock()
@@ -82,14 +88,14 @@ func dialTestRemote(t *testing.T, s *RemoteServer, protocols ...string) *websock
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.CloseNow() })
-	if err := wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgHello, ClientID: "user", Token: "secret"}); err != nil {
+	if err := wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgHello, ClientID: "user", Token: "secret", ViewID: viewID}); err != nil {
 		t.Fatal(err)
 	}
 	var hello remoteMessage
 	if err := wsjson.Read(ctx, conn, &hello); err != nil || hello.Type != remoteMsgHelloOK {
 		t.Fatal(hello, err)
 	}
-	return conn
+	return conn, hello
 }
 
 func readTestRemote(t *testing.T, conn *websocket.Conn) remoteMessage {

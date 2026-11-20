@@ -27,9 +27,12 @@ ws://<host>:<port>/cli/v1/ws
 {
   "type": "hello",
   "client_id": "my-client",
+  "view_id": "tab-1",
   "token": "your-token"
 }
 ```
+
+`view_id` 可选。一个账号的不同标签页使用不同值，同页重连沿用原值；省略或空串使用账号的默认视图。它区分当前会话和回复流，不改变身份、权限或历史列表。`/resume` 只切换当前视图；目标仍绑定在本账号另一视图时返回冲突。关闭连接不会立即解绑，仍按会话原有切换和过期规则释放。
 
 服务端校验 token 后回复：
 
@@ -44,7 +47,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 `media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。
 
-提交答案或确认追加输入时，通过 `X-CLI-Connection` 发送 `api_token`，后续对话将回到该连接。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。
+使用独立视图的客户端应在管理 API 请求中通过 `X-CLI-Connection` 发送本连接的 `api_token`，使新建、恢复、状态查询与 WebSocket 输入操作同一视图。省略该头使用默认视图；提交答案等要求连接凭据的接口仍须提供。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。
 
 ## 消息格式
 

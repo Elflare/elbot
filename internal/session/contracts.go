@@ -10,6 +10,7 @@ import (
 
 // Scope 标识前台会话所属的用户和平台范围。
 type Scope struct {
+	ViewID       string                    // 仅用于区分当前绑定，不参与历史访问裁决。
 	TaskType     string                    // 后台任务类型；前台聊天为空。
 	TaskID       string                    // 类型内的原生任务 ID。
 	ChatType     contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。

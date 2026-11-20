@@ -45,6 +45,7 @@ type remoteMessage struct {
 	Type       string                  `json:"type"`
 	ID         string                  `json:"id,omitempty"`
 	ClientID   string                  `json:"client_id,omitempty"`
+	ViewID     string                  `json:"view_id,omitempty"` // hello 中的页标识，仅在同一账号内区分当前会话。
 	Token      string                  `json:"token,omitempty"`
 	Text       string                  `json:"text,omitempty"`
 	Blocks     []delivery.ContentBlock `json:"blocks,omitempty"`

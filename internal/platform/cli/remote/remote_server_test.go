@@ -12,13 +12,16 @@ import (
 
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	clishare "elbot/internal/platform/cli/share"
 	"elbot/internal/platform/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 func TestRemoteControlFailurePreservesOperationAndIdentity(t *testing.T) {
@@ -86,7 +89,7 @@ func TestRemoteServerSendsStatusAndNoticeToOriginalClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn := dialTestRemote(t, server)
-	clients, err := server.onlineClients(func(string) bool { return true })
+	clients, err := server.onlineClients(func(*remoteClientConn) bool { return true })
 	if err != nil || len(clients) != 1 {
 		t.Fatalf("connected client = %v, error = %v", clients, err)
 	}
@@ -122,6 +125,86 @@ func TestRemoteServerEmptyTargetUsesContextClient(t *testing.T) {
 	}
 }
 
+type resumeViewProbe struct {
+	managementControlStub
+	view, session string
+}
+
+func (p *resumeViewProbe) ResumeSession(ctx context.Context, req control.ResumeSessionRequest) (operationresult.Result[control.ResumeSessionResult], error) {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	p.view, p.session = info.ViewID, req.SessionID
+	return operationresult.Result[control.ResumeSessionResult]{Status: operationresult.Success}, nil
+}
+
+func TestRemoteViewsRouteInputResumeAndOutput(t *testing.T) {
+	server := testRemoteServer(t)
+	probe := &resumeViewProbe{}
+	server.control = probe
+	inputs := make(chan context.Context, 2)
+	if err := server.Start(t.Context(), func(ctx context.Context, _ string, _ share.MessageContext) error { inputs <- ctx; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := dialTestView(t, server, "A")
+	b, hello := dialTestView(t, server, "B")
+	input := func(c *websocket.Conn, text, view string) context.Context {
+		t.Helper()
+		if err := wsjson.Write(t.Context(), c, remoteMessage{Type: remoteMsgInput, Text: text}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case ctx := <-inputs:
+			info, _ := contextinfo.ConversationFromContext(ctx)
+			if info.ViewID != view || info.Source.ChatID != "user" || info.Identity.ID != "user" {
+				t.Fatalf("unexpected input context: %+v", info)
+			}
+			return ctx
+		case <-time.After(time.Second):
+			t.Fatal("missing input")
+			return nil
+		}
+	}
+	ctxA := input(a, "run", "A")
+	stream, err := server.StartStream(ctxA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctxB := input(b, "/resume S2", "B")
+	req := httptest.NewRequest("POST", "/api/v1/sessions/S2/resume", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("X-Client-ID", "user")
+	req.Header.Set("X-CLI-Connection", hello.APIToken)
+	w := httptest.NewRecorder()
+	server.managementHandler().ServeHTTP(w, req)
+	if w.Code != 200 || probe.view != "B" || probe.session != "S2" {
+		t.Fatalf("resume: %d %s, view=%s session=%s", w.Code, w.Body, probe.view, probe.session)
+	}
+	if _, err := stream.Send(ctxA, delivery.StreamEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	ca, _ := server.originalClient(ctxA)
+	target := remoteDisplayTarget{server: server, client: ca}
+	if err := target.PresentStatus(ctxA, clishare.Status{Snapshot: runtimestatus.Snapshot{SessionID: "S1"}}); err != nil {
+		t.Fatal(err)
+	}
+	cb, _ := server.originalClient(ctxB)
+	targetB := remoteDisplayTarget{server: server, client: cb}
+	if err := targetB.SendReply(ctxB, []delivery.Output{delivery.Text("B only")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.PresentNotice(ctxA, clishare.Notice{Text: "account", Destination: delivery.Target{ChatID: "user"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		conn *websocket.Conn
+		want []string
+	}{{a, []string{remoteMsgStream, remoteMsgStatus, remoteMsgNotice}}, {b, []string{remoteMsgChat, remoteMsgNotice}}} {
+		for _, want := range tc.want {
+			if got := readTestRemote(t, tc.conn); got.Type != want {
+				t.Fatalf("got %+v; want %s", got, want)
+			}
+		}
+	}
+}
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
 	local := &remoteClientConn{id: "local", server: s}

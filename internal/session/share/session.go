@@ -12,6 +12,7 @@ import (
 
 // Scope 标识 current 绑定的归属及调用入口的访问范围。
 type Scope struct {
+	ViewID       string                    // 仅用于区分当前绑定，不参与历史访问裁决。
 	TaskType     string                    // 后台任务类型；前台聊天为空。
 	TaskID       string                    // 类型内的原生任务 ID。
 	ChatType     contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
@@ -23,6 +24,7 @@ type Scope struct {
 
 // ScopeKey 仅包含稳定的归属和会话地址，不包含管理权限。
 type ScopeKey struct {
+	ViewID   string // 同一聊天地址内的交互视图；空值为默认视图。
 	TaskType string // 后台任务类型；前台聊天为空。
 	TaskID   string // 类型内的原生任务 ID。
 	Owner    contextinfo.ActorIdentity
@@ -32,7 +34,7 @@ type ScopeKey struct {
 }
 
 func (s Scope) Key() ScopeKey {
-	return ScopeKey{TaskType: s.TaskType, TaskID: s.TaskID, Owner: s.Owner, Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID}
+	return ScopeKey{ViewID: s.ViewID, TaskType: s.TaskType, TaskID: s.TaskID, Owner: s.Owner, Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID}
 }
 
 // IsBackground 只读取当前模式；来源、范围名称和接管历史不决定当前身份。

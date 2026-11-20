@@ -37,8 +37,8 @@ func compareAdmissionKey(a, b admissionKey) int {
 	if n := cmp.Compare(a.Kind, b.Kind); n != 0 {
 		return n
 	}
-	left := []string{a.Scope.Owner.Platform, a.Scope.Owner.ID, a.Scope.Platform, string(a.Scope.ChatType), a.Scope.ChatID, a.Scope.TaskType, a.Scope.TaskID, a.Name}
-	right := []string{b.Scope.Owner.Platform, b.Scope.Owner.ID, b.Scope.Platform, string(b.Scope.ChatType), b.Scope.ChatID, b.Scope.TaskType, b.Scope.TaskID, b.Name}
+	left := []string{a.Scope.Owner.Platform, a.Scope.Owner.ID, a.Scope.Platform, string(a.Scope.ChatType), a.Scope.ChatID, a.Scope.ViewID, a.Scope.TaskType, a.Scope.TaskID, a.Name}
+	right := []string{b.Scope.Owner.Platform, b.Scope.Owner.ID, b.Scope.Platform, string(b.Scope.ChatType), b.Scope.ChatID, b.Scope.ViewID, b.Scope.TaskType, b.Scope.TaskID, b.Name}
 	return slices.Compare(left, right)
 }
 

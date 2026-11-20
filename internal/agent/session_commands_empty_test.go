@@ -121,6 +121,56 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 	}
 }
 
+func TestResumeCommandOnlySwitchesCallingView(t *testing.T) {
+	deps := isolatedModuleDeps(t)
+	platform := &commandCapturePlatform{PlatformCapabilities: deps.Platform}
+	deps.Platform = platform
+	cfg := isolatedAgentConfig()
+	cfg.Commands.Prefixes = []string{"/"}
+	m, err := NewSupervisor(t.Context(), cfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close(context.Background()) })
+	base := testutil.WithCLIConversation(t.Context())
+	info, _ := contextinfo.ConversationFromContext(base)
+	a := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatType: contextinfo.ChatPrivate, ChatID: "local", ViewID: "A"}
+	b := a
+	b.ViewID = "B"
+	history, err := m.sessions.Create(base, a, session.CreateRequest{Title: "history"})
+	if err != nil || history.Status != operationresult.Success {
+		t.Fatal(history, err)
+	}
+	running, err := m.sessions.Create(base, a, session.CreateRequest{Title: "current A"})
+	if err != nil || running.Status != operationresult.Success {
+		t.Fatal(running, err)
+	}
+	before, err := m.sessions.CurrentBound(base, a)
+	if err != nil || before.Status != operationresult.Success {
+		t.Fatal(before, err)
+	}
+	info.ViewID = "B"
+	ctx := contextinfo.WithConversation(base, info)
+	for _, tc := range []struct {
+		id     string
+		status operationresult.Status
+	}{{history.Data.ID, operationresult.Success}, {running.Data.ID, operationresult.Conflict}} {
+		if err := m.HandleMessage(ctx, MessageRequest{Text: "/resume " + tc.id}); err != nil {
+			t.Fatal(err)
+		}
+		if len(platform.replies) == 0 || platform.replies[len(platform.replies)-1].result.Status != tc.status {
+			t.Fatalf("/resume %s: %+v", tc.id, platform.replies)
+		}
+		left, err := m.sessions.CurrentBound(base, a)
+		if err != nil || left.Status != operationresult.Success || left.Data.Binding != before.Data.Binding || !left.Data.Binding.Valid() {
+			t.Fatalf("A changed: %+v %v", left, err)
+		}
+		right, err := m.sessions.GetOrCreateCurrent(ctx, b, "next input")
+		if err != nil || right.Status != operationresult.Success || right.Data.ID != history.Data.ID {
+			t.Fatalf("B current: %+v %v", right, err)
+		}
+	}
+}
 func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	platform := &commandCapturePlatform{PlatformCapabilities: deps.Platform}

@@ -95,6 +95,7 @@ type RemoteServer struct {
 }
 
 type remoteClientConn struct {
+	viewID     string                     // hello 指定的逻辑视图；独立于连接凭据，可在重连后复用。
 	writeMu    sync.Mutex                 // Keep CLI chunks of one JSON envelope consecutive.
 	mediaToken string                     // 本连接的 HTTP 附件凭据，断连即撤销。
 	apiToken   string                     // 本连接的管理 API 路由凭据，断连即撤销。
@@ -194,7 +195,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platformshar
 		_ = wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgError, Text: "unauthorized"})
 		return
 	}
-	client := &remoteClientConn{id: clientID, conn: conn, server: s, mediaToken: rand.Text(), apiToken: rand.Text()}
+	client := &remoteClientConn{id: clientID, viewID: hello.ViewID, conn: conn, server: s, mediaToken: rand.Text(), apiToken: rand.Text()}
 	if !s.addClient(client) {
 		return
 	}
@@ -305,19 +306,20 @@ func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream,
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
-	return remoteMessageStream{server: s, clientID: client.id, id: remoteStreamID.Add(1)}, nil
+	return remoteMessageStream{server: s, clientID: client.id, viewID: client.viewID, id: remoteStreamID.Add(1)}, nil
 }
 
 var remoteStreamID atomic.Uint64
 
 type remoteMessageStream struct {
+	viewID   string // 流跨重连只投递给原逻辑视图。
 	server   *RemoteServer
 	clientID string
 	id       uint64 // Identifies one preview in the receiving TUI.
 }
 
 func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	clients, err := s.server.onlineClients(func(clientID string) bool { return clientID == s.clientID })
+	clients, err := s.server.viewClients(s.clientID, s.viewID)
 	if err == nil {
 		_ = s.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
 	}
@@ -327,6 +329,7 @@ func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEven
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
 	msg := platformshare.MessageContext{
 		Conversation: contextinfo.Conversation{
+			ViewID: client.viewID,
 			Source: contextinfo.Source{
 				Platform: s.Name(),
 
@@ -356,15 +359,22 @@ type remoteDisplayTarget struct {
 func (t remoteDisplayTarget) TargetID() string { return fmt.Sprintf("%p", t.client) }
 
 func (t remoteDisplayTarget) SendReply(ctx context.Context, outputs []delivery.Output) error {
-	return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs)
+	if t.client.viewID == "" {
+		return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs)
+	}
+	clients, err := t.server.viewClients(t.client.id, t.client.viewID)
+	if err != nil {
+		return err
+	}
+	return t.server.sendOutputs(ctx, clients, outputs)
 }
 
 func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return remoteMessageStream{server: t.server, clientID: t.client.id, id: remoteStreamID.Add(1)}, nil
+	return remoteMessageStream{server: t.server, clientID: t.client.id, viewID: t.client.viewID, id: remoteStreamID.Add(1)}, nil
 }
 
 func (t remoteDisplayTarget) PresentStatus(ctx context.Context, status clishare.Status) error {
-	clients, err := t.server.onlineClients(func(clientID string) bool { return clientID == t.client.id })
+	clients, err := t.server.viewClients(t.client.id, t.client.viewID)
 	if err != nil {
 		return nil
 	}
@@ -382,23 +392,27 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 		return nil, fmt.Errorf("cli target missing")
 	}
 	if target.Superadmins {
-		return s.onlineClients(s.superadmins.IsSuperadmin)
+		return s.onlineClients(func(c *remoteClientConn) bool { return s.superadmins.IsSuperadmin(c.id) })
 	}
 	if id := target.ChatID; id != "" {
-		return s.onlineClients(func(clientID string) bool { return clientID == id })
+		return s.onlineClients(func(c *remoteClientConn) bool { return c.id == id })
 	}
 	return nil, fmt.Errorf("cli target missing chat_id or superadmins")
 }
 
-func (s *RemoteServer) onlineClients(match func(string) bool) ([]*remoteClientConn, error) {
+func (s *RemoteServer) viewClients(id, viewID string) ([]*remoteClientConn, error) {
+	return s.onlineClients(func(c *remoteClientConn) bool { return c.id == id && c.viewID == viewID })
+}
+
+func (s *RemoteServer) onlineClients(match func(*remoteClientConn) bool) ([]*remoteClientConn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := []*remoteClientConn{}
-	for id, conns := range s.clients {
-		if !match(id) {
-			continue
-		}
+	for _, conns := range s.clients {
 		for conn := range conns {
+			if !match(conn) {
+				continue
+			}
 			out = append(out, conn)
 		}
 	}

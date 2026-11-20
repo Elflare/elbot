@@ -53,6 +53,8 @@
                   question_ids: { type: array, items: { type: integer, format: int64 } }
         default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions:
+    parameters:
+      - $ref: '../components/transport.yaml#/parameters/connection'
     get:
       operationId: listSessions
       summary: List sessions
