@@ -14,12 +14,6 @@ func Model(data control.SelectModelResult) string {
 	}
 	return fmt.Sprintf("%s → %s/%s", prefix, data.Model.Provider, data.Model.Model)
 }
-func Stop(data control.StopResult) string {
-	if data.State == "stopped" {
-		return "stopped"
-	}
-	return fmt.Sprintf("stopping: %d", data.AcceptedCount)
-}
 func Rollback(data fileops.RollbackResult) string {
 	if data.Deleted {
 		return "deleted: " + data.Path

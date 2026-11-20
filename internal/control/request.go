@@ -40,7 +40,7 @@ func (m *Supervisor) ListRequests(ctx context.Context) (operationresult.Result[L
 }
 
 func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (operationresult.Result[StopRequestResult], error) {
-	result := StopRequestResult{RequestID: req.RequestID, SessionIDs: []string{}, State: "stopped"}
+	result := StopRequestResult{RequestID: req.RequestID, SessionIDs: []string{}, State: "stopping"}
 	ready, err := share.Authorize(ctx, false)
 	if err != nil {
 		return operationresult.Result[StopRequestResult]{}, err
@@ -85,7 +85,6 @@ func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (o
 	if !ok || latest.SessionID != active.SessionID {
 		return operationresult.Result[StopRequestResult]{Status: operationresult.NotFound, Message: "请求不存在或不可访问"}, nil
 	}
-	result.State = "stopping"
 	if latest.Kind == request.KindTurn {
 		m.deps.Execution.StopSession(latest.SessionID)
 		result.AcceptedCount = m.deps.Requests.CancelSession(latest.SessionID)

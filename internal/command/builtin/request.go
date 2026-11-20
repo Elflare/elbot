@@ -51,11 +51,7 @@ func (c stopCommand) Info() command.Info {
 func (c stopCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	arg := strings.TrimSpace(req.Args)
 	if arg == "" {
-		result, err := c.deps.Control.StopSession(ctx)
-		if err != nil {
-			return command.Result{}, err
-		}
-		return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
+		return stopReply(c.deps.Control.StopSession(ctx))
 	}
 	items, err := stoppableRequests(ctx, c.deps)
 	if err != nil {
@@ -68,11 +64,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (command.R
 	if !ok {
 		return command.TextResult(operationresult.NotFound, fmt.Sprintf("request not found: %s", arg)), nil
 	}
-	result, err := c.deps.Control.StopRequest(ctx, control.StopRequestRequest{RequestID: id})
-	if err != nil {
-		return command.Result{}, err
-	}
-	return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
+	return stopReply(c.deps.Control.StopRequest(ctx, control.StopRequestRequest{RequestID: id}))
 }
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	token := command.CurrentCompletionToken(req)
@@ -87,13 +79,16 @@ func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest
 }
 func NewStopAll(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{Name: "stopall", Description: "停止所有会话的请求"}, func(ctx context.Context, req command.Request) (command.Result, error) {
-		result, err := deps.Control.StopAllRequests(ctx)
-		if err != nil {
-			return command.Result{}, err
-		}
-		return command.FromOperationResult(result, command.ResultKindStop, format.Stop), nil
+		return stopReply(deps.Control.StopAllRequests(ctx))
 	})
 }
+func stopReply(result operationresult.Result[control.StopResult], err error) (command.Result, error) {
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(result, command.ResultKindStop, func(control.StopResult) string { return "stopped" }), nil
+}
+
 func stoppableRequests(ctx context.Context, deps Deps) (operationresult.Result[[]control.RequestData], error) {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if actor.Role == contextinfo.RoleSuperadmin {
