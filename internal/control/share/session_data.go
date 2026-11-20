@@ -26,6 +26,7 @@ type SessionData struct {
 	ForkFromMessageID string     `json:"fork_from_message_id"`
 }
 type MessageData struct {
+	InputIDs                 []string             `json:"input_ids,omitempty"`
 	ID                       string               `json:"id"`
 	SessionID                string               `json:"session_id"`
 	Role                     string               `json:"role"`

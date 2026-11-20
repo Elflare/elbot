@@ -142,10 +142,10 @@ func DrainPending(turns interface {
 		segments = llm.TextSegments(pending.Text)
 	}
 	message := storage.Message{
-		SessionID: sessionID,
-		Role:      storage.RoleUser,
-		Content:   MessageContent(segments),
-		Segments:  StoredMessageSegments(segments),
+		SessionID: sessionID, Metadata: storage.EncodeInputIDs(pending.InputIDs),
+		Role:     storage.RoleUser,
+		Content:  MessageContent(segments),
+		Segments: StoredMessageSegments(segments),
 	}
 	return &PendingUserMessage{ExtraAnswers: extra, Answers: pending.Answers, Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }

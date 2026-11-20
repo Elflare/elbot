@@ -53,7 +53,8 @@ type Snapshot struct {
 }
 
 type Input struct {
-	Answers []*storage.AnswerBatch // Deferred user messages, one per /ac.
+	InputIDs []string
+	Answers  []*storage.AnswerBatch // Deferred user messages, one per /ac.
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string

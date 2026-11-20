@@ -33,6 +33,13 @@ func (s *historyStub) LoadMessagePage(_ context.Context, _ string, page, pageSiz
 	return contextmgr.MessagePage{TotalPages: 1, Messages: s.messages}, nil
 }
 
+func TestHistoryProjectsInputIDs(t *testing.T) {
+	rows, err := messageData([]storage.Message{{Role: storage.RoleUser, Metadata: `{"input_ids":["a","b"],"elyph_rules_shown":true}`}, {Role: storage.RoleUser}})
+	if err != nil || !reflect.DeepEqual(rows[0].InputIDs, []string{"a", "b"}) || rows[1].InputIDs != nil {
+		t.Fatal(rows, err)
+	}
+}
+
 func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	provider := &historyStub{row: &storage.Session{ID: "s", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "other"}, Platform: "qq", ChatType: contextinfo.ChatPrivate, ChatID: "chat"}}
 	segments := []llm.MessageSegment{

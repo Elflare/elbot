@@ -233,6 +233,9 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			}
 			defer s.releaseFiles(ctx, files.Data)
 			input, _ := platformshare.MessageContextFrom(ctx)
+			if selected != "" {
+				input.InputID = msg.ID
+			}
 			input.RawText = msg.Text
 			input.CommandReply = remoteCommandReply{client: client, requestID: msg.ID}
 			text, input.Segments, err = s.prepareInputFiles(ctx, text, files.Data)

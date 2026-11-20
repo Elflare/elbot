@@ -110,7 +110,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 ### user_input — 同步输入
 
-同账号订阅该会话的连接（含发送页）收到 `{"type":"user_input","session_id":"cl93","id":"m-1","text":"你好"}`。带附件时，`file_names` 按上传顺序列出名称，不转发原连接的附件 ID。这是输入回显，不是模型已处理或历史已写入的确认。发送页可用原输入 `id` 去重。对话输出（`chat`、`attachment`、`stream`、`status`）带所属 `session_id`；切页后忽略已在途的旧会话帧。命令回执和补全仍只返回原连接，账号级通知不按会话过滤。
+同账号订阅该会话的连接（含发送页）收到 `{"type":"user_input","session_id":"cl93","id":"m-1","text":"你好"}`。带附件时，`file_names` 按上传顺序列出名称，不转发原连接的附件 ID。这是输入回显，不是模型已处理或历史已写入的确认。每次发送使用独立的 `id`。历史用户消息可含 `input_ids`，列出这条记录对应的回显 ID（追加输入可能合并）。前端按 ID 合并实时与历史，不按正文去重。对话输出（`chat`、`attachment`、`stream`、`status`）带所属 `session_id`；切页后忽略已在途的旧会话帧。命令回执和补全仍只返回原连接，账号级通知不按会话过滤。
 
 ### chat — 正式回复
 

@@ -9,6 +9,19 @@ import (
 // SessionMetadata preserves unknown fields without converting JSON numbers.
 type SessionMetadata map[string]json.RawMessage
 
+// UserInputMetadata links a stored user row to its live input echoes.
+type UserInputMetadata struct {
+	InputIDs []string `json:"input_ids,omitempty"`
+}
+
+func EncodeInputIDs(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	data, _ := json.Marshal(UserInputMetadata{InputIDs: ids})
+	return string(data)
+}
+
 func DecodeSessionMetadata(raw string) (SessionMetadata, error) {
 	fields := SessionMetadata{}
 	if strings.TrimSpace(raw) == "" {

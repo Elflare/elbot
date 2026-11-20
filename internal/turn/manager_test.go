@@ -40,10 +40,10 @@ func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
 	if !m.StartToolPhase("s1", "attempt") {
 		t.Fatal("failed to start tool turn")
 	}
-	m.AppendPendingInput("s1", Input{Text: "first", PlatformText: "raw first", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "first"}, {Type: llm.SegmentImage, URL: "image-1"}}})
-	m.AppendPendingInput("s1", Input{Text: "second", PlatformText: "raw second", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "second"}, {Type: llm.SegmentImage, URL: "image-2"}}})
+	m.AppendPendingInput("s1", Input{InputIDs: []string{"x"}, Text: "first", PlatformText: "raw first", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "first"}, {Type: llm.SegmentImage, URL: "image-1"}}})
+	m.AppendPendingInput("s1", Input{InputIDs: []string{"y"}, Text: "second", PlatformText: "raw second", Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "second"}, {Type: llm.SegmentImage, URL: "image-2"}}})
 	merged := m.DrainMergedInput("s1", "attempt")
-	if merged.Text != "补充信息：\n1. first\n2. second" || merged.PlatformText != "补充信息：\n1. raw first\n2. raw second" {
+	if strings.Join(merged.InputIDs, ",") != "x,y" || merged.Text != "补充信息：\n1. first\n2. second" || merged.PlatformText != "补充信息：\n1. raw first\n2. raw second" {
 		t.Fatalf("merged = %#v", merged)
 	}
 	var images int

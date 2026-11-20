@@ -28,6 +28,7 @@ type Identity struct {
 }
 
 type Conversation struct {
+	InputID           string `json:"-"` // 当前输入回显 ID，不是持久化消息的主键。
 	TargetSessionID   string `json:"-"` // 本次请求明确选择的会话，不是可变的页面订阅。
 	Source            Source
 	Identity          Identity

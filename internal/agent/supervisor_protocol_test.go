@@ -61,7 +61,10 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 			t.Cleanup(func() { _ = models.Close(context.Background()) })
 			deps.Models = models
 			m := contractSupervisor(t, deps)
-			err = m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"})
+			ctx := testutil.WithCLIConversation(t.Context())
+			info, _ := contextinfo.ConversationFromContext(ctx)
+			info.InputID = "echo-1"
+			err = m.HandleMessage(contextinfo.WithConversation(ctx, info), MessageRequest{Text: "@tool:read_file hello"})
 			if tc.invalidSummary {
 				if err == nil || !strings.Contains(err.Error(), "function") {
 					t.Fatalf("expected tool rejection, got %v", err)
@@ -92,6 +95,10 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 			messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
 			if err != nil {
 				t.Fatal(err)
+			}
+			var meta storage.UserInputMetadata
+			if err := json.Unmarshal([]byte(messages[0].Metadata), &meta); err != nil || !slices.Equal(meta.InputIDs, []string{"echo-1"}) {
+				t.Fatalf("lost input ID: %s (%v)", messages[0].Metadata, err)
 			}
 			if messages[len(messages)-1].Content != "native answer" || !slices.ContainsFunc(messages, func(v storage.Message) bool {
 				return v.ToolCallID == "contract-call-1" && strings.Contains(v.Content, "contract result")

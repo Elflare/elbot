@@ -90,6 +90,7 @@ schemas:
         source_content: { type: string }
         reasoning_content: { type: string }
         parent_message_id: { type: string }
+        input_ids: { type: array, items: { type: string }, description: Original user_input echo IDs represented by this user row. }
         reply_to_platform_message_id: { type: string }
         reply_to_message_id: { type: string }
         tool_call_id: { type: string }

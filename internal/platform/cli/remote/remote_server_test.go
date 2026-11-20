@@ -192,7 +192,13 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	server := testRemoteServer(t)
 	server.control = &subscriptionProbe{}
 	inputs := make(chan context.Context, 2)
-	if err := server.Start(t.Context(), func(ctx context.Context, _ string, _ share.MessageContext) error { inputs <- ctx; return nil }); err != nil {
+	if err := server.Start(t.Context(), func(ctx context.Context, _ string, msg share.MessageContext) error {
+		if msg.InputID != "echo-id" {
+			t.Errorf("input ID = %q", msg.InputID)
+		}
+		inputs <- ctx
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	a, ha := dialTestConnection(t, server)
@@ -213,7 +219,7 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	selectID(ha.APIToken, "denied", 403)
 	send := func(id string) {
 		t.Helper()
-		if err := wsjson.Write(t.Context(), b, remoteMessage{Type: remoteMsgInput, SessionID: id, Text: "question"}); err != nil {
+		if err := wsjson.Write(t.Context(), b, remoteMessage{Type: remoteMsgInput, ID: "echo-id", SessionID: id, Text: "question"}); err != nil {
 			t.Fatal(err)
 		}
 	}

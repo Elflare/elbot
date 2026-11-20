@@ -90,7 +90,8 @@ const (
 )
 
 type Input struct {
-	Answers []*storage.AnswerBatch // Deferred user messages, one per /ac.
+	InputIDs []string               // 各原始输入的回显 ID，按追加顺序合并。
+	Answers  []*storage.AnswerBatch // Deferred user messages, one per /ac.
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string

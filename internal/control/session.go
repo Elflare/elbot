@@ -598,6 +598,13 @@ func messageData(rows []storage.Message) ([]MessageData, error) {
 		for i, call := range row.ToolCalls {
 			item.ToolCalls[i] = ToolCallData{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 		}
+		if row.Role == storage.RoleUser && row.Metadata != "" {
+			var meta storage.UserInputMetadata
+			if err := json.Unmarshal([]byte(row.Metadata), &meta); err != nil {
+				return nil, err
+			}
+			item.InputIDs = meta.InputIDs
+		}
 		var segments []llm.MessageSegment
 		if row.Segments != "" {
 			if err := json.Unmarshal([]byte(row.Segments), &segments); err != nil {

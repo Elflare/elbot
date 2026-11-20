@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/turn"
@@ -31,7 +32,11 @@ func InboundTurnInput(ctx context.Context, text string) turn.Input {
 		platformText = msg.RawText
 	}
 	segments := InboundSegments(ctx, text)
-	return turn.Input{Text: llm.SegmentsTextOnly(segments), PlatformText: platformText, Segments: segments}
+	input := turn.Input{Text: llm.SegmentsTextOnly(segments), PlatformText: platformText, Segments: segments}
+	if info, ok := contextinfo.ConversationFromContext(ctx); ok && info.InputID != "" {
+		input.InputIDs = []string{info.InputID}
+	}
+	return input
 }
 
 func WithInboundTurnInput(ctx context.Context, input turn.Input) context.Context {

@@ -61,14 +61,16 @@ func mergeInputs(inputs []Input) Input {
 	}
 	segments := llm.TextSegments("补充信息：")
 	platformTexts := make([]string, 0, len(clean))
+	var ids []string
 	needsElyphRules := false
 	for i, input := range clean {
+		ids = append(ids, input.InputIDs...)
 		needsElyphRules = needsElyphRules || input.NeedsElyphRules
 		segments = llm.AppendSegmentText(segments, fmt.Sprintf("\n%d. ", i+1))
 		segments = append(segments, input.Segments...)
 		platformTexts = append(platformTexts, input.PlatformText)
 	}
-	return Input{Answers: answers, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
+	return Input{InputIDs: ids, Answers: answers, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
 }
 func normalizeInput(input Input) Input {
 	input.Text = strings.TrimSpace(input.Text)
