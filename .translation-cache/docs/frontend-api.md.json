@@ -1,5 +1,13 @@
 {
   "segments": {
+    "docs/frontend-api.md:section:5e5e7bd61b6cfc5e815091281f05d617bd806e970f2505b5f4429456d84f4b71": {
+      "kind": "section",
+      "source": "# 前端 API\n\nElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管理会话、传输附件。`/api/v1` 管理接口的端点、请求、响应和错误以 [OpenAPI](../docs/frontend-api.openapi.yaml) 为准，也可[在线查阅](https://elfreese.github.io/elbot-landing/docs/api/)。本文说明如何把它们接成一次对话。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "e966118d4f24d53ec4c9e8b0b3e46eb08401b02a87c345081da13eb95977d753",
+      "translation": "# Frontend API\n\nThe ElBot client sends and receives conversations via WebSocket and manages Sessions and transfers attachments via the HTTP interface on the same port. The endpoints, requests, responses, and errors of the `/api/v1` management interface follow [OpenAPI](../docs/frontend-api.openapi.yaml), which can also be [viewed online](https://elfreese.github.io/elbot-landing/docs/api/). This document explains how to integrate them into a single conversation.\n\n",
+      "updated_at": 1795177068
+    },
     "docs/frontend-api.md:section:6c13858b77acecbf882e1d8ea947647d8fed11809d4e2608064a94380c638ddd": {
       "kind": "section",
       "source": "## 会话与首条消息\n\n1. **进入新对话**：清空本连接的订阅，显示空白页。不创建会话，也不停止旧会话的任务。\n2. **首次发送**：先创建会话，订阅返回的 ID，再发 WebSocket `input`。打开已有会话则直接订阅并读取历史，不必创建。\n3. **后续输入**：每次发送使用新的 `id`，`session_id` 必须与本连接的订阅一致。未订阅的普通 CLI 可省略 `session_id`，使用平台当前会话。订阅不等于 `/resume`。\n4. **重连**：重新登录、订阅并读取历史。服务端不重放断线期间的增量，客户端也不要自动重放写请求。切换会话后按 `session_id` 忽略旧会话在途的输出。\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"你好\"}\n```\n\n",
@@ -39,19 +47,11 @@
       "source_hash": "0fdd084b6f000b855a4f558a72dd4d82a5f782eecc3257e1c0ee2111798753f4",
       "translation": "## Static Frontend Hosting\n\nPlace `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it from `/`. Static files are public, and directory listing or SPA path fallback is not provided; operating ElBot still requires authentication. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.\n\n",
       "updated_at": 1795164932
-    },
-    "docs/frontend-api.md:section:fba27e41723c30f8bc7de6bdf2e751573751b813e9ea7d8f32be4c52a1a0dc6f": {
-      "kind": "section",
-      "source": "# 前端 API\n\nElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管理会话、传输附件。`/api/v1` 管理接口的端点、请求、响应和错误以 [OpenAPI](frontend-api.openapi.yaml) 为准，也可[在线查阅](https://elfreese.github.io/elbot-landing/docs/api/)。本文说明如何把它们接成一次对话。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "40fa8c260a05ad0cef8b261ce5ce17b7eb82fed14ef0ae6dec0a0c8ed3c5b081",
-      "translation": "# Frontend API\n\nElBot clients send and receive conversations via WebSocket, and manage sessions and transfer attachments via HTTP interfaces on the same port. The endpoints, requests, responses, and errors of the `/api/v1` management interface are defined by the [OpenAPI](frontend-api.openapi.yaml) specification, which can also be [viewed online](https://elfreese.github.io/elbot-landing/docs/api/). This document explains how to integrate them into a single conversation.\n\n",
-      "updated_at": 1795165024
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "83101637ad2cab8e13e9a2471efbf16b3874de8393fdd761d88a764d61c97181",
+  "source_hash": "479511bd45e74be0deb054776515661a87ed663ab00912c4ae67d49c9d0d0186",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1795165124,
+  "updated_at": 1795177068,
   "version": 3
 }

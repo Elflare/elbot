@@ -2,7 +2,7 @@
 
 # Frontend API
 
-ElBot clients send and receive conversations via WebSocket, and manage sessions and transfer attachments via HTTP interfaces on the same port. The endpoints, requests, responses, and errors of the `/api/v1` management interface are defined by the [OpenAPI](frontend-api.openapi.yaml) specification, which can also be [viewed online](https://elfreese.github.io/elbot-landing/docs/api/). This document explains how to integrate them into a single conversation.
+The ElBot client sends and receives conversations via WebSocket and manages Sessions and transfers attachments via the HTTP interface on the same port. The endpoints, requests, responses, and errors of the `/api/v1` management interface follow [OpenAPI](../docs/frontend-api.openapi.yaml), which can also be [viewed online](https://elfreese.github.io/elbot-landing/docs/api/). This document explains how to integrate them into a single conversation.
 
 ## Static Frontend Hosting
 
