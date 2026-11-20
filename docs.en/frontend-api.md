@@ -39,15 +39,16 @@ The output `attachment` frame contains attachment descriptions specific to the c
 
 | Message | Client Handling |
 |---|---|
-| `user_input` | Subscribers of the same account receive input echoes; this does not mean the model has processed it or the history has been persisted. Deduplicate based on `id` against historical `input_ids`, not by the body text. |
-| `chat` / `attachment` | Display complete messages and attachments in order of arrival. `chat.blocks` takes priority over `text`; `question` blocks are filled as drafts and confirmed via the management API, while model output after the answer still goes through WebSocket. |
-| `stream` | Maintain previews for single messages by `stream_id`, see below. Body text already submitted via `send` will not be resent as `chat`. |
-| `command_result` | Sent only to the original connection. `request_id` corresponds to `input.id`; prioritize displaying `error`, otherwise display `result.blocks`, and read `result.data` only when `success` is true. Commands in `actions` are submitted as new inputs. |
-| `complete` → `complete_result` | Send `id`, `text`, and an optional `cursor`, matching responses by `id`. The `cursor` (defaulting to the end) and candidate `ReplaceStart` and `ReplaceEnd` are UTF-8 byte offsets, not character indices. |
+| `user_input` | Subscribers of the same account receive input echoes; this does not mean the model has processed it or the history has been persisted. Deduplicate based on `id` and history `input_ids`, not by content. |
+| `chat` / `attachment` | Display complete messages and attachments in order of arrival. `chat.blocks` takes priority over `text`; `question` blocks are filled as drafts and confirmed via the management API, but model output after answering still goes through WebSocket. |
+| `stream` | Maintain a preview of a single message by `stream_id` (see below). Content already submitted via `send` will not be resent as `chat`. |
+| `command_result` | Sent only to the original connection. `request_id` corresponds to `input.id`; prioritize displaying `error`, otherwise display `result.blocks`, and read `result.data` only on `success`. Commands in `actions` are submitted as new inputs. |
+| `complete` → `complete_result` | Sends `id`, `text`, and optional `cursor`; match responses by `id`. `cursor` (defaulting to the end) and candidate `ReplaceStart`, `ReplaceEnd` are UTF-8 byte offsets, not character indices. |
 | `status` / `notice` | `status.snapshot` is a potentially merged runtime status snapshot; `notice` is an account-level text notification, not filtered by Session, with a default level of `INFO`. |
-| `error` | Display `text`; associate with the original request if an `id` is present. Disconnection or client timeout does not mean the background task has been cancelled. |
+| `session_binding_changed` | The current account's binding changes from `session_id` to `next_session_id`; only notifies connections still subscribed to the old ID. The server does not change subscriptions on behalf of the client; if the page is still viewing the old Session, use `PUT /view/session` to subscribe to the new ID. Not sent for initial binding, unbinding, or simple view switching; not resent after disconnection. |
+| `error` | Display `text`; associate with the original request when `id` is present. Disconnection or client timeout does not mean the background task has been cancelled. |
 
-In stream events, `text_delta` and `reasoning_delta` append the body and reasoning respectively, and `reasoning_done` ends the reasoning. `reset` clears the preview for retries; `finish` only indicates the end of generation and the preview must still be retained. Only upon receiving `send` should the preview be replaced by the final body or `blocks` and submitted, while preserving existing reasoning.
+In stream events, `text_delta` and `reasoning_delta` append content and reasoning respectively, and `reasoning_done` ends the reasoning. `reset` clears the preview for retries; `finish` only indicates the generation has ended, and the preview must still be retained. Only upon receiving `send` should the preview be replaced by the final content or `blocks` and submitted, while retaining existing reasoning.
 
 Tool calls and results may span across streams: pair `tool_call` and `tool_result` by `tool_call_id` rather than `stream_id`, preserving the call name, parameters, and result segments. `stream_id` is only valid for the current connection and is not used for reconnection recovery.
 
