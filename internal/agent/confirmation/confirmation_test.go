@@ -282,7 +282,8 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 
 func TestAppendConfirmationActionsUseProvidedCommandPrefix(t *testing.T) {
 	actions := AppendConfirmationActions(func(name string, _ ...string) string { return "!" + name })
-	if len(actions) != 2 || actions[0].ID != "append_confirm" || actions[0].Command != "!confirm" || actions[1].ID != "append_cancel" || actions[1].Command != "!stop" {
+	if len(actions) != 2 || actions[0].ID != "append_confirm" || actions[0].Command != "!c" || actions[0].Label != "send" ||
+		actions[1].ID != "append_cancel" || actions[1].Command != "!stop" || actions[1].Label != "drop" {
 		t.Fatalf("append actions=%+v", actions)
 	}
 }

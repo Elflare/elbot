@@ -38,7 +38,7 @@ func riskConfirmationActions(commandText func(string, ...string) string) []deliv
 
 func AppendConfirmationActions(commandText func(string, ...string) string) []delivery.Action {
 	return []delivery.Action{
-		{ID: "append_confirm", Label: "继续发送", Command: commandText("confirm")},
-		{ID: "append_cancel", Label: "取消追加", Command: commandText("stop")},
+		{ID: "append_confirm", Label: "send", Command: commandText("c")},
+		{ID: "append_cancel", Label: "drop", Command: commandText("stop")},
 	}
 }

@@ -127,8 +127,7 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			}
 			c.deps.Requests.CancelSession(session.ID)
 			release()
-			presentation := c.deps.AppendConfirmation
-			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?\ny=send · " + presentation.Actions[1].Command + "=drop+stop", Actions: presentation.Actions})
+			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?", Actions: c.deps.AppendConfirmation.Actions})
 			if err != nil {
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}
