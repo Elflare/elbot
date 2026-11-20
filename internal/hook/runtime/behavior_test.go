@@ -221,6 +221,8 @@ func TestShutdownUsesSingleBudget(t *testing.T) {
 }
 
 func TestShutdownWarnsOnlyOnForcedStop(t *testing.T) {
+	// Don't let the helper's race-runtime exit sleep consume the shutdown budget.
+	t.Setenv("GORACE", strings.TrimSpace(os.Getenv("GORACE")+" atexit_sleep_ms=0"))
 	for _, mode := range []string{"ack", "shutdown-no-response", "shutdown-ignore"} {
 		t.Run(mode, func(t *testing.T) {
 			warnings := make(chan string, 8)
