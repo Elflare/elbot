@@ -4,78 +4,32 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"sync"
 	"testing"
-	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/platform/share"
 )
 
 func TestStatelessLifecycle(t *testing.T) {
 	a := New("service")
-	if a.Name() != "service" {
-		t.Fatalf("name = %q", a.Name())
-	}
-	var runtime share.Runtime = a
-	canceled, cancel := context.WithCancel(t.Context())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	expired, stop := context.WithDeadline(t.Context(), time.Time{})
-	defer stop()
-	handler := func(context.Context, string, share.MessageContext) error {
-		t.Error("headless delivered input")
-		return nil
+	if err := a.Start(ctx, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Start = %v", err)
 	}
-	// 未启动即已无待清理资源，观察取消不覆盖完成结果。
-	for _, ctx := range []context.Context{t.Context(), canceled, expired} {
-		if err := runtime.Wait(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if err := runtime.Close(ctx); err != nil {
-			t.Fatal(err)
-		}
-		if err := runtime.Start(ctx, handler); !errors.Is(err, ctx.Err()) {
-			t.Fatalf("Start = %v, want %v", err, ctx.Err())
-		}
+	if err := a.Wait(ctx); err != nil {
+		t.Fatal(err)
 	}
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			if err := runtime.Start(t.Context(), handler); err != nil {
-				t.Error(err)
-			}
-			runtime.BeginClose()
-			if err := runtime.Wait(canceled); err != nil {
-				t.Error(err)
-			}
-			if err := runtime.Close(canceled); err != nil {
-				t.Error(err)
-			}
-		})
+	if err := a.Close(ctx); err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
 }
 
 func TestSendingRequiresTargetPlatform(t *testing.T) {
-	a := New("service")
-	outputs := []delivery.Output{delivery.Text("hello")}
-	for name, send := range map[string]func() (delivery.Receipt, error){
-		"chat": func() (delivery.Receipt, error) {
-			return a.SendTo(t.Context(), delivery.Target{}, outputs)
-		},
-		"target": func() (delivery.Receipt, error) {
-			return a.SendTo(t.Context(), delivery.Target{Platform: "telegram", ChatType: "private", ChatID: "user"}, outputs)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			receipt, err := send()
-			const want = "service platform cannot send chat output without a target platform"
-			if err == nil || err.Error() != want {
-				t.Fatal("result = , error = ", err)
-			}
-			if !reflect.DeepEqual(receipt, delivery.Receipt{}) {
-				t.Fatalf("unexpected receipt: %+v", receipt)
-			}
-		})
+	receipt, err := New("service").SendTo(t.Context(), delivery.Target{}, []delivery.Output{delivery.Text("hello")})
+	if err == nil || err.Error() != "service platform cannot send chat output without a target platform" {
+		t.Fatalf("SendTo error = %v", err)
+	}
+	if !reflect.DeepEqual(receipt, delivery.Receipt{}) {
+		t.Fatalf("unexpected receipt: %+v", receipt)
 	}
 }

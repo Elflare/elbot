@@ -54,8 +54,10 @@ type Router struct {
 }
 
 func New(opts Options) *Router {
-	r := &Router{primary: opts.Primary.Name(), senders: make(map[string]delivery.MessageSender), saveMediaOutput: opts.SaveMediaOutput, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
-	r.publishUsageFinished = opts.PublishUsageFinished
+	r := &Router{
+		primary: opts.Primary.Name(), senders: make(map[string]delivery.MessageSender), media: opts.Media,
+		saveMediaOutput: opts.SaveMediaOutput, mediaRetentionDays: opts.MediaRetentionDays, publishUsageFinished: opts.PublishUsageFinished,
+	}
 	r.RegisterPlatform(opts.Primary)
 	return r
 }
@@ -105,10 +107,29 @@ func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []d
 	if selected.Status != operationresult.Success {
 		return operationresult.Result[delivery.Receipt]{Status: selected.Status, Message: selected.Message}, nil
 	}
-	sender := selected.Data
-	return r.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
-		return sender.SendTo(ctx, target, resolved)
-	})
+	prepared, err := r.prepareMediaOutputs(ctx, outputs)
+	if err != nil {
+		return operationresult.Result[delivery.Receipt]{}, err
+	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[delivery.Receipt]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	resolved, usages, err := r.resolveMediaOutputs(ctx, prepared.Data)
+	if len(usages) != 0 {
+		defer r.publishUsageFinished(ctx, usages)
+	}
+	if err != nil {
+		return operationresult.Result[delivery.Receipt]{}, err
+	}
+	if resolved.Status != operationresult.Success {
+		return operationresult.Result[delivery.Receipt]{Status: resolved.Status, Message: resolved.Message}, nil
+	}
+	receipt, err := selected.Data.SendTo(ctx, target, resolved.Data)
+	if err != nil {
+		return operationresult.Result[delivery.Receipt]{}, err
+	}
+	r.cacheMediaReceipt(ctx, prepared.Data, receipt)
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
 }
 
 func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delivery.MessageStream], error) {
@@ -122,23 +143,25 @@ func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delive
 	sender := selected.Data
 	toolCallEvents, structuredToolCalls := sender.(delivery.ToolCallEventSender)
 	structuredToolCalls = structuredToolCalls && toolCallEvents.SupportsToolCallEvents()
+	var stream delivery.MessageStream
 	if streaming, ok := sender.(delivery.StreamSender); ok {
-		stream, err := streaming.StartStream(ctx)
+		var err error
+		stream, err = streaming.StartStream(ctx)
 		if err != nil {
 			return operationresult.Result[delivery.MessageStream]{}, err
 		}
-		return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: r.routeToolCallEvents(ctx, stream, structuredToolCalls)}, nil
+	} else {
+		stream = delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+			if event.Type != delivery.StreamSend {
+				return delivery.Receipt{}, nil
+			}
+			return sender.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
+		})
 	}
-	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-		if event.Type != delivery.StreamSend {
-			return delivery.Receipt{}, nil
-		}
-		return sender.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
-	})
-	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: r.routeToolCallEvents(ctx, stream, structuredToolCalls)}, nil
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: routeToolCallEvents(stream, structuredToolCalls)}, nil
 }
 
-func (r *Router) routeToolCallEvents(ctx context.Context, stream delivery.MessageStream, structured bool) delivery.MessageStream {
+func routeToolCallEvents(stream delivery.MessageStream, structured bool) delivery.MessageStream {
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type == delivery.StreamToolCalls {
 			if structured {

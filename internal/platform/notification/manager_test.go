@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
@@ -168,9 +169,6 @@ func addTestPlatform(t *testing.T, m *Manager, name string, h func(context.Conte
 		t.Fatal(err)
 	}
 	if _, err = s.Observe(func(ctx context.Context, n events.Notification) {
-		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
-			return
-		}
 		if err := h(ctx, n); err != nil {
 			m.log(ctx, events.LogRecord{Category: events.LogCategoryLog, EventName: "notification_send_failed", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 		}
@@ -260,6 +258,13 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 		t.Fatal(r, err)
 	}
 }
+
+type notificationSender func(string)
+
+func (send notificationSender) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	send(outputs[0].Text)
+	return delivery.Receipt{}, nil
+}
 func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	m := testManager(t, "cli")
 	started, release := make(chan struct{}), make(chan struct{})
@@ -271,14 +276,20 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 		}
 	}()
 	var calls atomic.Int32
-	s := addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) error {
+	s, err := m.AddPlatform("cli", share.ValidateNotificationTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = share.ConnectNotifications(s, notificationSender(func(text string) {
 		calls.Add(1)
-		if n.Text == "block" {
+		if text == "block" {
 			close(started)
 			<-release
 		}
-		return nil
-	})
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	store, err := sqlite.New(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -295,11 +306,15 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 		t.Fatalf("current binding: %+v %v", current, err)
 	}
 	binding := current.Data.Binding
-	n := events.Notification{Target: events.NotificationTarget{Platform: "cli"}, Text: "block"}
-	s.EmitAsync(context.Background(), n)
-	<-started
+	ctx := session.WithBinding(t.Context(), binding)
+	n := events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: "private", ID: "one"}, Text: "block"}
+	s.EmitAsync(ctx, n)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("live binding did not reach the sender")
+	}
 	n.Text = "old"
-	ctx := session.WithBinding(context.Background(), binding)
 	s.EmitAsync(ctx, n)
 	created, err = sessions.Create(context.Background(), scope, session.CreateRequest{})
 	if err != nil || created.Status != operationresult.Success {
@@ -327,8 +342,7 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "missing"}); err != nil {
 		t.Fatal("handled routing failure escaped", err)
 	}
-	s, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
-	if err != nil {
+	if _, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if results, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "no receiver"}); err != nil || len(results) != 1 || !errors.Is(results[0].Err, signal.ErrNoReceiver) {
@@ -341,11 +355,6 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 		if !reflect.DeepEqual(record.Identity, events.LogIdentityFromContext(ctx)) {
 			t.Fatalf("routing failure lost execution identity: %+v", record)
 		}
-	}
-	if _, err := s.Observe(func(context.Context, events.Notification) {
-
-	}, signal.ConnectOptions{}); err != nil {
-		t.Fatal(err)
 	}
 }
 

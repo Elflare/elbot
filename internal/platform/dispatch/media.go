@@ -92,32 +92,6 @@ func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Out
 	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: resolved}, usages, nil
 }
 
-func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (operationresult.Result[delivery.Receipt], error) {
-	prepared, err := a.prepareMediaOutputs(ctx, outputs)
-	if err != nil {
-		return operationresult.Result[delivery.Receipt]{}, err
-	}
-	if prepared.Status != operationresult.Success {
-		return operationresult.Result[delivery.Receipt]{Status: prepared.Status, Message: prepared.Message}, nil
-	}
-	resolved, usages, err := a.resolveMediaOutputs(ctx, prepared.Data)
-	if len(usages) != 0 {
-		defer a.publishUsageFinished(ctx, usages)
-	}
-	if err != nil {
-		return operationresult.Result[delivery.Receipt]{}, err
-	}
-	if resolved.Status != operationresult.Success {
-		return operationresult.Result[delivery.Receipt]{Status: resolved.Status, Message: resolved.Message}, nil
-	}
-	receipt, sendErr := send(resolved.Data)
-	if sendErr != nil {
-		return operationresult.Result[delivery.Receipt]{}, sendErr
-	}
-	a.cacheMediaReceipt(ctx, prepared.Data, receipt)
-	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
-}
-
 func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) {
 	if a.mediaRetentionDays <= 0 {
 		return

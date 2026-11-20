@@ -4,7 +4,7 @@ package headless
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
@@ -35,6 +35,5 @@ func (a *Adapter) Wait(context.Context) error { return nil }
 func (a *Adapter) Close(context.Context) error { return nil }
 
 func (a *Adapter) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-	err := fmt.Errorf("service platform cannot send chat output without a target platform")
-	return delivery.Receipt{}, err
+	return delivery.Receipt{}, errors.New("service platform cannot send chat output without a target platform")
 }
