@@ -1,4 +1,9 @@
   /view/session:
+    delete:
+      summary: Clear only the authenticated WebSocket's session subscription without creating a session
+      responses:
+        '204': { description: No session subscribed. No response body. }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
     put:
       operationId: selectViewSession
       summary: Subscribe the authenticated WebSocket to a session without activating it

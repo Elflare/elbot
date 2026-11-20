@@ -30,6 +30,10 @@ func NewHandler(options HandlerOptions) http.Handler {
 	h := &handler{selectSession: options.SelectSession, control: options.Control, authenticate: options.Authenticate, continueCall: options.Continue}
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /view/session", h.setViewSession)
+	mux.HandleFunc("DELETE /view/session", func(w http.ResponseWriter, req *http.Request) {
+		h.selectSession(req.Context(), "")
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /sessions/{session_id}/questions", h.listQuestions)
 	mux.HandleFunc("PUT /sessions/{session_id}/questions/{id}/draft", h.saveQuestionDraft)
 	mux.HandleFunc("POST /sessions/{session_id}/questions/confirm", h.confirmAnswers)

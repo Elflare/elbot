@@ -260,3 +260,19 @@ func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestClearViewSession(t *testing.T) {
+	selected := "old-session"
+	handler := NewHandler(HandlerOptions{
+		Control:       handlerControlStub{},
+		Authenticate:  func(ctx context.Context, _ *http.Request) (context.Context, error) { return ctx, nil },
+		SelectSession: func(_ context.Context, id string) { selected = id },
+	})
+	for i := 0; i < 2; i++ {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/api/v1/view/session", nil))
+		if response.Code != http.StatusNoContent || selected != "" || response.Body.Len() != 0 {
+			t.Fatalf("status=%d selected=%q body=%s", response.Code, selected, response.Body.String())
+		}
+	}
+}
