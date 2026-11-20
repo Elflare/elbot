@@ -27,7 +27,14 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		return ctx, false, err
 	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
-	if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, result, err); sendErr != nil {
+	sendReply := func(result command.Result, failure error) error {
+		_, sendErr := e.deps.Output.SendCommandResult(sendCtx, result, failure)
+		if sendErr != nil {
+			globalevents.Log(sendCtx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "command_reply_send_failed", Module: "command", Type: globalevents.ContentText, Content: sendErr.Error(), Identity: globalevents.LogIdentityFromContext(sendCtx), ResultStatus: globalevents.LogStatus(sendErr)})
+		}
+		return sendErr
+	}
+	if sendErr := sendReply(result, err); sendErr != nil {
 		result.Continuation.CancelReservation()
 		return ctx, true, sendErr
 	}
@@ -48,7 +55,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		}
 		if continued.Status != operationresult.Success {
 			result = command.TextResult(continued.Status, continued.Message)
-			if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, result, nil); sendErr != nil {
+			if sendErr := sendReply(result, nil); sendErr != nil {
 				return next, true, sendErr
 			}
 		}

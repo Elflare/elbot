@@ -114,6 +114,114 @@ func TestNativeFileAndRecordOrRejectGroup(t *testing.T) {
 		}
 	}
 }
+func TestNumberedPages(t *testing.T) {
+	for _, n := range []int{1800, 1801, 4001} {
+		for _, command := range []bool{false, true} {
+			var messages []messageToCreate
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var m messageToCreate
+				if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+					t.Error(err)
+				}
+				messages = append(messages, m)
+				fmt.Fprintf(w, `{"id":"p%d"}`, len(messages))
+			}))
+			t.Cleanup(srv.Close)
+			a := newQQOfficialSendTestAdapter(t, srv)
+			md := true
+			a.cfg.MarkdownByDefault = &md
+			text := " " + strings.Repeat("字", n-2) + "\n"
+			receipt, err := a.sendOutputs(t.Context(), sendTarget{MsgID: "incoming", Kind: targetC2C, OpenID: "u", commandReply: command}, []delivery.Output{delivery.Text(text)})
+			total := (n + 1799) / 1800
+			if err != nil || len(messages) != total || len(receipt.SentMessages) != total {
+				t.Fatalf("n=%d pages=%d err=%v", n, len(messages), err)
+			}
+			var joined string
+			for i, m := range messages {
+				body := m.Content
+				if !command {
+					if m.Markdown == nil {
+						t.Fatal("missing markdown")
+					}
+					body = m.Markdown.Content
+				}
+				if total > 1 {
+					suffix := fmt.Sprintf("\n（%d/%d）", i+1, total)
+					if !strings.HasSuffix(body, suffix) {
+						t.Fatal("no page number")
+					}
+					body = strings.TrimSuffix(body, suffix)
+				}
+				if len([]rune(body)) > 1800 || m.MsgSeq != i+1 {
+					t.Fatal("bad page", i)
+				}
+				joined += body
+			}
+			if joined != text {
+				t.Fatal("page boundaries changed text")
+			}
+		}
+	}
+}
+func TestPagedMarkdownImageReceiptAndPartialFailure(t *testing.T) {
+	for _, failSecond := range []bool{false, true} {
+		var msgs []messageToCreate
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var m messageToCreate
+			if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+				t.Error(err)
+			}
+			msgs = append(msgs, m)
+			if len(msgs) == 2 && failSecond {
+				http.Error(w, "failed", 400)
+				return
+			}
+			fmt.Fprintf(w, `{"id":"p%d"}`, len(msgs))
+		}))
+		t.Cleanup(srv.Close)
+		a := newQQOfficialSendTestAdapter(t, srv)
+		h := &captureGroupHistory{interfaceHistory: a.chatHistory}
+		a.chatHistory = h
+		group := []delivery.Output{delivery.Text(strings.Repeat("字", 1799)), delivery.ImagePath("")}
+		group[1].Source.URL = "https://example.org/image.png"
+		group[0].Delivery.HookPoint = "test"
+		r, err := a.sendOutputs(t.Context(), sendTarget{Kind: targetGroup, OpenID: "g"}, group)
+		if len(msgs) != 2 || (err != nil) != failSecond || len(r.SentMessages) == 0 || len(r.SentMessages[0].OutputIndexes) != 0 || msgs[0].Markdown.ForceVerifyImageResource || !msgs[1].Markdown.ForceVerifyImageResource || !strings.Contains(msgs[1].Markdown.Content, group[1].Source.URL) {
+			t.Fatalf("pages=%+v receipt=%+v err=%v", msgs, r, err)
+		}
+		if len(h.rows) != len(r.SentMessages) || !strings.HasSuffix(h.rows[0].Text, "（1/2）") {
+			t.Fatal("wrong page history")
+		}
+		if failSecond {
+			if len(r.SentMessages) != 1 {
+				t.Fatal(r)
+			}
+		} else if len(r.SentMessages) != 2 || !slices.Equal(r.SentMessages[1].OutputIndexes, []int{1}) {
+			t.Fatal(r)
+		}
+	}
+}
+
+func TestPagedKeyboardAndNewline(t *testing.T) {
+	var msgs []messageToCreate
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m messageToCreate
+		_ = json.NewDecoder(r.Body).Decode(&m)
+		msgs = append(msgs, m)
+		fmt.Fprint(w, `{"id":"sent"}`)
+	}))
+	defer srv.Close()
+	a := newQQOfficialSendTestAdapter(t, srv)
+	enabled := true
+	a.cfg.MarkdownByDefault = &enabled
+	a.cfg.EnableKeyboard = &enabled
+	out := delivery.Text("header\n" + strings.Repeat("字", 1800))
+	out.Actions = []delivery.Action{{ID: "yes", Label: "确认", Command: "/confirm"}}
+	_, err := a.sendOutputs(t.Context(), sendTarget{Kind: targetC2C, OpenID: "u", commandReply: true}, []delivery.Output{out})
+	if err != nil || len(msgs) != 2 || msgs[0].Keyboard == nil || msgs[1].Keyboard != nil || msgs[0].Markdown.Content != "header\n\n（1/2）" || msgs[1].Markdown.Content != strings.Repeat("字", 1800)+"\n（2/2）" {
+		t.Fatalf("messages=%+v err=%v", msgs, err)
+	}
+}
 func TestGroupPreparationBeforeUploadAndSequence(t *testing.T) {
 	var paths []string
 	var sent messageToCreate
@@ -132,7 +240,7 @@ func TestGroupPreparationBeforeUploadAndSequence(t *testing.T) {
 	a := newQQOfficialSendTestAdapter(t, server)
 	target := sendTarget{Kind: targetGroup, OpenID: "g", MsgID: "incoming"}
 	image := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("\x89PNG\r\n\x1a\nbody")}}
-	if _, err := a.sendOutputs(t.Context(), target, []delivery.Output{image, delivery.Text(strings.Repeat("字", 2001))}); err == nil || len(paths) != 0 {
+	if _, err := a.sendOutputs(t.Context(), target, []delivery.Output{delivery.Text("caption"), {Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/" + strings.Repeat("a", 1800)}}}); err == nil || len(paths) != 0 {
 		t.Fatalf("oversized group: paths=%v err=%v", paths, err)
 	}
 	if _, err := a.sendOutputs(t.Context(), target, []delivery.Output{image, delivery.Text("caption")}); err == nil {

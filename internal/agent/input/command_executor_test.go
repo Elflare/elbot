@@ -79,8 +79,25 @@ func assertNoCommandLogs(t *testing.T) {
 	t.Cleanup(connection.Disconnect)
 }
 
+func captureReplyFailures(t *testing.T) *[]string {
+	t.Helper()
+	var got []string
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
+		if r.Module == "command" {
+			if r.EventName != "command_reply_send_failed" {
+				t.Errorf("unexpected log %s", r.EventName)
+			}
+			got = append(got, r.Content)
+		}
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Disconnect)
+	return &got
+}
 func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
-	assertNoCommandLogs(t)
+	logs := captureReplyFailures(t)
 	for _, failSend := range []bool{false, true} {
 		probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.Success}}
 		if failSend {
@@ -102,6 +119,9 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 		}
 		if !handled || !reflect.DeepEqual(probe.order, want) || !errors.Is(err, probe.sendErr) {
 			t.Fatalf("order=%v handled=%v err=%v", probe.order, handled, err)
+		}
+		if failSend && !reflect.DeepEqual(*logs, []string{"transport down"}) || !failSend && len(*logs) != 0 {
+			t.Fatalf("logs=%v", *logs)
 		}
 		if !failSend && probe.continued != continuation {
 			t.Fatalf("continuation=%+v", probe.continued)
@@ -127,8 +147,7 @@ func TestAppendConfirmationUsesControlAndContinuesAfterDelivery(t *testing.T) {
 	}
 }
 
-func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
-	assertNoCommandLogs(t)
+func TestCommandContinuationLogsOnlyDeliveryFailures(t *testing.T) {
 	notices := make(chan events.Notification, 1)
 	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
 		notices <- notice
@@ -149,6 +168,7 @@ func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
 		{name: "append fault", kind: "append", continueErr: fault},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			logs := captureReplyFailures(t)
 			probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "session disappeared"}, continueErr: tc.continueErr, sendErr: tc.sendErr, sendErrAfter: 1}
 			router := command.NewRouter([]string{"/"})
 			continuation := control.Continuation{Kind: tc.kind, SessionID: "missing", Text: "next"}
@@ -159,6 +179,9 @@ func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
 			}
 			executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Input: probe})
 			_, handled, err := executor.Handle(t.Context(), "/go")
+			if tc.sendErr != nil && !reflect.DeepEqual(*logs, []string{tc.sendErr.Error()}) || tc.sendErr == nil && len(*logs) != 0 {
+				t.Fatalf("logs=%v", *logs)
+			}
 			wantErr, wantOrder := tc.sendErr, []string{"send", "continue", "send"}
 			if tc.continueErr != nil {
 				wantOrder = wantOrder[:2]

@@ -43,7 +43,7 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	return a.sendOutputs(ctx, t, outputs)
 }
 
-// sendOutputs 将一次投递编码成一条平台消息；上传素材不产生消息。
+// sendOutputs 按组准备内容，再逐页发送；上传素材不产生消息。
 func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, error) {
 	if len(outputs) == 0 {
 		return delivery.Receipt{}, nil
@@ -52,24 +52,26 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
 	}
 	recordHistory := t.commandReply
-	var indexes []int
 	nativeType := 0
-	for i, out := range outputs {
+	hasImage := false
+	for _, out := range outputs {
 		if out.Delivery.HookPoint != "" {
 			recordHistory = true
 		}
 		switch out.Kind {
 		case delivery.KindImage, delivery.KindRecord, delivery.KindFile:
+			hasImage = hasImage || out.Kind == delivery.KindImage
 			if len(outputs) == 1 && out.Text == "" {
 				nativeType = map[delivery.Kind]int{delivery.KindImage: fileTypeImage, delivery.KindRecord: 3, delivery.KindFile: fileTypeFile}[out.Kind]
 			} else if out.Kind != delivery.KindImage {
 				return delivery.Receipt{}, fmt.Errorf("qqofficial cannot combine %s with other content in one message", out.Kind)
 			}
-			indexes = append(indexes, i)
 		}
 	}
 	var msg messageToCreate
-	text := make([]string, len(outputs))
+	pages := []outputPage{{}}
+	page := &pages[0]
+	newPage := func() { pages = append(pages, outputPage{}); page = &pages[len(pages)-1] }
 	switch {
 	case nativeType != 0:
 		src := outputs[0].Source
@@ -83,93 +85,162 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		}
 		msg.MsgType = msgTypeMedia
 		msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
+		page.addMedia(0, outputs[0])
 	default:
-		mixed := len(indexes) > 0
+		mixed := hasImage
 		first := outputs[0]
 		// 暂无图+按钮，先简化处理：仅单段文本携带操作按钮。
 		keyboard := len(outputs) == 1 && first.Kind == delivery.KindText && len(first.Actions) > 0 && a.cfg.markdownByDefault() && a.cfg.enableKeyboard()
 		if keyboard {
 			msg.Keyboard = commandKeyboard(a.cfg.AppID, first.Actions)
 		}
-		parts := make([]string, len(outputs))
-		imagePart := func(i int, ref string) string {
-			return escapeMarkdownText(text[i]) + "\n![](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(ref) + ")\n"
-		}
-		var localImages []int
 		for i, out := range outputs {
+			var text string
 			switch out.Kind {
-			case delivery.KindImage:
-				text[i] = out.Text
-				parts[i] = imagePart(i, out.Source.URL)
-				if out.Source.URL == "" {
-					localImages = append(localImages, i)
-				}
-				continue
 			case delivery.KindText:
 				out.ShowActionHints = false
-				text[i] = delivery.OutputBody(out, keyboard)
+				text = delivery.OutputBody(out, keyboard)
+			case delivery.KindImage:
+				text = out.Text
 			default:
-				text[i] = delivery.FallbackText(out)
+				text = delivery.FallbackText(out)
 			}
-			parts[i] = text[i]
-			if mixed {
-				parts[i] = escapeMarkdownText(text[i])
+			for text != "" {
+				n := pagePrefix(text, pageBudget-page.size, mixed)
+				if n > 0 {
+					raw := text[:n]
+					rendered := raw
+					if mixed {
+						rendered = escapeMarkdownText(raw)
+					}
+					page.append(rendered)
+					page.history = append(page.history, storage.ChatSegment{Type: "text", Text: raw})
+					text = text[n:]
+				}
+				if text != "" {
+					newPage()
+				}
 			}
+			if out.Kind != delivery.KindImage {
+				continue
+			}
+			ref := out.Source.URL
+			if ref == "" {
+				var id string
+				var err error
+				ref, id, err = a.client.markdownImage(ctx, out.Source)
+				if err != nil {
+					return delivery.Receipt{}, err
+				}
+				defer a.client.releaseMarkdownImage(ctx, id)
+			}
+			image := "\n![](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(ref) + ")\n"
+			size := utf8.RuneCountInString(image)
+			if size > pageBudget {
+				return delivery.Receipt{}, fmt.Errorf("qqofficial image reference exceeds %d characters", pageBudget)
+			}
+			if size+page.size > pageBudget {
+				newPage()
+			}
+			page.append(image)
+			page.addMedia(i, out)
 		}
-		// 本地引用暂为空：已知部分超限时，无需上传。
-		body := strings.TrimSpace(strings.Join(parts, ""))
-		const limit = 2000
-		tooLong := fmt.Errorf("qqofficial message exceeds %d characters", limit)
-		if utf8.RuneCountInString(body) > limit {
-			return delivery.Receipt{}, tooLong
-		}
-		if body == "" {
+		if len(pages) == 1 && strings.TrimSpace(page.body) == "" {
 			return delivery.Receipt{}, nil
-		}
-		for _, i := range localImages {
-			ref, id, err := a.client.markdownImage(ctx, outputs[i].Source)
-			if err != nil {
-				return delivery.Receipt{}, err
-			}
-			defer a.client.releaseMarkdownImage(ctx, id)
-			parts[i] = imagePart(i, ref)
-		}
-		if len(localImages) > 0 {
-			body = strings.TrimSpace(strings.Join(parts, ""))
-			if utf8.RuneCountInString(body) > limit {
-				return delivery.Receipt{}, tooLong
-			}
 		}
 		if mixed || keyboard || (!t.commandReply && a.cfg.markdownByDefault()) {
 			msg.MsgType = msgTypeMarkdown
-			msg.Markdown = &messageMarkdown{Content: body, ForceVerifyImageResource: mixed}
-		} else {
-			msg.Content = body
 		}
 	}
-	if msg.MsgID = strings.TrimSpace(t.MsgID); msg.MsgID != "" {
-		msg.MsgSeq = a.nextMsgSeq(msg.MsgID)
-	} else {
-		msg.EventID = strings.TrimSpace(t.EventID)
-	}
-	resp, err := a.client.sendMessage(ctx, t, msg)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	id := strings.TrimSpace(resp.ID)
-	if id == "" {
-		return delivery.Receipt{}, nil
-	}
-	if t.Kind == targetGroup && recordHistory {
-		a.recordGroupOutput(ctx, t, id, text, outputs)
-	}
+	var receipt delivery.Receipt
 	chatType := qqOfficialChatType(t)
-	a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id)
-	return delivery.Receipt{PlatformMessageIDs: []string{id}, SentMessages: []delivery.SentMessage{{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, OutputIndexes: indexes}}}, nil
+	for i, p := range pages {
+		if len(pages) > 1 {
+			suffix := fmt.Sprintf("\n（%d/%d）", i+1, len(pages))
+			p.body += suffix
+			p.history = append(p.history, storage.ChatSegment{Type: "text", Text: suffix})
+		}
+		if i > 0 {
+			msg.Keyboard = nil
+		}
+		switch msg.MsgType {
+		case msgTypeMarkdown:
+			msg.Markdown = &messageMarkdown{Content: p.body, ForceVerifyImageResource: len(p.indexes) > 0}
+		case msgTypeText:
+			msg.Content = p.body
+		}
+		if msg.MsgID = strings.TrimSpace(t.MsgID); msg.MsgID != "" {
+			msg.MsgSeq = a.nextMsgSeq(msg.MsgID)
+		} else {
+			msg.EventID = strings.TrimSpace(t.EventID)
+		}
+		resp, err := a.client.sendMessage(ctx, t, msg)
+		if err != nil {
+			return receipt, err
+		}
+		id := strings.TrimSpace(resp.ID)
+		if id == "" {
+			continue
+		}
+		if t.Kind == targetGroup && recordHistory {
+			a.recordGroupOutput(ctx, t, id, p.history)
+		}
+		a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id)
+		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
+		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, OutputIndexes: p.indexes})
+	}
+	return receipt, nil
 }
 
+const pageBudget = 1800 // 正文字符预算，剩余空间留给页码。
+const markdownSpecials = "\\*_[]`#<>~"
+
+type outputPage struct {
+	body    string                // 已编码的 QQ 正文，不含页码。
+	size    int                   // 正文 Unicode 字符数。
+	history []storage.ChatSegment // 本页实际交付的原始片段。
+	indexes []int                 // 本页媒体在整组 outputs 中的下标。
+}
+
+func (p *outputPage) append(s string) { p.body += s; p.size += utf8.RuneCountInString(s) }
+func (p *outputPage) addMedia(i int, out delivery.Output) {
+	seg := storage.ChatSegment{Type: string(out.Kind), Name: out.Name, MIMEType: out.Source.MIMEType}
+	if out.Source.MediaID == "" {
+		seg.URL = out.Source.URL
+	}
+	p.history = append(p.history, seg)
+	p.indexes = append(p.indexes, i)
+}
+
+// pagePrefix 按渲染后的字符预算切原文；换行归前页，Markdown 转义对不拆开。
+func pagePrefix(text string, room int, escape bool) int {
+	newline := 0
+	for i, r := range text {
+		room--
+		if escape && strings.ContainsRune(markdownSpecials, r) {
+			room--
+		}
+		if room < 0 {
+			if newline > 0 {
+				return newline
+			}
+			return i
+		}
+		if r == '\n' {
+			newline = i + 1
+		}
+	}
+	return len(text)
+}
 func escapeMarkdownText(text string) string {
-	return strings.NewReplacer("\\", "\\\\", "*", "\\*", "_", "\\_", "[", "\\[", "]", "\\]", "`", "\\`", "#", "\\#", "<", "\\<", ">", "\\>", "~", "\\~").Replace(text)
+	var b strings.Builder
+	for _, r := range text {
+		if strings.ContainsRune(markdownSpecials, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
@@ -197,21 +268,12 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id string, parts []string, outputs []delivery.Output) {
-	segments := make([]storage.ChatSegment, len(outputs))
-	for i, out := range outputs {
-		seg := storage.ChatSegment{Type: "text", Text: parts[i]}
-		switch out.Kind {
-		case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
-			seg.Type, seg.Name, seg.MIMEType = string(out.Kind), out.Name, out.Source.MIMEType
-			// 不持久化媒体中心的签名地址。
-			if out.Source.MediaID == "" {
-				seg.URL = out.Source.URL
-			}
-		}
-		segments[i] = seg
+func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id string, segments []storage.ChatSegment) {
+	var b strings.Builder
+	for _, seg := range segments {
+		b.WriteString(seg.Text)
 	}
-	text := strings.Join(parts, "")
+	text := b.String()
 	a.appendChatMessage(ctx, &storage.ChatMessage{
 		Platform: a.Name(), ChatType: contextinfo.ChatGroup, ChatID: target.OpenID,
 		PlatformMessageID: id, SenderID: a.cfg.AppID, SenderName: "bot",
