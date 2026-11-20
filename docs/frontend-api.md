@@ -1,6 +1,6 @@
 # 前端 API
 
-ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管理会话、传输附件。`/api/v1` 管理接口的端点、请求、响应和错误以 [OpenAPI](frontend-api.openapi.yaml) 为准，也可[在线查阅](https://elfreese.github.io/elbot-landing/docs/api/)。本文说明如何把它们接成一次对话。
+ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管理会话、传输附件。`/api/v1` 管理接口的端点、请求、响应和错误以 [OpenAPI](../docs/frontend-api.openapi.yaml) 为准，也可[在线查阅](https://elfreese.github.io/elbot-landing/docs/api/)。本文说明如何把它们接成一次对话。
 
 ## 静态前端托管
 
