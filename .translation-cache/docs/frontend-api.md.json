@@ -24,14 +24,6 @@
       "translation": "## Connection\n\n```\nws://<host>:<port>/cli/v1/ws\n```\n\nDefault address `ws://127.0.0.1:32172/cli/v1/ws`. The address and port can be modified in the `[platform.cli]` configuration.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:section:2c712951ec9a6bef5aad50a68808d4f27634986c488f0d3504a49951415f75f0": {
-      "kind": "section",
-      "source": "## 鉴权\n\n连接建立后，客户端必须立即发送一条 `hello` 消息：\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\n服务端校验 token 后回复：\n\n- `hello_ok` — 鉴权通过，可以开始交互\n- `error` — 鉴权失败，连接关闭\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\", \"api_token\": \"connection-api-token\"}\n```\n\nToken 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变量名；配置细节见 [CLI 远程配置](configuration.md#cli-远程配置)。\n\n`media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。\n\n提交答案或确认追加输入时，通过 `X-CLI-Connection` 发送 `api_token`，后续对话将回到该连接。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "14b33ac75a36f7a75ce3fd4a83c22483ec0b69112683c63fe7a9cfae6379d17c",
-      "translation": "## Authentication\n\nAfter the connection is established, the client must immediately send a `hello` message:\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\nAfter the server validates the token, it responds with:\n\n- `hello_ok` — Authentication successful, interaction can begin\n- `error` — Authentication failed, connection closed\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\", \"api_token\": \"connection-api-token\"}\n```\n\nTokens are mapped to environment variable names by `client_id` in `[platform.cli.server.tokens]`; for configuration details, see [CLI Remote Configuration](configuration.md#cli-远程配置).\n\n`media_token` is only used for the HTTP attachment interfaces described below, sent via `Authorization: Bearer <media_token>` and not included in the URL. It is bound to the current connection and becomes invalid upon disconnection; connections with the same `client_id` are isolated from each other.\n\nWhen submitting an answer or confirming additional input, send the `api_token` via `X-CLI-Connection`, and subsequent dialogue will return to that connection. Authentication for the Management API still uses the configured client token and `X-Client-ID: <client_id>`.\n\n",
-      "updated_at": 1795065333
-    },
     "docs/frontend-api.md:section:2c9363c032a0deccc4c8a221e24e58b90f1e19364a957d9996cd3ed0e2f19290": {
       "kind": "section",
       "source": "## 消息格式\n\n消息为 JSON。各类型字段见对应章节；`id` 用于关联输入与补全响应，命令结果的 `request_id` 回传输入 ID。\n\n",
@@ -120,6 +112,14 @@
       "translation": "### status — Runtime Status\n\n```json\n{\"type\":\"status\",\"snapshot\":{\"Phase\":\"llm\",\"Provider\":\"openai\",\"Model\":\"gpt-4o\"}}\n```\n\nThe snapshot is used to display the current runtime status. Status updates may be merged; final states that have already been submitted may still be received after cancellation. `Phase` can be `idle`, `preparing`, `llm`, `tool`, `compact`, `sending`, `done`, or `error`; `compact` indicates that context compaction is in progress.\n\n",
       "updated_at": 1794708756
     },
+    "docs/frontend-api.md:section:af0859204a1bc345a56d1e0eafcaddb607517582ad6a85552cd0fde3636f1bfd": {
+      "kind": "section",
+      "source": "## 鉴权\n\n连接建立后，客户端必须立即发送一条 `hello` 消息：\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"view_id\": \"tab-1\",\n  \"token\": \"your-token\"\n}\n```\n\n`view_id` 可选。一个账号的不同标签页使用不同值。\n服务端校验 token 后回复：\n\n- `hello_ok` — 鉴权通过，可以开始交互\n- `error` — 鉴权失败，连接关闭\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\", \"api_token\": \"connection-api-token\"}\n```\n\nToken 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变量名；配置细节见 [CLI 远程配置](configuration.md#cli-远程配置)。\n\n`media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。\n\n使用独立视图的客户端应在管理 API 请求中通过 `X-CLI-Connection` 发送本连接的 `api_token`，使新建、恢复、状态查询与 WebSocket 输入操作同一视图。省略该头使用默认视图；提交答案等要求连接凭据的接口仍须提供。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "786c1a3e431dd2da54fab2481ae87bd701a44d13aa856289a64427f5645c5fa5",
+      "translation": "## Authentication\n\nAfter the connection is established, the client must immediately send a `hello` message:\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"view_id\": \"tab-1\",\n  \"token\": \"your-token\"\n}\n```\n\n`view_id` is optional. Different tabs of a single account use different values.\nAfter the server verifies the token, it replies with:\n\n- `hello_ok` — Authentication successful, interaction can begin\n- `error` — Authentication failed, connection closed\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\", \"api_token\": \"connection-api-token\"}\n```\n\nTokens are mapped to environment variable names by `client_id` in `[platform.cli.server.tokens]`; for configuration details, see [CLI Remote Configuration](configuration.md#cli-远程配置).\n\n`media_token` is only used for the HTTP attachment interfaces described below, sent via `Authorization: Bearer <media_token>` and not included in the URL. It is bound to the current connection and expires upon disconnection; connections with the same `client_id` are isolated from each other.\n\nClients using independent views should send the `api_token` of the current connection via `X-CLI-Connection` in management API requests, ensuring that creation, restoration, status queries, and WebSocket input operations target the same view. Omitting this header uses the default view; interfaces requiring connection credentials, such as submitting answers, must still provide them. Identity authentication for the management API still uses the configured client token and `X-Client-ID: <client_id>`.\n\n",
+      "updated_at": 1795144095
+    },
     "docs/frontend-api.md:section:c4a86c590885ce17ad8c15f3909f5540180a34bc9453b6f31eba62b49b50b57a": {
       "kind": "section",
       "source": "### error — 错误\n\n```json\n{\"type\": \"error\", \"text\": \"context deadline exceeded\"}\n```\n\n处理过程中发生的错误。\n\n",
@@ -162,8 +162,8 @@
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "3fa51dbdf7b2d20975e3c0f4c0bf3b93cdd687d4f41d7cd12ae6994112c754a1",
+  "source_hash": "a51d0ff91103d1a6b14811e3769b2c19ea7f955db07ca1bc9855953b2d132986",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1795075475,
+  "updated_at": 1795144095,
   "version": 3
 }

@@ -29,11 +29,13 @@ After the connection is established, the client must immediately send a `hello` 
 {
   "type": "hello",
   "client_id": "my-client",
+  "view_id": "tab-1",
   "token": "your-token"
 }
 ```
 
-After the server validates the token, it responds with:
+`view_id` is optional. Different tabs of a single account use different values.
+After the server verifies the token, it replies with:
 
 - `hello_ok` — Authentication successful, interaction can begin
 - `error` — Authentication failed, connection closed
@@ -44,9 +46,9 @@ After the server validates the token, it responds with:
 
 Tokens are mapped to environment variable names by `client_id` in `[platform.cli.server.tokens]`; for configuration details, see [CLI Remote Configuration](configuration.md#cli-远程配置).
 
-`media_token` is only used for the HTTP attachment interfaces described below, sent via `Authorization: Bearer <media_token>` and not included in the URL. It is bound to the current connection and becomes invalid upon disconnection; connections with the same `client_id` are isolated from each other.
+`media_token` is only used for the HTTP attachment interfaces described below, sent via `Authorization: Bearer <media_token>` and not included in the URL. It is bound to the current connection and expires upon disconnection; connections with the same `client_id` are isolated from each other.
 
-When submitting an answer or confirming additional input, send the `api_token` via `X-CLI-Connection`, and subsequent dialogue will return to that connection. Authentication for the Management API still uses the configured client token and `X-Client-ID: <client_id>`.
+Clients using independent views should send the `api_token` of the current connection via `X-CLI-Connection` in management API requests, ensuring that creation, restoration, status queries, and WebSocket input operations target the same view. Omitting this header uses the default view; interfaces requiring connection credentials, such as submitting answers, must still provide them. Identity authentication for the management API still uses the configured client token and `X-Client-ID: <client_id>`.
 
 ## Message Format
 
