@@ -224,10 +224,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				if err != nil || (got.MessageID != "") != (mode == "outputs_only" || mode == "background_reply") {
 					t.Fatalf("result=%+v err=%v", got, err)
 				}
-				if mode == "empty" && f.platform.text != "LLM: nil" {
-					t.Fatalf("fallback=%q", f.platform.text)
-				}
-				if mode != "empty" && f.platform.text != "" {
+				if f.platform.text != ""{
 					t.Fatalf("unexpected assistant output=%q", f.platform.text)
 				}
 			})

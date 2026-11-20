@@ -40,9 +40,6 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			return result, err
 		}
 	}
-	if empty && !session.IsBackground(in.Session) {
-		text = "LLM: nil"
-	}
 	if strings.TrimSpace(text) != "" {
 		var err error
 		text, err = c.Output.PrepareAssistant(ctx, text)
