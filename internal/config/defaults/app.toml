@@ -1,0 +1,144 @@
+# Main application config. Relative paths are resolved from this file.
+
+[config_files]
+providers = "providers.toml"
+state = "state.toml"
+elnis = "elnis.toml"
+tool_tags = "tool_tags.toml"
+
+[storage]
+# Leave empty to use the platform default data directory.
+sessions_sqlite_path = ""
+chat_history_sqlite_path = ""
+
+[runtime]
+log_level = "info"
+log_retention_days = 30
+
+[maintenance.log_cleanup]
+enabled = true
+schedule = "0 3 * * *"
+
+[maintenance.session_cleanup]
+enabled = false
+schedule = "15 3 * * *"
+retention_days = 30
+
+[maintenance.sandbox_cleanup]
+enabled = true
+schedule = "0 4 * * *"
+retention_days = 7
+
+[maintenance.chat_history_cleanup]
+enabled = true
+schedule = "35 4 * * *"
+retention_days = 180
+
+[sandbox]
+root = ""
+
+[file_delivery]
+# Controls media delivery in model requests: base64 uses inline data, s3 uses presigned download URLs, and hybrid uses S3 when the total media size in a request exceeds max_direct_base64_bytes. After switching to S3, existing local media will be uploaded when remote delivery is required, and previously recorded object keys will be reused.
+# base64 will increase the file size by about 33%.
+max_direct_base64_bytes = 8388608
+backend = "base64"
+s3_endpoint = ""
+s3_region = "auto"
+s3_bucket = ""
+s3_access_key_env = "ELBOT_S3_ACCESS_KEY_ID"
+s3_secret_key_env = "ELBOT_S3_SECRET_ACCESS_KEY"
+
+[media]
+# Images exceeding either limit are stored as compressed JPEGs on import; originals are not kept.
+# Compression starts when the original image exceeds this byte threshold.
+llm_image_compression_threshold_bytes = 4194304
+# The maximum image width or height after compression.
+llm_image_max_length = 4096
+
+[platform_files]
+max_receive_file_bytes = 104857600
+download_timeout_secs = 60
+
+[llm_request]
+first_chunk_timeout_seconds = 180
+stream_idle_timeout_seconds = 60
+response_timeout_seconds = 0
+max_retries = 3
+retry_initial_delay_seconds = 2
+
+[context]
+compact_enabled = true
+compact_trigger_ratio = 0.8
+
+[soul]
+path = "SOUL.md"
+
+[view]
+session_list_page_size = 10
+
+[commands]
+prefixes = ["/"]
+
+[tools]
+max_rounds_per_turn = 10
+
+[resident_memory]
+# Memory length units: CJK characters count as one each; English/digits count by word.
+core_max_units = 200
+normal_max_units = 300
+
+[security]
+user_max_tool_risk = "low"
+superadmin_confirm_risk = "high"
+
+[security.superadmins]
+cli = ["local"]
+
+[session]
+
+[session.idle_expiration]
+group_user_ttl_minutes = 10
+group_superadmin_ttl_minutes = 10
+private_user_ttl_minutes = 10
+private_superadmin_ttl_minutes = 0
+
+[session.naming]
+trigger_step = 3
+
+[platform.cli]
+enabled = true
+# Default CLI client profile. Used by elbot/elbot cli when -c is omitted.
+default_client = "local"
+# Default WebSocket URL for clients without their own clients.<name>.url.
+# To connect to another machine, set url under the client profile.
+default_url = "ws://127.0.0.1:32172/cli/v1/ws"
+
+# Used only when this ElBot runs as a CLI server. It listens here; clients connect via their url.
+[platform.cli.server]
+enabled = false
+listen = "127.0.0.1:32172"
+
+# Client ids allowed to log in to this CLI server and their token environment variables.
+[platform.cli.server.tokens]
+local = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+# Client profile used by this command. For remote servers, add url = "ws://SERVER_IP:32172/cli/v1/ws".
+[platform.cli.clients.local]
+token_env = ["ELBOT_CLI_LOCAL_TOKEN"]
+
+# [platform.qqonebot]
+# enabled = false
+# ws_url = "ws://127.0.0.1:6700/"
+# access_token = "" # legacy direct value; optional
+# access_token_env = "QQONEBOT_ACCESS_TOKEN" # optional; reads process env, then config .env
+# api_timeout_seconds = 15 # base timeout for OneBot writes and API responses
+# trigger_keywords = ["bot"]
+# send_file_mode = "base64" # base64 works across machines; use file_uri for a shared filesystem
+
+# [platform.telegram]
+# enabled = false
+# bot_token_env = "TELEGRAM_BOT_TOKEN"
+# proxy_url_env = "TELEGRAM_PROXY_URL" # optional; read OS env first, then config .env
+# trigger_keywords = ["bot"]
+# format = "html" # html/plain/rich
+# stream_edit_interval_milliseconds = 250

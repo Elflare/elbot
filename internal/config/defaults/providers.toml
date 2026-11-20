@@ -1,0 +1,22 @@
+# Provider/model config. Do not commit real API keys.
+# Prefer api_key_env and set secrets in the OS environment or .env.
+# api_mode defaults to "chat"; both modes support main dialogue and independent text.
+# Extra payload only adds fields; existing or duplicate keys are rejected.
+# Token limits are omitted unless explicitly configured in extra_payload.
+
+[providers.deepseek]
+# api_mode = "chat" # chat / response
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+models = ["gpt-4o-mini"]
+
+# [providers.openai.model_configs."gpt-4o-mini"]
+# context_window = 128000
+# extra_payload = { }
+
+[model_metadata]
+default_context_window = 256000
