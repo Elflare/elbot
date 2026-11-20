@@ -24,6 +24,14 @@
       "translation": "## Help and Diagnostics\n\n| Command | Function |\n| --- | --- |\n| `/help` | List of available commands. |\n| `/help <command>` | Detailed help for a specific command, for example `/help model`. |\n| `/doctor` | Read-only check of the current configuration and built-in Skills (superadmin only). |\n\n`/doctor` uses the main configuration path selected during service startup; separated configurations are located according to `config_files`. When issues occur, it lists the actual file paths, specific issues, descriptions, and GitHub raw addresses of default templates, and generates a processing request that can be copied to ElBot; Copy and provide it to an ElBot that has access to these files for processing. The check itself does not modify files or perform automatic repairs; if there are no issues, it only returns `Everything is OK`. See [Configuration Diagnosis](configuration.md#配置诊断) for the scope.\n\n",
       "updated_at": 1793351491
     },
+    "docs/commands.md:section:36b8a29009cc241584fe3e2347cee91757dafb7133131d0bcc81526481a6cad7": {
+      "kind": "section",
+      "source": "## 追加输入\n\nLLM 正在处理时收到的新输入会停止当前请求并进入追加等待；连续输入会累积，最后确认输出会一并发送。\n\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "c492d0c5ee088c90522edf35df3ac79e0bd1e5ee2aac61c55c095f2c0a6c24c4",
+      "translation": "## Append Input\n\nNew input received while the LLM is processing will stop the current request and enter append wait; consecutive inputs will accumulate and be sent together upon final confirmation of output.\n\n",
+      "updated_at": 1795184551
+    },
     "docs/commands.md:section:379806a8a5e2c5871827abf74ab744d76057be3af353e833aa2f112f8fba3148": {
       "kind": "section",
       "source": "## 日志和审计\n\n| 命令 | 作用 |\n| --- | --- |\n| `/log [options]` | 运行日志。 |\n| `/audit [options]` | 审计日志。 |\n| `/elwisp [name] [options]` | Elnis/Elwisp 事件日志。 |\n| `/usage [options]` | 汇总审计日志的 token 消耗（仅超级管理员）。 |\n\n日志查询和用量统计读取当前 JSONL 记录，正文可为文本或 JSON。无法解析的记录计入损坏记录数；`--raw` 可查看限量原始样本。\n\n选项（“适用”列省略即三者通用）：\n\n| 选项 | 适用 | 作用 |\n| --- | --- | --- |\n| `-n, --limit <n>` | log/audit/elwisp | 返回条数，默认 5。 |\n| `--days <n>` | log/audit/elwisp | 读取最近 n 天，默认 1。 |\n| `--level <level>` | log/audit/elwisp | 最低等级：`debug`、`info`、`warn`、`error`。 |\n| `-d, -i, -w, -e` | log/audit/elwisp | 等级快捷方式（debug/info/warn/error），不改变展示方式。 |\n| `--raw` | log/audit/elwisp | 显示文件中的完整原始记录，与等级筛选独立。 |\n| `--since <time>` / `--until <time>` | log/audit/elwisp | 时间范围，例如 `2h`、`30m`、`2026-06-03`。 |\n| `--msg <text>` | log/audit/elwisp | 按消息正文过滤。 |\n| `--contains <text>` | log/audit/elwisp | 按解码后的记录内容或原始记录过滤。 |\n| `-u` / `-a` | log | 筛选用户 / 助手事件。 |\n| `-s, --system` | log | 筛选并显示 `system prompt` 日志。 |\n| `--hook` | log/audit | 筛选 `module=hook` 的记录。 |\n| `-t` | audit | 筛选 `tool_call_prepared`、`tool_call_completed` 工具审计。 |\n| `--run_source <来源>` | audit | `foreground`、`cron`、`elnis`；可与 `-t` 及其他条件组合。 |\n| `--event <name>` | audit | 例如 `tool_call_completed`、`llm_usage`、`permission_denied`。 |\n| `--risk <level>` | audit | 风险等级。 |\n| `--platform <name>` / `--actor-id <id>` / `--actor-name <name>` | audit | 精确匹配参与者的平台、原生 ID、展示名；可组合使用。 |\n| `--session <id>` / `--tool <name>` | audit | 按 Session、工具名过滤。 |\n| `[name]`、`--name`、`--elwisp <name>` | elwisp | 按 Elwisp 名过滤，三种写法等价。 |\n| `--source` / `--id`（= `--source-id`） | elwisp | 按事件来源 / 外部事件 ID。 |\n| `--mode <record\\|direct\\|llm>` | elwisp | 事件模式。 |\n| `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / 内部 event ID。 |\n| `--token <name>` | elwisp | HTTP 认证 token 的配置名，不包含 token 原文。 |\n| `--tag <tag>` | elwisp | 包含指定标签，可重复，要求全部匹配。 |\n| `-d, --days <n>` | usage | 汇总最近 n 天，默认 1。 |\n| `-n <x[-y]>` | usage | 汇总倒数第 x 到第 y 次模型调用（含两端），序号 1–100000；省略 y 只取第 x 次。只汇总区间内已有的调用，没有命中时显示 `nil`。 |\n| `-m, --model <name>` | usage | 模型名。 |\n| `-s, --session <id>` | usage | Session ID。 |\n| `--by <key>` | usage | `model`（默认）、`day`、`session`。 |\n| `--since <time>` / `--until <time>` | usage | 时间范围。 |\n\n示例：`/log -w -n 10` · `/log --system` · `/audit --event tool_call_completed --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`。\n\n- `/usage` 从审计日志的 `llm_usage` 事件聚合，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时；未知、非法或溢出的值显示 `null` 并传递到受影响的分组和总计项，明确的零正常统计，用量未知的调用仍计入次数，扫描遇到损坏记录时提示统计可能不完整。\n- 工具参数日志最多 512 rune，工具返回的日志摘要最多 1024 rune，截断省略号计入上限（汉字按 1 rune）；实际调用参数和返回给模型的结果不受日志限长影响。\n\n",
@@ -72,14 +80,6 @@
       "translation": "## Hook\n\n| Command | Function |\n| --- | --- |\n| `/hooks` | List all registered Hooks. |\n| `/hooks <name>` | Detailed configuration of a specific Hook. |\n| `/hooks start <id>` / `stop <id>` | Start / gracefully stop a persistent Hook. |\n| `/hooks restart <id>` | Stop and restart a persistent Hook. |\n| `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate process lifecycles. |\n\n- Rule Hooks use `name` from the configuration; built-in Hooks use `builtin.*`, such as `builtin.cron.missed_once`.\n- `Description` is displayed in the list and details; rule details are only displayed in the details.\n- `reload` rereads `hooks.toml` and the `hook.toml` of each plugin, rebuilds Hook registrations, and replaces affected persistent processes.\n- `/hooks` is a superadmin command.\n\n",
       "updated_at": 1793351491
     },
-    "docs/commands.md:section:94c249d2c2bbafd65c9860dee5208baf43230bc8f5fd69c3c650d3597c9d130f": {
-      "kind": "section",
-      "source": "## 追加输入\n\nLLM 正在处理时收到的新输入会停止当前请求并进入追加等待；连续输入会累积。发送 `y` 或 `/confirm` 继续，已累积的输入会合并后使用原会话继续执行；发送 `/stop` 取消当前处理。\n\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "d73fbe471c44cdf92843dce5ef41b44a97cd602f4ded534b52ef0815de72556f",
-      "translation": "## Additional Input\n\nNew input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.\n\n",
-      "updated_at": 1794064547
-    },
     "docs/commands.md:section:9a55da2ed696a90b97d2ed8d9e7687e02c21bf44d5926b8b2a1d87c8bdf2f966": {
       "kind": "section",
       "source": "## 高风险工具确认\n\n触发高风险确认时可用的命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/detail` | 待确认工具调用详情；展示工具提供的结构化字段、命令和预检 diff，不额外追加参数 JSON。文件前后均不超过 8 MiB 时显示完整 diff，超过则不显示 diff、不影响操作，也不切换兜底正文。 |\n| `/confirm` | 确认当前待确认工具调用。 |\n| `/confirmtool` | 确认当前工具。 |\n| `/confirmall` | 确认当前批次全部待确认工具。 |\n| `/reject` | 拒绝当前待确认工具调用。 |\n\n- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。\n- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。\n",
@@ -122,8 +122,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "b72fbb296d311ab518a6126427af9d2dbfb64453a857cb45d3604e42ce506ae9",
+  "source_hash": "3277ec1ecd8b7b83eea446d396d4672f56ec01d28c3ce95b224f44c7c87c7e41",
   "target": "docs.en/commands.md",
-  "updated_at": 1795065269,
+  "updated_at": 1795184551,
   "version": 3
 }

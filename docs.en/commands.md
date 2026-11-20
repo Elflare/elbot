@@ -91,9 +91,9 @@ In work mode, the model can call `ask_user` to pose multiple questions at once. 
 
 Each `/ac` corresponds to one `user` message; multiple batches can be sent with a single model request. If the same question is modified in the queue, the latest version is used; newly filled questions require another `/ac`. Use `/stop` before sending to cancel the queue while preserving drafts. Questions and drafts are stored in memory by Session: they are preserved when switching away and cleared upon restart. Telegram and QQ official keyboard buttons are equivalent to these commands.
 
-## Additional Input
+## Append Input
 
-New input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.
+New input received while the LLM is processing will stop the current request and enter append wait; consecutive inputs will accumulate and be sent together upon final confirmation of output.
 
 ## Context Compaction
 
