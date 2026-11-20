@@ -42,8 +42,71 @@ type readFileArgs struct {
 	Query        string             `json:"query"`
 	Glob         []string           `json:"glob"` // grep 目录搜索的 rg 路径过滤规则。
 	ContextLines int                `json:"context_lines"`
-	MaxMatches   int                `json:"max_matches"`
-	Index        int                `json:"index"`
+	Index        readFileIndex      `json:"index"`
+}
+
+type readFileIndex struct {
+	start, end int  // 匹配编号，1-based 闭区间。
+	single     bool // 整数选择详情；范围选择列表。
+}
+
+func (p *readFileIndex) UnmarshalJSON(data []byte) error {
+	invalid := fmt.Errorf("index must be a positive integer or a range like \"8-12\" (at most 100 entries)")
+	if data[0] != '"' {
+		var n int
+		if err := json.Unmarshal(data, &n); err != nil || n < 1 {
+			return invalid
+		}
+		*p = readFileIndex{start: n, end: n, single: true}
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	a, b, ok := strings.Cut(s, "-")
+	start, err1 := strconv.Atoi(a)
+	end, err2 := strconv.Atoi(b)
+	if !ok || err1 != nil || err2 != nil || start < 1 || end < start || end-start >= 100 {
+		return invalid
+	}
+	*p = readFileIndex{start: start, end: end}
+	return nil
+}
+
+func (p readFileIndex) outOfRange(total int) bool {
+	return p.start > total && (p.single || p.start > 1)
+}
+
+// exact 表示 total 是精确总数；否则只扫描到本页后的首个匹配。
+func (p readFileIndex) summary(total int, exact bool) string {
+	if total == 0 {
+		return "0/0"
+	}
+	end := min(p.end, total)
+	shown := strconv.Itoa(p.start)
+	if p.start != end {
+		shown += "-" + strconv.Itoa(end)
+	}
+	if total <= end {
+		return fmt.Sprintf("%s/%d", shown, total)
+	}
+	denom := strconv.Itoa(total)
+	nextEnd := end + 100
+	if exact {
+		nextEnd = min(nextEnd, total)
+	} else {
+		denom = strconv.Itoa(end) + "+"
+	}
+	return fmt.Sprintf("%s/%s · next index: \"%d-%d\"", shown, denom, end+1, nextEnd)
+}
+
+func readFileHeader(file fileops.File) string {
+	header := fmt.Sprintf("%s | revision: %s", file.Path, fileops.ContentRevision(file.Bytes))
+	if file.Encoding != "utf-8" {
+		header += " | encoding: " + file.Encoding
+	}
+	return header
 }
 
 type readFileInteger int
@@ -84,7 +147,9 @@ func NewReadFileTool(fileGuard FileGuard) ReadFileTool {
 }
 
 func (t ReadFileTool) Definition() toolshare.ToolDefinition {
-	return readFileBuilder().Build(t.PrepareCall)
+	definition := readFileBuilder().Build(t.PrepareCall)
+	definition.Parameters["properties"].(map[string]any)["index"].(map[string]any)["type"] = []string{"string", "integer"}
+	return definition
 }
 
 func isSensitiveReadFile(path string) bool {
@@ -111,15 +176,14 @@ func readFileBuilder() *toolshare.Builder {
 		String("mode", "默认read；grep文本搜索；ast仅Go单文件结构索引", toolshare.Enum("read", "grep", "ast")).
 		String("query", "仅grep必填，逐行Go regex，首尾空白忽略。").
 		StringArray("glob", "仅grep目录搜索；语法同rg -g，如[\"*.go\",\"!**/*_test.go\"]；省略/[]=不过滤。").
-		Integer("index", "grep匹配/ast声明编号，1-based；ast选中类型时展开全部成员，不返回函数体。").
+		String("index", `grep/ast：i or "i-j"。默认 100 条，一次最多100条。`).
 		Integer("start_line", "read起始行，1-based，默认1。").
 		String("end_line", "read结束行(含)，数字字符串或\"end\"；默认200行，end读至末尾。").
-		Integer("context_lines", "仅grep上下文行数；0/省略→2，负数→0，上限20。").
-		Integer("max_matches", "grep匹配/ast顶层声明上限；≤0/省略→20，最大100；ast类型成员默认展示8条。")
+		Integer("context_lines", "仅grep上下文行数；0/省略→2，负数→0，上限20。")
 }
 
 func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
-	var args readFileArgs
+	args := readFileArgs{Index: readFileIndex{start: 1, end: 100}}
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse read_file arguments: %v", err)}, nil
@@ -137,13 +201,16 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if defaultEnd {
 		args.EndLine.Value = int(args.StartLine) + fileops.DefaultReadLineLimit - 1
 	}
+	var index any = args.Index.start
+	if !args.Index.single {
+		index = fmt.Sprintf("%d-%d", args.Index.start, args.Index.end)
+	}
 	var endLine any = args.EndLine.Value
 	if args.EndLine.End {
 		endLine = "end"
 	}
 	args.Query = strings.TrimSpace(args.Query)
 	args.ContextLines = fileops.NormalizeGrepContextLines(args.ContextLines)
-	args.MaxMatches = fileops.NormalizeMaxMatches(args.MaxMatches)
 	if strings.TrimSpace(args.Encoding) == "" {
 		args.Encoding = "auto"
 	}
@@ -169,8 +236,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		toolshare.ConfirmationField{Key: "query", Label: "查询", Value: args.Query},
 		toolshare.ConfirmationField{Key: "glob", Label: "路径过滤", Value: args.Glob},
 		toolshare.ConfirmationField{Key: "context_lines", Label: "上下文行数", Value: args.ContextLines},
-		toolshare.ConfirmationField{Key: "max_matches", Label: "最大匹配数", Value: args.MaxMatches},
-		toolshare.ConfirmationField{Key: "index", Label: "结果编号", Value: args.Index},
+		toolshare.ConfirmationField{Key: "index", Label: "结果编号", Value: index},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		var warnings []string
 		if resolved.WasAbs {
@@ -217,44 +283,36 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 				return operationresult.Result[*toolshare.Result]{Status: loaded.Status, Message: loaded.Message}, loaded.Message, nil
 			}
 			file := loaded.Data
-			lines := fileops.SplitLines(file.Text)
 			warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
 			if largeFile {
 				warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast mode is disabled", info.Size()))
 			}
 			switch mode {
 			case readFileModeGrep:
-				result, err = readFileGrepResult(ctx, file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+				result, err = readFileGrepResult(ctx, file, args.Query, args.ContextLines, args.Index, warnings)
 			case readFileModeAST:
-				result, err = readFileASTResult(file, args.MaxMatches, args.Index, warnings)
+				result, err = readFileASTResult(file, args.Index, warnings)
 			case readFileModeRead:
+				lines := fileops.SplitLines(file.Text)
 				start, end, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
-				truncated := defaultEnd && end < len(lines)
 				if err != nil {
 					return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: err.Error()}, err.Error(), nil
 				}
 				var b strings.Builder
-				fmt.Fprintf(&b, "file: %s\n", file.Path)
-				fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-				fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
+				fmt.Fprintf(&b, "%s | ", readFileHeader(file))
 				if len(lines) == 0 {
-					fmt.Fprintf(&b, "lines: 0/0\n")
-					fmt.Fprintf(&b, "empty: true\n")
-					fmt.Fprintf(&b, "truncated: %t\n", truncated)
-					b.WriteString("content:\n")
+					b.WriteString("lines: 0/0\n")
 					result := &toolshare.Result{Content: b.String(), Warnings: warnings}
 					return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
 				}
 
 				fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
-				fmt.Fprintf(&b, "truncated: %t\n", truncated)
-				b.WriteString("content:\n")
 				width := len(fmt.Sprintf("%d", end))
 				for i := start; i <= end; i++ {
 					fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 				}
 				result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t", file.Path, mode, start, end, len(lines), truncated), nil
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d", file.Path, mode, start, end, len(lines)), nil
 			}
 		}
 		if err != nil {
@@ -264,50 +322,36 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	})}, nil
 }
 
-func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	query := grep
+func readFileGrepResult(ctx context.Context, file fileops.File, query string, contextLines int, index readFileIndex, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "grep is required"}, nil
-	}
-	if index < 0 {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "index must be positive when provided"}, nil
 	}
 	pattern, err := regexp.Compile(query)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid grep regex: %v", err)}, nil
 	}
+	lines := fileops.SplitLines(file.Text)
 	matches := make([]int, 0)
+	total := 0
 	for i, line := range lines {
 		if err := ctx.Err(); err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err
 		}
 		if pattern.MatchString(line) {
-			matches = append(matches, i+1)
-			if len(matches) >= maxMatches {
+			total++
+			if total >= index.start && total <= index.end {
+				matches = append(matches, i+1)
+			}
+			if total > index.end {
 				break
 			}
 		}
 	}
-	if index > 0 {
-		if index > len(matches) {
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, len(matches))}, nil
-		}
-		matches = matches[index-1 : index]
+	if index.outOfRange(total) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index.start, total)}, nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\n", file.Path)
-	fmt.Fprintf(&b, "encoding: %s\n", file.Encoding)
-	fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
-	fmt.Fprintf(&b, "grep: %q\n", query)
-	fmt.Fprintf(&b, "matches: %d\n", len(matches))
-	if index > 0 {
-		fmt.Fprintf(&b, "index: %d\n", index)
-	}
-	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
-	b.WriteString("content:\n")
-	if len(matches) == 0 || len(lines) == 0 {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
-	}
+	fmt.Fprintf(&b, "%s | grep: %q | matches: %s\n", readFileHeader(file), query, index.summary(total, false))
 	width := len(fmt.Sprintf("%d", len(lines)))
 	lastPrinted := 0
 	for matchIndex, matchLine := range matches {
@@ -325,7 +369,7 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 		if start <= lastPrinted {
 			start = lastPrinted + 1
 		}
-		fmt.Fprintf(&b, "%d. match: %d\n", matchIndex+1, matchLine)
+		fmt.Fprintf(&b, "%d. match: %d\n", matchIndex+index.start, matchLine)
 		for i := start; i <= end; i++ {
 			marker := " "
 			if i == matchLine {

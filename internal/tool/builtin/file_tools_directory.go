@@ -5,7 +5,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"bufio"
-	"container/heap"
+
 	"context"
 	"errors"
 	"fmt"
@@ -33,50 +33,18 @@ func readFileDirectorySearch(ctx context.Context, root string, args readFileArgs
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is grep"}, nil
 	}
-	keep := args.MaxMatches
-	if args.Index > 0 {
-		keep = args.Index
-	}
-	found, total, grepWarnings, err := findDirectoryGrepMatches(ctx, root, query, keep, args.Glob)
+	found, total, grepWarnings, err := findDirectoryGrepMatches(ctx, root, query, args.Index, args.Glob)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err
 	}
 	if found.Status != operationresult.Success {
 		return operationresult.Result[*toolshare.Result]{Status: found.Status, Message: found.Message}, nil
 	}
-	matches := found.Data
 	warnings = append(warnings, grepWarnings...)
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].Path == matches[j].Path {
-			return matches[i].Line < matches[j].Line
-		}
-		return matches[i].Path < matches[j].Path
-	})
-	return formatDirectorySearchMatches(root, query, matches, total, args.ContextLines, args.MaxMatches, args.Index, warnings)
+	return formatDirectorySearchMatches(root, query, found.Data, total, args.ContextLines, args.Index, warnings)
 }
 
-// directoryMatchHeap keeps the last match in path/line order at the root,
-// retaining a bounded prefix while every match is counted.
-type directoryMatchHeap []directorySearchMatch
-
-func (h directoryMatchHeap) Len() int { return len(h) }
-func (h directoryMatchHeap) Less(i, j int) bool {
-	if h[i].Path == h[j].Path {
-		return h[i].Line > h[j].Line
-	}
-	return h[i].Path > h[j].Path
-}
-func (h directoryMatchHeap) Swap(i, j int)   { h[i], h[j] = h[j], h[i] }
-func (h *directoryMatchHeap) Push(value any) { *h = append(*h, value.(directorySearchMatch)) }
-func (h *directoryMatchHeap) Pop() any {
-	last := len(*h) - 1
-	value := (*h)[last]
-	(*h)[last] = directorySearchMatch{}
-	*h = (*h)[:last]
-	return value
-}
-
-func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int, glob []string) (operationresult.Result[[]directorySearchMatch], int, []string, error) {
+func findDirectoryGrepMatches(ctx context.Context, root, query string, index readFileIndex, glob []string) (operationresult.Result[[]directorySearchMatch], int, []string, error) {
 	pattern, err := regexp.Compile(query)
 	if err != nil {
 		return operationresult.Result[[]directorySearchMatch]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid grep regex: %v", err)}, 0, nil, nil
@@ -95,15 +63,16 @@ func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int,
 	if files.Status != operationresult.Success {
 		return operationresult.Result[[]directorySearchMatch]{Status: files.Status, Message: files.Message}, 0, nil, nil
 	}
-	matches := directoryMatchHeap{}
-	total, err := scanDirectoryGrepBatch(ctx, root, pattern, files.Data, keep, &matches)
+	sort.Slice(files.Data, func(i, j int) bool { return filepath.ToSlash(files.Data[i]) < filepath.ToSlash(files.Data[j]) })
+	var matches []directorySearchMatch
+	total, err := scanDirectoryGrepBatch(ctx, root, pattern, files.Data, index, &matches)
 	if err != nil {
 		return operationresult.Result[[]directorySearchMatch]{}, 0, nil, err
 	}
 	if total.Status != operationresult.Success {
 		return operationresult.Result[[]directorySearchMatch]{Status: total.Status, Message: total.Message}, 0, nil, nil
 	}
-	return operationresult.Result[[]directorySearchMatch]{Status: operationresult.Success, Data: []directorySearchMatch(matches)}, total.Data, warnings, nil
+	return operationresult.Result[[]directorySearchMatch]{Status: operationresult.Success, Data: matches}, total.Data, warnings, nil
 }
 
 // directoryGrepFiles uses ripgrep's ignore rules for both search and warnings.
@@ -201,7 +170,7 @@ func directoryGrepFiles(ctx context.Context, rg, root string, glob []string) (op
 	return operationresult.Result[[]string]{Status: operationresult.Success, Data: files}, []string{fmt.Sprintf("grep skipped %d large files: %s%s", count, strings.Join(preview, ", "), extra)}, nil
 }
 
-func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Regexp, files []string, keep int, matches *directoryMatchHeap) (operationresult.Result[int], error) {
+func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Regexp, files []string, index readFileIndex, matches *[]directorySearchMatch) (operationresult.Result[int], error) {
 	total := 0
 	for _, path := range files {
 		if err := ctx.Err(); err != nil {
@@ -244,6 +213,10 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 				if lineNumber == 0 {
 					text = strings.TrimPrefix(text, "\ufeff")
 				}
+				// 页后首条已命中，只需确认文件剩余部分不含 NUL。
+				if total+count > index.end {
+					continue
+				}
 				for _, line := range fileops.SplitLines(text) {
 					lineNumber++
 					location := query.FindStringIndex(line)
@@ -251,19 +224,15 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 						continue
 					}
 					count++
-					if len(candidates) < keep {
+					if total+count > index.end {
+						break
+					}
+					if total+count >= index.start {
 						candidates = append(candidates, directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1})
 					}
 				}
 			}
-			for _, match := range candidates {
-				if matches.Len() < keep {
-					heap.Push(matches, match)
-				} else if match.Path < (*matches)[0].Path || (match.Path == (*matches)[0].Path && match.Line < (*matches)[0].Line) {
-					(*matches)[0] = match
-					heap.Fix(matches, 0)
-				}
-			}
+			*matches = append(*matches, candidates...)
 			return operationresult.Result[int]{Status: operationresult.Success, Data: count}, nil
 		}()
 		if err != nil {
@@ -273,34 +242,24 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 			return count, nil
 		}
 		total += count.Data
+		if total > index.end {
+			break
+		}
 	}
 	return operationresult.Result[int]{Status: operationresult.Success, Data: total}, nil
 }
 
-func formatDirectorySearchMatches(root, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	if index > total || index < 0 {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, total)}, nil
-	}
-	truncated := index == 0 && total > maxMatches
-	shown := matches
-	if index > 0 {
-		shown = matches[index-1 : index]
-	} else if truncated {
-		shown = matches[:maxMatches]
+func formatDirectorySearchMatches(root, query string, matches []directorySearchMatch, total, contextLines int, index readFileIndex, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+	if index.outOfRange(total) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index.start, total)}, nil
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, readFileModeGrep, query, total, truncated)
-	if len(matches) == 0 {
-		b.WriteString("content:\n")
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
+	fmt.Fprintf(&b, "%s | grep: %q | matches: %s\n", root, query, index.summary(total, false))
+	if index.single {
+		return formatDirectorySearchSelection(&b, root, matches[0], contextLines, warnings)
 	}
-	if index > 0 {
-		fmt.Fprintf(&b, "index: %d\ncontent:\n", index)
-		return formatDirectorySearchSelection(&b, root, shown[0], contextLines, warnings)
-	}
-	b.WriteString("content:\n")
-	for i, match := range shown {
-		fmt.Fprintf(&b, "%d. %s:%d:%d [grep] \n", i+1, match.Path, match.Line, match.Column)
+	for i, match := range matches {
+		fmt.Fprintf(&b, "%d. %s:%d:%d [grep] \n", i+index.start, match.Path, match.Line, match.Column)
 	}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }

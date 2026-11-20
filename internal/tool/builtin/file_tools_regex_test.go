@@ -15,6 +15,12 @@ import (
 	toolshare "elbot/internal/tool/share"
 )
 
+func grepCount(n int) string {
+	if n < 2 {
+		return fmt.Sprintf("matches: %d/%d\n", n, n)
+	}
+	return fmt.Sprintf("matches: 1-%d/%d\n", n, n)
+}
 func TestReadFileRegexSemantics(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("ripgrep is required")
@@ -45,7 +51,7 @@ func TestReadFileRegexSemantics(t *testing.T) {
 				if err != nil || result.Status != operationresult.Success {
 					t.Fatalf("%s: %v", target, err)
 				}
-				if !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", tc.count)) {
+				if !strings.Contains(result.Data.Content, grepCount(tc.count)) {
 					t.Fatalf("%s: %s", target, result.Data.Content)
 				}
 			}
@@ -53,6 +59,45 @@ func TestReadFileRegexSemantics(t *testing.T) {
 	}
 }
 
+func TestGrepPagination(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "sample.txt")
+	for _, n := range []int{100, 101} {
+		if err := os.WriteFile(path, []byte(strings.Repeat("hit\n", n)), 0644); err != nil {
+			t.Fatal(err)
+		}
+		for _, target := range []string{path, root} {
+			if _, err := exec.LookPath("rg"); err != nil && target == root {
+				continue
+			}
+			args := map[string]any{"mode": "grep", "path": target, "query": "hit", "context_lines": -1}
+			read := func() string {
+				t.Helper()
+				got, _, err := callTool(t.Context(), NewReadFileTool(FileGuard{}).Definition(), toolshare.CallRequest{Arguments: mustJSON(args)})
+				if err != nil || got.Status != operationresult.Success {
+					t.Fatalf("%v %v", err, got)
+				}
+				return got.Data.Content
+			}
+			first := read()
+			header, _, _ := strings.Cut(first, "\n")
+			want := "matches: 1-100/100"
+			if n == 101 {
+				want += `+ · next index: "101-200"`
+			}
+			if !strings.HasSuffix(header, want) || strings.Contains(first, "\n101. ") || !strings.Contains(first, "\n100. ") {
+				t.Fatalf("bad first page: %s", first)
+			}
+			if n == 101 {
+				args["index"] = "101-200"
+				second := read()
+				if !strings.Contains(second, "matches: 101/101\n101. ") || strings.Contains(second, "\n100. ") {
+					t.Fatalf("bad second page: %s", second)
+				}
+			}
+		}
+	}
+}
 func TestReadFileInvalidRegex(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(t.TempDir(), "empty.txt")
@@ -74,8 +119,8 @@ func TestDirectoryRegexEmptyFiles(t *testing.T) {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
-		matches := directoryMatchHeap{}
-		count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("^"), []string{path}, 1, &matches)
+		matches := []directorySearchMatch{}
+		count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("^"), []string{path}, readFileIndex{start: 1, end: 1}, &matches)
 		if err != nil || count.Status != operationresult.Success || count.Data != 0 || len(matches) != 0 {
 			t.Fatalf("content=%q count=%+v matches=%v err=%v", content, count, matches, err)
 		}
@@ -111,7 +156,7 @@ func TestDirectoryGrepGlob(t *testing.T) {
 		if err != nil || result.Status != operationresult.Success {
 			t.Fatalf("%v: %v", tc.glob, err)
 		}
-		if !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", tc.want)) {
+		if !strings.Contains(result.Data.Content, grepCount(tc.want)) {
 			t.Fatalf("%v: %s", tc.glob, result.Data.Content)
 		}
 	}
@@ -145,17 +190,17 @@ func TestDirectoryGrepBinaryAndByteColumns(t *testing.T) {
 	if err := os.WriteFile(text, []byte("雪needle needle\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	matches := directoryMatchHeap{}
-	count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{binary, text}, 1, &matches)
+	matches := []directorySearchMatch{}
+	count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{binary, text}, readFileIndex{start: 1, end: 1}, &matches)
 	if err != nil || count.Status != operationresult.Success || count.Data != 1 || len(matches) != 1 || matches[0].Path != "text" || matches[0].Column != 4 {
 		t.Fatalf("count=%+v matches=%+v err=%v", count, matches, err)
 	}
-	if _, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{filepath.Join(root, "missing")}, 1, &matches); !errors.Is(err, os.ErrNotExist) {
+	if _, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{filepath.Join(root, "missing")}, readFileIndex{start: 1, end: 1}, &matches); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing file: %v", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := scanDirectoryGrepBatch(ctx, root, regexp.MustCompile("needle"), []string{text}, 1, &matches); !errors.Is(err, context.Canceled) {
+	if _, err := scanDirectoryGrepBatch(ctx, root, regexp.MustCompile("needle"), []string{text}, readFileIndex{start: 1, end: 1}, &matches); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
 }
@@ -171,11 +216,10 @@ func BenchmarkDirectoryGrepRegex(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	b.SetBytes(int64(len(content) * 128))
 	b.ResetTimer()
 	for b.Loop() {
-		matches, total, _, err := findDirectoryGrepMatches(b.Context(), root, `^func\s+(New|Get)\w+`, 20, []string{"*.go"})
-		if err != nil || matches.Status != operationresult.Success || total != 128*1600 || len(matches.Data) != 20 {
+		matches, total, _, err := findDirectoryGrepMatches(b.Context(), root, `^func\s+(New|Get)\w+`, readFileIndex{start: 1, end: 20}, []string{"*.go"})
+		if err != nil || matches.Status != operationresult.Success || total != 21 || len(matches.Data) != 20 {
 			b.Fatalf("matches=%d total=%d err=%v", len(matches.Data), total, err)
 		}
 	}

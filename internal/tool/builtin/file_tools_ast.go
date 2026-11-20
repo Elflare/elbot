@@ -43,7 +43,7 @@ func normalizeReadFileMode(value string) (string, error) {
 	}
 }
 
-func readFileASTResult(file fileops.File, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+func readFileASTResult(file fileops.File, index readFileIndex, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	if !strings.EqualFold(filepath.Ext(file.Path), ".go") {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: "ast mode only supports Go files; use read or grep mode"}, nil
 	}
@@ -54,20 +54,12 @@ func readFileASTResult(file fileops.File, maxMatches, index int, warnings []stri
 	if warning != "" {
 		warnings = append(warnings, warning)
 	}
-	if index < 0 || index > len(entries) {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d entries", index, len(entries))}, nil
+	if index.outOfRange(len(entries)) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d entries", index.start, len(entries))}, nil
 	}
-	start, end := 0, min(maxMatches, len(entries))
-	if index > 0 {
-		start, end = index-1, index
-	}
-	truncated := index == 0 && end < len(entries)
+	start, end := index.start-1, min(index.end, len(entries))
 	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nmode: ast\nlanguage: go\nmatches: %d\ntotal: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), end-start, len(entries), truncated)
-	if index > 0 {
-		fmt.Fprintf(&b, "index: %d\n", index)
-	}
-	b.WriteString("content:\n")
+	fmt.Fprintf(&b, "%s | matches: %s\n", readFileHeader(file), index.summary(len(entries), true))
 	section := ""
 	for i := start; i < end; i++ {
 		entry := entries[i]
@@ -77,7 +69,7 @@ func readFileASTResult(file fileops.File, maxMatches, index int, warnings []stri
 		}
 		fmt.Fprintf(&b, "  %d. %s [%d-%d]\n", i+1, entry.Text, entry.StartLine, entry.EndLine)
 		memberCount := len(entry.Members)
-		if index == 0 {
+		if !index.single {
 			memberCount = min(memberCount, 8)
 		}
 		for _, member := range entry.Members[:memberCount] {
@@ -86,9 +78,6 @@ func readFileASTResult(file fileops.File, maxMatches, index int, warnings []stri
 		if memberCount < len(entry.Members) {
 			fmt.Fprintf(&b, "    [%d more members; use index=%d to expand]\n", len(entry.Members)-memberCount, i+1)
 		}
-	}
-	if truncated {
-		b.WriteString("[more entries omitted; increase max_matches (up to 100) or select an entry with index]\n")
 	}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }

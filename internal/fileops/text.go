@@ -96,16 +96,6 @@ func NormalizeGrepContextLines(value int) int {
 	return value
 }
 
-func NormalizeMaxMatches(value int) int {
-	if value <= 0 {
-		return 20
-	}
-	if value > 100 {
-		return 100
-	}
-	return value
-}
-
 func NormalizeContextLines(value int) int {
 	if value < 0 {
 		return 0

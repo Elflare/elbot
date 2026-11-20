@@ -41,7 +41,7 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	if !strings.Contains(result.Data.Content, "2 | beta") || !strings.Contains(result.Data.Content, "3 | gamma") {
 		t.Fatalf("unexpected read_file content:\n%s", result.Data.Content)
 	}
-	if !strings.Contains(result.Data.Content, "truncated: false") {
+	if strings.Contains(result.Data.Content, "truncated:") {
 		t.Fatalf("expected untruncated result:\n%s", result.Data.Content)
 	}
 	assertFileRevision(t, result.Data.Content, []byte("alpha\nbeta\ngamma\n"))
@@ -169,11 +169,11 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 	}
 	slices.Sort(names)
 	total := len(names) * 2
-	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 3}, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: readFileIndex{start: 1, end: 3}}, nil)
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{fmt.Sprintf("matches: %d\n", total), "truncated: true", "1. a+:1:1", "2. a+:2:1", "3. a/b:1:1"} {
+	for _, expected := range []string{"matches: 1-3/3+", "1. a+:1:1", "2. a+:2:1", "3. a/b:1:1"} {
 		if !strings.Contains(result.Data.Content, expected) {
 			t.Fatalf("missing %q: %s", expected, result.Data.Content)
 		}
@@ -182,18 +182,18 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 		t.Fatalf("unexpected extra results: %s", result.Data.Content)
 	}
 	for _, index := range []int{1, 201, total} {
-		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 1, Index: index}, nil)
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: readFileIndex{start: index, end: index, single: true}}, nil)
 		if err != nil || result.Status != operationresult.Success {
 			t.Fatal(err)
 		}
 		line := (index-1)%2 + 1
 		want := fmt.Sprintf("match: %s:%d-%d [grep]", names[(index-1)/2], line, line)
-		if !strings.Contains(result.Data.Content, want) || !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", total)) || !strings.Contains(result.Data.Content, "truncated: false") {
+		if !strings.Contains(result.Data.Content, want) || !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d/%d", index, index)) {
 			t.Fatalf("selection %d: %s", index, result.Data.Content)
 		}
 	}
-	for _, index := range []int{-1, total + 1} {
-		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: index}, nil)
+	for _, index := range []int{total + 1} {
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: readFileIndex{start: index, end: index, single: true}}, nil)
 		if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, fmt.Sprintf("found %d matches", total)) {
 			t.Fatalf("index %d: %v", index, err)
 		}
@@ -211,12 +211,12 @@ func TestDirectoryGrepLongLinesAndEmptyResults(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "absent", MaxMatches: 10}, nil)
-		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "matches: 0\ntruncated: false") {
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "absent", Index: readFileIndex{start: 1, end: 10}}, nil)
+		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "matches: 0/0\n") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 10}, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: readFileIndex{start: 1, end: 10}}, nil)
 	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "long.txt:1:70001") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -253,11 +253,11 @@ func TestDirectoryGrepWarningsRespectSearchScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 10}, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: readFileIndex{start: 1, end: 10}}, nil)
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "matches: 1\n") || !strings.Contains(result.Data.Content, "visible.txt") {
+	if !strings.Contains(result.Data.Content, "matches: 1/1\n") || !strings.Contains(result.Data.Content, "visible.txt") {
 		t.Fatal(result.Data.Content)
 	}
 	want := "grep skipped 7 large files: "
@@ -291,7 +291,7 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 		if _, _, err := directoryGrepFiles(ctx, rg, root, nil); !errors.Is(err, reason) {
 			t.Fatalf("enumeration: %v, want %v", err, reason)
 		}
-		if _, err := scanDirectoryGrepBatch(ctx, root, regexp.MustCompile("needle"), []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, reason) {
+		if _, err := scanDirectoryGrepBatch(ctx, root, regexp.MustCompile("needle"), []string{filepath.Join(root, "file")}, readFileIndex{start: 1, end: 1}, &[]directorySearchMatch{}); !errors.Is(err, reason) {
 			t.Fatalf("search: %v, want %v", err, reason)
 		}
 	}
@@ -370,7 +370,7 @@ func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "index: 2") || !strings.Contains(result.Data.Content, "match: second.txt:1-1 [grep]") || !strings.Contains(result.Data.Content, " 1 | needle two") {
+	if !strings.Contains(result.Data.Content, "matches: 2/2") || !strings.Contains(result.Data.Content, "match: second.txt:1-1 [grep]") || !strings.Contains(result.Data.Content, " 1 | needle two") {
 		t.Fatalf("unexpected selected directory grep:\n%s", result.Data.Content)
 	}
 }
@@ -745,6 +745,13 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	}
 }
 
+func TestReadFileIndexSchema(t *testing.T) {
+	props := NewReadFileTool(FileGuard{}).Definition().Schema().Parameters["properties"].(map[string]any)
+	types := props["index"].(map[string]any)["type"].([]string)
+	if !slices.Equal(types, []string{"string", "integer"}) || props["max_matches"] != nil {
+		t.Fatalf("unexpected read_file parameters: %v", props)
+	}
+}
 func TestEditFileToolSchemaExposesEditProtocol(t *testing.T) {
 	schema := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
@@ -955,7 +962,7 @@ func TestReadFileToolEmptyFile(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "lines: 0/0") || !strings.Contains(result.Data.Content, "empty: true") {
+	if !strings.Contains(result.Data.Content, "lines: 0/0") {
 		t.Fatalf("unexpected empty file output:\n%s", result.Data.Content)
 	}
 }
@@ -1546,7 +1553,7 @@ func Map[T, R any](v T, fn func(T) R) R { return fn(v) }
 	}
 	content := result.Data.Content
 	for _, want := range []string{
-		"mode: ast\nlanguage: go", "matches: 11\ntotal: 11\ntruncated: false",
+		"matches: 1-11/11",
 		`1. alias "fmt"`, `2. _ "net/http/pprof"`, `3. . "strings"`,
 		"4. const A, B int", "5. var secret", "Pair[T any] struct",
 		"Left, Right T", "*Embedded", "Nested struct { } [nested details omitted]", "Service interface",
@@ -1565,8 +1572,8 @@ func Map[T, R any](v T, fn func(T) R) R { return fn(v) }
 		}
 	}
 	assertFileRevision(t, content, []byte(source))
-	if !strings.Contains(content, "encoding: utf-8") || len(result.Data.Warnings) == 0 {
-		t.Fatalf("missing encoding or absolute-path warning: %#v", result.Data)
+	if strings.Contains(content, "encoding: utf-8") || len(result.Data.Warnings) == 0 {
+		t.Fatalf("unexpected encoding or missing absolute-path warning: %#v", result.Data)
 	}
 }
 
@@ -1601,7 +1608,7 @@ func TestReadFileASTIndexSelection(t *testing.T) {
 	if result.Status != operationresult.Success {
 		t.Fatal(result.Message)
 	}
-	for _, want := range []string{"matches: 20\ntotal: 107\ntruncated: true", "2 more members; use index=1", "2 more members; use index=2", "20. func F17()"} {
+	for _, want := range []string{"matches: 1-100/107", "2 more members; use index=1", "2 more members; use index=2", "20. func F17()"} {
 		if !strings.Contains(result.Data.Content, want) {
 			t.Errorf("missing %q in %s", want, result.Data.Content)
 		}
@@ -1609,26 +1616,22 @@ func TestReadFileASTIndexSelection(t *testing.T) {
 	if strings.Contains(result.Data.Content, "Field8") || strings.Contains(result.Data.Content, "Method8") {
 		t.Fatal("member summary was not limited")
 	}
-	limited := read(map[string]any{"max_matches": 1})
-	if limited.Status != operationresult.Success || !strings.Contains(limited.Data.Content, "matches: 1\ntotal: 107") || !strings.Contains(limited.Data.Content, "1. Config struct") {
-		t.Fatalf("unexpected limited index: %#v", limited)
-	}
-	maximum := read(map[string]any{"max_matches": 1000})
-	if maximum.Status != operationresult.Success || !strings.Contains(maximum.Data.Content, "matches: 100\n") || !strings.Contains(maximum.Data.Content, "100. func F97()") {
-		t.Fatalf("unexpected maximum index: %#v", maximum)
+	page := read(map[string]any{"index": "101-200"})
+	if page.Status != operationresult.Success || !strings.Contains(page.Data.Content, "matches: 101-107/107") || !strings.Contains(page.Data.Content, "101. func F98()") || strings.Contains(page.Data.Content, "100. func") {
+		t.Fatalf("unexpected second page: %#v", page)
 	}
 	for _, tc := range []struct {
 		index int
 		want  string
 	}{{1, "Field9 string"}, {2, "Method9()"}, {107, "107. func F104()"}} {
-		selected := read(map[string]any{"index": tc.index, "max_matches": 1})
-		if selected.Status != operationresult.Success || !strings.Contains(selected.Data.Content, tc.want) || !strings.Contains(selected.Data.Content, "truncated: false") || strings.Contains(selected.Data.Content, "more members") {
+		selected := read(map[string]any{"index": tc.index})
+		if selected.Status != operationresult.Success || !strings.Contains(selected.Data.Content, tc.want) || strings.Contains(selected.Data.Content, "more members") {
 			t.Errorf("unexpected selection %d: %#v", tc.index, selected)
 		}
 	}
-	for _, index := range []int{-1, 108} {
+	for _, index := range []any{-1, 0, 108, "2-1", "1-101", "bad", 1.5, "0-1"} {
 		if got := read(map[string]any{"index": index}); got.Status != operationresult.InvalidArguments {
-			t.Errorf("index %d should fail: %#v", index, got)
+			t.Errorf("index %v should fail: %#v", index, got)
 		}
 	}
 	withQuery := read(map[string]any{"query": "nonexistent", "context_lines": 20, "start_line": 50})
@@ -1666,7 +1669,7 @@ func TestReadFileASTTargetsAndParseErrors(t *testing.T) {
 			if tc.warning && !strings.Contains(result.Data.Content, "func Good()") {
 				t.Fatal("partial parse lost valid declaration")
 			}
-			if tc.status == operationresult.Success && !tc.warning && !strings.Contains(result.Data.Content, "matches: 0\ntotal: 0\ntruncated: false") {
+			if tc.status == operationresult.Success && !tc.warning && !strings.Contains(result.Data.Content, "matches: 0/0") {
 				t.Fatalf("unexpected empty index: %s", result.Data.Content)
 			}
 		})
