@@ -49,18 +49,8 @@ print(await send_file(source="weekly.md"))
 
 ## 查看图片
 
-`view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型，不自动发送到聊天。
+`view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型。
 
-| 参数 | 说明 |
-| --- | --- |
-| `source` | 媒体 ID、HTTP(S) URL 或本地路径（含 `file://`）；本地路径仅超级管理员可用，遵守工作区、后台沙箱和敏感文件读取规则。 |
-| `message_id` | 当前聊天的消息 ID 数组（可带 `#`），与 `source` 二选一。 |
-| `media_index` | 与消息逐项对应的媒体序号数组，从 1 开始；文件也占序号，只能选图片。例：一条消息依次含文件、图片 A、图片 B，`[[2,3]]` 选两张图。 |
-
-- 省略 `media_index` 时，每条消息取首张图片。
-- 参数和序号在获取图片前统一检查；获取失败按项返回说明，成功的图片仍可查看。
-- `view_image` 与 `get_media` 获取历史媒体时，每次最多尝试 5 个未缓存位置（失败也计数）；缓存不占次数，同次重复位置复用结果。
-- `get_media` 返回媒体 ID，默认取每条消息的首个媒体。
 
 ## Shell
 
