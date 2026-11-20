@@ -138,34 +138,56 @@ func observePipe(w *worker) <-chan struct{} {
 }
 
 func TestBlockedProtocolRequestCancellation(t *testing.T) {
-	for _, mode := range []string{"cancel", "deadline", "close"} {
+	t.Run("deadline", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			w := newWorker(nil, share.RuntimeConfig{})
+			reader, writer := io.Pipe()
+			defer reader.Close()
+			w.stdin = writer
+			entered := observePipe(w)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				_, err := w.request(ctx, "event.handle", nil)
+				done <- err
+			}()
+			select {
+			case <-entered:
+			case err := <-done:
+				t.Fatalf("request returned before entering Write: %v", err)
+			}
+			// With no reader, Write blocks; only then can virtual time reach the deadline.
+			if err := <-done; !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("request error = %v, want %v", err, context.DeadlineExceeded)
+			}
+		})
+	})
+	for _, mode := range []string{"cancel", "close"} {
 		t.Run(mode, func(t *testing.T) {
 			m, w := behaviorWorker(t, "blocked", time.Second)
 			entered := observePipe(w)
 			ctx, cancel := context.WithCancel(t.Context())
-			if mode == "deadline" {
-				ctx, cancel = context.WithTimeout(t.Context(), 150*time.Millisecond)
-			}
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
 				_, err := m.Handle(ctx, w.config.ID, share.Event{Metadata: map[string]any{"payload": strings.Repeat("x", 2<<20)}}, share.Control{})
 				done <- err
 			}()
-			<-entered
+			select {
+			case <-entered:
+			case err := <-done:
+				t.Fatalf("request returned before entering Write: %v", err)
+			}
 			if mode == "close" {
 				go m.Close(context.Background())
-			} else if mode == "cancel" {
+			} else {
 				cancel()
 			}
 			select {
 			case err := <-done:
-				want := context.Canceled
-				if mode == "deadline" {
-					want = context.DeadlineExceeded
-				}
-				if !errors.Is(err, want) {
-					t.Fatalf("request error = %v, want %v", err, want)
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("request error = %v, want %v", err, context.Canceled)
 				}
 			case <-time.After(700 * time.Millisecond):
 				w.kill()
