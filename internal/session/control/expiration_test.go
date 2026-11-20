@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/binding"
 	"elbot/internal/session/share"
@@ -40,6 +42,16 @@ func TestIdleExpirationIgnoresMetadataAndPreservesHistory(t *testing.T) {
 		ctx, scope := context.Background(), privateScope()
 		row := f.create(t, scope, "old")
 		old := f.s.CurrentBinding(scope)
+		var records []events.LogRecord
+		connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
+			if record.EventName == "session_idle_expired" {
+				records = append(records, record)
+			}
+		}, signal.ConnectOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Disconnect()
 		if err := f.s.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -54,6 +66,12 @@ func TestIdleExpirationIgnoresMetadataAndPreservesHistory(t *testing.T) {
 		synctest.Wait()
 		if old.Valid() || f.s.CurrentBinding(scope) != nil {
 			t.Fatal("metadata update extended idle deadline")
+		}
+		if len(records) != 1 {
+			t.Fatalf("got %d idle expiration log records, want 1", len(records))
+		}
+		if record := records[0]; record.Category != events.LogCategoryLog || record.Level != slog.LevelInfo || record.Identity.SessionID != row.ID || record.Content != fmt.Sprintf("session idle expired binding_version=%d", old.Version()) {
+			t.Fatalf("unexpected idle expiration log: %+v", record)
 		}
 		if _, err := f.store.Sessions().Get(ctx, row.ID); err != nil {
 			t.Fatal("idle expiry deleted history", err)
