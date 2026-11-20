@@ -9,14 +9,12 @@ info:
     with an error code and the operation message; internal operation statuses are
     not HTTP statuses or wire codes. Execution and IO faults use internal_error
     with the original error message. Optional per-item faults in successful
-    responses are plain strings. Supply X-CLI-Connection from the current WebSocket
-    to operate on its subscribed session. Without a subscription the ordinary CLI
-    current-session semantics apply.
+    responses are plain strings. Every request requires the connected WebSocket’s api_token.
+    Without a session subscription the ordinary CLI current-session semantics apply.
 servers:
   - url: /api/v1
 security:
-  - ClientID: []
-    BearerToken: []
+  - BearerToken: []
 paths:
   /view/session:
     $ref: './frontend-api/paths/sessions.yaml#/~1view~1session'
@@ -124,15 +122,9 @@ paths:
     $ref: './frontend-api/paths/diagnostics.yaml#/~1configuration~1check'
 components:
   securitySchemes:
-    ClientID:
-      $ref: './frontend-api/components/transport.yaml#/securitySchemes/ClientID'
     BearerToken:
       $ref: './frontend-api/components/transport.yaml#/securitySchemes/BearerToken'
   parameters:
-    connection:
-      $ref: './frontend-api/components/transport.yaml#/parameters/connection'
-    connectionRequired:
-      $ref: './frontend-api/components/transport.yaml#/parameters/connectionRequired'
     name:
       $ref: './frontend-api/components/transport.yaml#/parameters/name'
     query:

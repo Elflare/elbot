@@ -7,9 +7,6 @@ import (
 )
 
 func (h *handler) setViewSession(w http.ResponseWriter, req *http.Request) {
-	if !h.requireConnection(w, req) {
-		return
-	}
 	body, ok := decodeAPIJSON[struct {
 		SessionID string `json:"session_id"`
 	}](w, req)

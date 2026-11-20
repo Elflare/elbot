@@ -141,8 +141,6 @@
     post:
       operationId: respondConfirmation
       summary: Respond to current confirmation
-      parameters:
-        - $ref: '../components/transport.yaml#/parameters/connectionRequired'
       requestBody:
         required: true
         content:

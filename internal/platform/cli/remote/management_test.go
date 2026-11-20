@@ -26,41 +26,45 @@ func (s *managementControlStub) Status(ctx context.Context) (operationresult.Res
 	return operationresult.Result[control.StatusResult]{Status: operationresult.Success, Data: control.StatusResult{Mode: "work"}}, nil
 }
 
-func TestManagementAPIRequiresConfiguredTokenAndMapsRole(t *testing.T) {
+func TestManagementAPIRequiresConnectionTokenAndMapsRole(t *testing.T) {
 	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
 	controller := &managementControlStub{}
 	s := testRemoteServer(t)
 	s.control = controller
 	s.workCtx = context.Background()
-	client := &remoteClientConn{id: "user", apiToken: "connection"}
-	s.apiClients[client.apiToken] = client
+	client := &remoteClientConn{id: "user", apiToken: "connection", mediaToken: "media"}
+	s.addClient(client)
+	defer s.removeClient(client)
 	api := s.managementHandler()
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
-	request.Header.Set("X-Client-ID", "user")
-	request.Header.Set("Authorization", "Bearer secret")
-	request.Header.Set("X-CLI-Connection", "connection")
+	request.Header.Set("Authorization", "Bearer connection")
 	response := httptest.NewRecorder()
 	api.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || controller.role != contextinfo.RoleUser {
 		t.Fatalf("status=%d role=%q body=%s", response.Code, controller.role, response.Body.String())
 	}
 
-	request = httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
-	request.Header.Set("X-Client-ID", "user")
-	request.Header.Set("Authorization", "Bearer wrong")
-	response = httptest.NewRecorder()
-	api.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("invalid token status=%d body=%s", response.Code, response.Body.String())
+	for _, method := range []string{"GET", "POST"} {
+		for _, token := range []string{"", "Bearer secret", "Bearer media"} {
+			request = httptest.NewRequest(method, "/api/v1/sessions", nil)
+			request.Header.Set("X-Client-ID", "user")
+			request.Header.Set("X-CLI-Connection", "connection")
+			request.Header.Set("Authorization", token)
+			response = httptest.NewRecorder()
+			api.ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("%s with %q: %d", method, token, response.Code)
+			}
+		}
 	}
 }
 
 func TestManagementAPIRouterErrorsUseJSONEnvelope(t *testing.T) {
-	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
 	s := testRemoteServer(t)
 	s.control = &managementControlStub{}
 	s.workCtx = context.Background()
+	s.apiClients["connection"] = &remoteClientConn{id: "user"}
 	api := s.managementHandler()
 	for _, tc := range []struct {
 		method string
@@ -73,8 +77,7 @@ func TestManagementAPIRouterErrorsUseJSONEnvelope(t *testing.T) {
 	} {
 		t.Run(tc.code, func(t *testing.T) {
 			request := httptest.NewRequest(tc.method, tc.path, nil)
-			request.Header.Set("X-Client-ID", "user")
-			request.Header.Set("Authorization", "Bearer secret")
+			request.Header.Set("Authorization", "Bearer connection")
 			response := httptest.NewRecorder()
 			api.ServeHTTP(response, request)
 			if response.Code != tc.status {
@@ -99,16 +102,13 @@ func TestManagementAPIRouterErrorsUseJSONEnvelope(t *testing.T) {
 }
 
 func TestManagementAPIResolvesSuperadminFromConfiguredIdentity(t *testing.T) {
-	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
 	s := testRemoteServer(t)
 	s.workCtx = context.Background()
 	s.superadmins = share.NewSuperadmins(testPlatformName, []string{"user"})
-	ctx, _, err := s.managementContext(context.Background(), func() *http.Request {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
-		req.Header.Set("X-Client-ID", "user")
-		req.Header.Set("Authorization", "Bearer secret")
-		return req
-	}())
+	s.apiClients["connection"] = &remoteClientConn{id: "user"}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	req.Header.Set("Authorization", "Bearer connection")
+	ctx, err := s.managementContext(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}

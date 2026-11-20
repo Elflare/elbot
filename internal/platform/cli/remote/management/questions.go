@@ -30,9 +30,6 @@ func (h *handler) saveQuestionDraft(w http.ResponseWriter, req *http.Request) {
 	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) confirmAnswers(w http.ResponseWriter, req *http.Request) {
-	if !h.requireConnection(w, req) {
-		return
-	}
 	result, err := h.control.ConfirmAnswers(req.Context(), req.PathValue("session_id"))
 	if writeControlResultError(w, result, err) {
 		return

@@ -140,9 +140,9 @@ func TestUsageBeforeFirstLog(t *testing.T) {
 	}
 	handler := NewHandler(HandlerOptions{
 		Control: supervisor,
-		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
 			actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Role: contextinfo.RoleSuperadmin}
-			return contextinfo.WithActor(ctx, actor), true, nil
+			return contextinfo.WithActor(ctx, actor), nil
 		},
 	})
 	response := httptest.NewRecorder()
@@ -167,8 +167,8 @@ func TestContinuationCallbackRunsAfterHTTPResponseIsWritten(t *testing.T) {
 			Accepted:     true,
 			Continuation: &control.Continuation{Kind: "append", SessionID: "session"},
 		}},
-		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
-			return ctx, true, nil
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
+			return ctx, nil
 		},
 		Continue: func(_ context.Context, continuation control.Continuation) {
 			called = true
@@ -191,8 +191,8 @@ func TestWorkspaceManagementRoutesForwardRequests(t *testing.T) {
 	stub := &workspaceHandlerStub{workspace: control.WorkspaceResult{SessionID: "s1", AgentPath: "/agent", UserPath: "/user"}}
 	handler := NewHandler(HandlerOptions{
 		Control: stub,
-		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
-			return ctx, true, nil
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
+			return ctx, nil
 		},
 	})
 	tests := []struct {
@@ -231,8 +231,8 @@ func TestToolDetailRouteReturnsCompleteDetail(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler := NewHandler(HandlerOptions{
 		Control: &workspaceHandlerStub{},
-		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
-			return ctx, true, nil
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
+			return ctx, nil
 		},
 	})
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/tools/guide/detail", nil))
@@ -251,8 +251,8 @@ func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
 				{Kind: tool.ConfirmationDetailFields, Content: []tool.ConfirmationField{{Key: "command", Label: "命令", Value: "a>b && c<d"}}},
 			},
 		}},
-		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
-			return ctx, true, nil
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
+			return ctx, nil
 		},
 	})
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/confirmation", nil))

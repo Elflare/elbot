@@ -89,9 +89,6 @@ func (h *handler) currentConfirmation(w http.ResponseWriter, req *http.Request) 
 	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) respondConfirmation(w http.ResponseWriter, req *http.Request) {
-	if !h.requireConnection(w, req) {
-		return
-	}
 	body, ok := decodeAPIJSON[control.RespondConfirmationRequest](w, req)
 	if !ok {
 		return

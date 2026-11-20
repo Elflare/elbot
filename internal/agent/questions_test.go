@@ -127,20 +127,17 @@ func TestQuestionSubmission(t *testing.T) {
 			third := out.Blocks[3].Content.(delivery.QuestionContent)
 			sid := first.SessionID
 			// Use real HTTP routes and slash commands against the same supervisor and SQLite database.
-			api := management.NewHandler(management.HandlerOptions{Control: deps.Control, Authenticate: func(_ context.Context, r *http.Request) (context.Context, bool, error) {
-				return ctx, r.Header.Get("X-CLI-Connection") == "connected", nil
+			api := management.NewHandler(management.HandlerOptions{Control: deps.Control, Authenticate: func(context.Context, *http.Request) (context.Context, error) {
+				return ctx, nil
 			}, Continue: func(ctx context.Context, c control.Continuation) {
 				_, res, err := m.ContinueControlInput(ctx, c)
 				if err != nil || res.Status != operationresult.Success {
 					t.Fatalf("continue: %+v %v", res, err)
 				}
 			}})
-			request := func(method, path, body string, connected bool, code int) string {
+			request := func(method, path, body string, code int) string {
 				t.Helper()
 				req := httptest.NewRequest(method, "/api/v1/sessions/"+path, strings.NewReader(body))
-				if connected {
-					req.Header.Set("X-CLI-Connection", "connected")
-				}
 				w := httptest.NewRecorder()
 				api.ServeHTTP(w, req)
 				if w.Code != code {
@@ -149,23 +146,22 @@ func TestQuestionSubmission(t *testing.T) {
 				return w.Body.String()
 			}
 			draftPath := fmt.Sprintf("%s/questions/%d/draft", sid, first.ID)
-			request("PUT", draftPath, `{"choice":1,"text":"旧补充"}`, false, 200)
+			request("PUT", draftPath, `{"choice":1,"text":"旧补充"}`, 200)
 			if err := send(fmt.Sprintf("/a %d 2 跑竞态", first.ID)); err != nil {
 				t.Fatal(err)
 			}
-			request("PUT", fmt.Sprintf("%s/questions/%d/draft", sid, second.ID), `{"text":"我来审阅"}`, false, 200)
-			request("PUT", draftPath, `{"choice":9}`, false, 400)
-			request("POST", sid+"/questions/confirm", "", false, 409)
-			request("POST", "wrong-session/questions/confirm", "", true, 409)
-			response := request("POST", sid+"/questions/confirm", "", true, 200)
+			request("PUT", fmt.Sprintf("%s/questions/%d/draft", sid, second.ID), `{"text":"我来审阅"}`, 200)
+			request("PUT", draftPath, `{"choice":9}`, 400)
+			request("POST", "wrong-session/questions/confirm", "", 409)
+			response := request("POST", sid+"/questions/confirm", "", 200)
 			var confirmed control.ConfirmAnswersResult
 			if err := json.Unmarshal([]byte(response), &confirmed); err != nil || !slices.Equal(confirmed.QuestionIDs, []int64{first.ID, second.ID}) {
 				t.Fatalf("confirm %s %v", response, err)
 			}
-			request("POST", sid+"/questions/confirm", "", true, 400)
-			request("PUT", draftPath, `{"choice":2,"text":"队中改选"}`, false, 200)
-			request("PUT", fmt.Sprintf("%s/questions/%d/draft", sid, queued.ID), `{"text":"独立批次"}`, false, 200)
-			request("POST", sid+"/questions/confirm", "", true, 200)
+			request("POST", sid+"/questions/confirm", "", 400)
+			request("PUT", draftPath, `{"choice":2,"text":"队中改选"}`, 200)
+			request("PUT", fmt.Sprintf("%s/questions/%d/draft", sid, queued.ID), `{"text":"独立批次"}`, 200)
+			request("POST", sid+"/questions/confirm", "", 200)
 			close(platform.release)
 			if err := <-done; err != nil {
 				t.Fatal(err)
@@ -192,7 +188,7 @@ func TestQuestionSubmission(t *testing.T) {
 			if len(texts) < 2 || !strings.Contains(texts[len(texts)-2], "队中改选") || strings.Contains(texts[len(texts)-2], "独立批次") || !strings.Contains(texts[len(texts)-1], "独立批次") {
 				t.Fatalf("next request: %v", texts)
 			}
-			got := request("GET", sid+"/questions", "", false, 200)
+			got := request("GET", sid+"/questions", "", 200)
 			var remaining struct{ Items []storage.Question }
 			if err := json.Unmarshal([]byte(got), &remaining); err != nil || len(remaining.Items) != 1 || remaining.Items[0].ID != third.ID {
 				t.Fatal(got, err)
@@ -206,14 +202,14 @@ func TestQuestionSubmission(t *testing.T) {
 			if err := send("新会话消息"); err != nil {
 				t.Fatal(err)
 			}
-			request("GET", sid+"/questions", "", false, 409)
+			request("GET", sid+"/questions", "", 409)
 			if err := send("/resume " + sid); err != nil {
 				t.Fatal(err)
 			}
 			if err := send("先看其他文件"); err != nil {
 				t.Fatal(err)
 			}
-			restored := request("GET", sid+"/questions", "", false, 200)
+			restored := request("GET", sid+"/questions", "", 200)
 			if !strings.Contains(restored, "待商量") {
 				t.Fatalf("draft lost across session switch: %s", restored)
 			}

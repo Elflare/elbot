@@ -44,11 +44,11 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 `media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。
 
-管理 API 使用配置的 client token 和 `X-Client-ID` 鉴权。要按会话收发，在 `hello_ok` 之后携带 `X-CLI-Connection: <api_token>`，向 `PUT /api/v1/view/session` 提交 `{"session_id":"cl93"}`。成功返回 204（无正文）；目标不存在或无权访问时保留原订阅。每条连接最多订阅一个会话，切换不恢复、停止或迁移任务。重连后需重新订阅；历史消息通过消息列表接口读取，不重放断线期间的增量。
+配置的长期 token 只用于 WS 登录。所有 `/api/v1/*` 请求均发送 `Authorization: Bearer <api_token>`；未提供有效在线连接凭据返回 `401`。前端只在内存中保存连接凭据，重连后换用新值，不自动重放写请求。对外服务使用 HTTPS/WSS。要按会话收发，向 `PUT /api/v1/view/session` 提交 `{"session_id":"cl93"}`。成功返回 204（无正文）；目标不存在或无权访问时保留原订阅。每条连接最多订阅一个会话，切换不恢复、停止或迁移任务。重连后需重新订阅；历史消息通过消息列表接口读取，不重放断线期间的增量。
 
 新建对话先 `POST /api/v1/sessions`（无请求体），从 `201` 响应的会话对象读取 `id`，再 `PUT /api/v1/view/session`。创建本身不切换已有订阅，也不重置平台 current。
 
-带同一连接头的状态、停止当前会话、确认和问答请求使用该请求开始时的会话。异步续接失败的 `error` 帧携带发起请求时的 `session_id`（未订阅时省略）。普通 CLI 可不订阅，继续使用平台当前会话；`/resume` 和 HTTP 执行恢复接口不等价于订阅。
+同一连接发起的状态、停止当前会话、确认和问答请求使用该请求开始时的会话。异步续接失败的 `error` 帧携带发起请求时的 `session_id`（未订阅时省略）。普通 CLI 可不订阅，继续使用平台当前会话；`/resume` 和 HTTP 执行恢复接口不等价于订阅。
 
 ## 消息格式
 
@@ -126,7 +126,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 {"kind":"question","content":{"id":19,"session_id":"s1","question":"测试范围？","options":["相关包","全量"],"answer_command":"/a"}}
 ```
 
-`GET .../questions` 读当前 Session 内存草稿（重启清空）。`PUT .../questions/{id}/draft` 替换草稿：`{"choice":2,"text":"补充"}` 或 `{"text":"自由回答"}`。`POST .../questions/confirm` 携带 `X-CLI-Connection`，只提交已填且未排队的题号；队中改同题取最新。模型回复走 WebSocket。
+`GET .../questions` 读当前 Session 内存草稿（重启清空）。`PUT .../questions/{id}/draft` 替换草稿：`{"choice":2,"text":"补充"}` 或 `{"text":"自由回答"}`。`POST .../questions/confirm` 只提交已填且未排队的题号；队中改同题取最新。模型回复走 WebSocket。
 
 ### attachment — 文件或图片输出
 

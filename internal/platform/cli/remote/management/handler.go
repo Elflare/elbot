@@ -13,7 +13,7 @@ type HandlerOptions struct {
 	// Control exposes the business operations served by the HTTP API.
 	Control ControlCapabilities
 	// Authenticate validates the request and returns its actor context and connection binding.
-	Authenticate func(context.Context, *http.Request) (context.Context, bool, error)
+	Authenticate func(context.Context, *http.Request) (context.Context, error)
 	// Continue schedules a continuation after its HTTP result has been written.
 	Continue func(context.Context, control.Continuation)
 }
@@ -21,7 +21,7 @@ type HandlerOptions struct {
 type handler struct {
 	selectSession func(context.Context, string)
 	control       ControlCapabilities
-	authenticate  func(context.Context, *http.Request) (context.Context, bool, error)
+	authenticate  func(context.Context, *http.Request) (context.Context, error)
 	continueCall  func(context.Context, control.Continuation)
 }
 

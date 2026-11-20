@@ -1,26 +1,9 @@
 securitySchemes:
-  ClientID:
-    type: apiKey
-    in: header
-    name: X-Client-ID
-    description: Client identity configured under platform.cli.server.tokens.
   BearerToken:
     type: http
     scheme: bearer
-    description: Configured token value for the X-Client-ID.
+    description: api_token issued by hello_ok; valid until the WebSocket connection is removed.
 parameters:
-  connection:
-    name: X-CLI-Connection
-    in: header
-    required: false
-    schema: { type: string }
-    description: Connection api_token returned by hello_ok; selects its current-session view and routes continuations.
-  connectionRequired:
-    name: X-CLI-Connection
-    in: header
-    required: true
-    schema: { type: string }
-    description: Connection api_token returned by hello_ok.
   name:
     name: name
     in: query

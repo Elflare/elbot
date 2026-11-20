@@ -26,17 +26,8 @@ func (s *RemoteServer) managementHandler() http.Handler {
 			c.sessionID = id
 			s.mu.Unlock()
 		},
-		Authenticate: func(ctx context.Context, req *http.Request) (context.Context, bool, error) {
-			ctx, client, err := s.managementContext(ctx, req)
-			if err != nil {
-				return nil, false, err
-			}
-			if client != nil {
-				ctx = context.WithValue(ctx, managementAPIClientContextKey{}, client)
-			}
-			return ctx, client != nil, nil
-		},
-		Continue: s.scheduleControlContinuation,
+		Authenticate: s.managementContext,
+		Continue:     s.scheduleControlContinuation,
 	})
 	return s.apiMiddleware(handler)
 }
@@ -60,36 +51,22 @@ func (s *RemoteServer) apiMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *RemoteServer) managementContext(ctx context.Context, req *http.Request) (context.Context, *remoteClientConn, error) {
-	clientID := strings.TrimSpace(req.Header.Get("X-Client-ID"))
+func (s *RemoteServer) managementContext(ctx context.Context, req *http.Request) (context.Context, error) {
 	token, ok := strings.CutPrefix(req.Header.Get("Authorization"), "Bearer ")
-	if !ok || clientID == "" || !s.validToken(clientID, token) {
-		return nil, nil, errors.New("invalid client credentials")
+	s.mu.Lock()
+	client := s.apiClients[token]
+	s.mu.Unlock()
+	if !ok || client == nil {
+		return nil, errors.New("invalid connection token")
 	}
-	var client *remoteClientConn
-	if routeToken := req.Header.Get("X-CLI-Connection"); routeToken != "" {
-		s.mu.Lock()
-		client = s.apiClients[routeToken]
-		s.mu.Unlock()
-		if client == nil || client.id != clientID {
-			return nil, nil, errors.New("invalid connection token")
-		}
-	}
-	conversation := contextinfo.Conversation{
-		Source:   contextinfo.Source{Platform: s.Name(), ChatType: contextinfo.ChatPrivate, ChatID: clientID, Name: clientID},
-		Identity: contextinfo.Identity{ID: clientID, Nickname: clientID, Name: clientID},
-	}
-	if client != nil {
-		ctx = s.messageContext(ctx, client)
-	} else {
-		ctx = contextinfo.WithConversation(ctx, conversation)
-	}
+	ctx = context.WithValue(s.messageContext(ctx, client), managementAPIClientContextKey{}, client)
+	clientID := client.id
 	role := contextinfo.RoleUser
 	if s.superadmins != nil && s.superadmins.IsSuperadmin(clientID) {
 		role = contextinfo.RoleSuperadmin
 	}
 	actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: s.Name(), ID: clientID}, Nickname: clientID, Name: clientID, Role: role}
-	return contextinfo.WithActor(ctx, actor), client, nil
+	return contextinfo.WithActor(ctx, actor), nil
 }
 
 func (s *RemoteServer) scheduleControlContinuation(source context.Context, continuation control.Continuation) {

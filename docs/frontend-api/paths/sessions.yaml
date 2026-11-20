@@ -2,8 +2,6 @@
     put:
       operationId: selectViewSession
       summary: Subscribe the authenticated WebSocket to a session without activating it
-      parameters:
-        - $ref: '../components/transport.yaml#/parameters/connectionRequired'
       requestBody:
         required: true
         content:
@@ -56,7 +54,6 @@
   /sessions/{session_id}/questions/confirm:
     parameters:
       - $ref: '../components/transport.yaml#/parameters/sessionID'
-      - $ref: '../components/transport.yaml#/parameters/connectionRequired'
     post:
       operationId: confirmAnswers
       summary: Queue filled drafts not already pending; each submission is a separate user message
@@ -72,8 +69,6 @@
                   question_ids: { type: array, items: { type: integer, format: int64 } }
         default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions:
-    parameters:
-      - $ref: '../components/transport.yaml#/parameters/connection'
     get:
       operationId: listSessions
       summary: List sessions
@@ -177,7 +172,6 @@
       summary: Resume a session and bind it as current
       parameters:
         - $ref: '../components/transport.yaml#/parameters/sessionID'
-        - $ref: '../components/transport.yaml#/parameters/connection'
       requestBody:
         required: true
         content:
@@ -201,7 +195,6 @@
       summary: Fork a session from a message
       parameters:
         - $ref: '../components/transport.yaml#/parameters/sessionID'
-        - $ref: '../components/transport.yaml#/parameters/connection'
       requestBody:
         required: true
         content:

@@ -160,9 +160,7 @@ func TestCreateAndLateContinuationKeepView(t *testing.T) {
 	request := func(method, path, body string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, "/api/v1"+path, strings.NewReader(body))
-		req.Header.Set("X-Client-ID", "user")
-		req.Header.Set("Authorization", "Bearer secret")
-		req.Header.Set("X-CLI-Connection", hello.APIToken)
+		req.Header.Set("Authorization", "Bearer "+hello.APIToken)
 		w := httptest.NewRecorder()
 		server.managementHandler().ServeHTTP(w, req)
 		if w.Code != want {
@@ -202,16 +200,14 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	selectID := func(token, id string, want int) {
 		t.Helper()
 		req := httptest.NewRequest("PUT", "/api/v1/view/session", strings.NewReader(fmt.Sprintf(`{"session_id":%q}`, id)))
-		req.Header.Set("Authorization", "Bearer secret")
-		req.Header.Set("X-Client-ID", "user")
-		req.Header.Set("X-CLI-Connection", token)
+		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		server.managementHandler().ServeHTTP(w, req)
 		if w.Code != want {
 			t.Fatalf("select %s: %d %s", id, w.Code, w.Body)
 		}
 	}
-	selectID("", "S1", 409)
+	selectID("", "S1", 401)
 	selectID(ha.APIToken, "S1", 204)
 	selectID(hb.APIToken, "S1", 204)
 	selectID(ha.APIToken, "denied", 403)
@@ -271,6 +267,12 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	send("S2")
 	input("S2")
 	read(b, "user_input", "S2")
+	server.mu.Lock()
+	client := server.apiClients[ha.APIToken]
+	server.mu.Unlock()
+	server.removeClient(client)
+	selectID(ha.APIToken, "S1", 401)
+	selectID(hb.APIToken, "S2", 204)
 }
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
