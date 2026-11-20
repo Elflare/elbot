@@ -36,9 +36,10 @@ type ReplyToChatHistoryMessageTool struct {
 }
 
 type searchChatHistoryArgs struct {
-	Platform json.RawMessage `json:"platform"`  // 保留字段是否提供，显式 null 也交查询层按空值处理。
-	ChatType json.RawMessage `json:"chat_type"` // 会话类型的显式输入，仅后台允许。
-	ChatID   json.RawMessage `json:"chat_id"`   // 原生会话 ID 的显式输入，仅后台允许。
+	IncludeAvatar bool            `json:"include_avatar"`
+	Platform      json.RawMessage `json:"platform"`  // 保留字段是否提供，显式 null 也交查询层按空值处理。
+	ChatType      json.RawMessage `json:"chat_type"` // 会话类型的显式输入，仅后台允许。
+	ChatID        json.RawMessage `json:"chat_id"`   // 原生会话 ID 的显式输入，仅后台允许。
 	// Full 只解除单条消息限长，查询结果总量仍受限制。
 	Full      bool   `json:"full"`
 	Limit     int    `json:"limit"`
@@ -51,6 +52,7 @@ type searchChatHistoryArgs struct {
 	Days      int    `json:"days"`
 }
 type aroundChatHistoryArgs struct {
+	IncludeAvatar bool `json:"include_avatar"`
 	// Full 只解除单条消息及引用内容限长，查询结果总量仍受限制。
 	Full      bool   `json:"full"`
 	MessageID string `json:"message_id"`
@@ -89,6 +91,7 @@ func searchChatHistoryBuilder() *toolshare.Builder {
 		Integer("hours", "最近小时数；≤0→忽略。").
 		Integer("days", "最近日历天数；≤0→忽略。").
 		Integer("limit", "默认10，上限50。").
+		Boolean("include_avatar", "默认false；true→按发送者附带本聊天内最新非空头像 URL，可能已过期。").
 		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func aroundChatHistoryBuilder() *toolshare.Builder {
@@ -101,6 +104,7 @@ func aroundChatHistoryBuilder() *toolshare.Builder {
 		String("message_id", "平台消息ID，#可省。", toolshare.Required()).
 		Integer("before", "前文条数，默认10，上限50。").
 		Integer("after", "后文条数，默认10，上限50。").
+		Boolean("include_avatar", "默认false；true→按发送者附带本聊天内最新非空头像 URL，可能已过期。").
 		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func replyChatHistoryBuilder() *toolshare.Builder {
@@ -122,7 +126,8 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 		}
 	}
 	request := toolshare.SearchRequest{
-		Query: args.Query, QueryMode: args.QueryMode, User: args.User,
+		IncludeAvatar: args.IncludeAvatar,
+		Query:         args.Query, QueryMode: args.QueryMode, User: args.User,
 		Since: args.Since, Until: args.Until, Hours: args.Hours, Days: args.Days, Limit: args.Limit,
 	}
 	if len(args.Platform) > 0 {
@@ -193,6 +198,9 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 				lines = append(lines, hint)
 			}
 		}
+		if args.IncludeAvatar {
+			lines = appendSenderAvatars(lines, rows.Data)
+		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("scope=%q query=%q returned=%d", label, args.Query, len(rows.Data)), nil
 	})}, nil
@@ -215,7 +223,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 		if messageID == "" {
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}, "message_id invalid", nil
 		}
-		rows, err := t.history.Around(ctx, toolshare.AroundRequest{MessageID: messageID, Before: args.Before, After: args.After})
+		rows, err := t.history.Around(ctx, toolshare.AroundRequest{IncludeAvatar: args.IncludeAvatar, MessageID: messageID, Before: args.Before, After: args.After})
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
@@ -229,6 +237,9 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 		}
 		if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 			lines = append(lines, hint)
+		}
+		if args.IncludeAvatar {
+			lines = appendSenderAvatars(lines, rows.Data)
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("message_id=%s before=%d after=%d returned=%d", messageID, args.Before, args.After, len(rows.Data)), nil
@@ -280,6 +291,21 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 
 func parseChatHistoryMessageID(value string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "#"))
+}
+
+func appendSenderAvatars(lines []string, messages []toolshare.Message) []string {
+	seen := make(map[string]bool)
+	for _, m := range messages {
+		if m.SenderAvatarURL == "" || seen[m.SenderID] {
+			continue
+		}
+		if len(seen) == 0 {
+			lines = append(lines, "头像（发送者 ID → URL）")
+		}
+		lines = append(lines, m.SenderID+" → "+m.SenderAvatarURL)
+		seen[m.SenderID] = true
+	}
+	return lines
 }
 
 func formatChatHistoryMedia(row toolshare.Message, targetID string, full bool) string {

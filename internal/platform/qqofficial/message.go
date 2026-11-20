@@ -242,6 +242,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		PlatformMessageID:        strings.TrimSpace(msg.ID),
 		SenderID:                 senderID,
 		SenderName:               name,
+		SenderAvatarURL:          strings.TrimSpace(msg.Author.Avatar),
 		Text:                     strings.TrimSpace(text),
 		Raw:                      msg.Content,
 		Segments:                 storage.MarshalChatSegments(segments),

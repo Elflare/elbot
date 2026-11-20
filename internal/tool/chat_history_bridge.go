@@ -31,7 +31,8 @@ type chatHistoryBridge struct {
 
 func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.SearchQuery) (operationresult.Result[[]share.Message], error) {
 	rows, err := b.history.Search(ctx, storage.ChatHistorySearchRequest{
-		Platform: query.Platform, ChatID: query.ChatID,
+		IncludeAvatar: query.IncludeAvatar,
+		Platform:      query.Platform, ChatID: query.ChatID,
 		QueryTerms: query.QueryTerms, QueryMode: query.QueryMode,
 		SenderQuery: query.SenderQuery,
 		Since:       query.Since, Until: query.Until, Limit: query.Limit, ChatType: query.ChatType,
@@ -51,7 +52,8 @@ func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.Searc
 
 func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.AroundQuery) (operationresult.Result[[]share.Message], error) {
 	rows, err := b.history.Around(ctx, storage.ChatHistoryAroundRequest{
-		Platform: query.Key.Platform, ChatID: query.Key.ChatID,
+		IncludeAvatar: query.IncludeAvatar,
+		Platform:      query.Key.Platform, ChatID: query.Key.ChatID,
 		PlatformMessageID: query.Key.MessageID, Before: query.Before, After: query.After, ChatType: query.Key.ChatType,
 	})
 	if errors.Is(err, storage.ErrNotFound) {
@@ -97,8 +99,9 @@ func (b *chatHistoryBridge) messages(ctx context.Context, rows []storage.ChatMes
 func (b *chatHistoryBridge) message(ctx context.Context, row storage.ChatMessage, includeCached bool) (share.Message, error) {
 	reply := storage.ChatMessageReply(row)
 	message := share.Message{
-		Key:      share.MessageKey{Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType},
-		SenderID: row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt,
+		SenderAvatarURL: row.SenderAvatarURL,
+		Key:             share.MessageKey{Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType},
+		SenderID:        row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt,
 		Reply: share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text},
 	}
 	history := historyMediaMessage(row)

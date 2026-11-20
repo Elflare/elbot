@@ -18,13 +18,14 @@ type MessageKey struct {
 }
 
 type Message struct {
-	Key        MessageKey   // 消息的稳定查询位置。
-	SenderID   string       // 平台发送者 ID。
-	SenderName string       // 发送者展示名，缺失时由工具使用 ID 展示。
-	Text       string       // 消息正文，未做工具展示截断。
-	Reply      ReplyContext // 被引用消息的事实，由工具组织展示。
-	CreatedAt  time.Time    // 消息时间。
-	Media      []MediaItem  // 仅包含媒体项，切片位置加一即对外媒体序号。
+	SenderAvatarURL string       // 按需附带的会话内最新发送者头像。
+	Key             MessageKey   // 消息的稳定查询位置。
+	SenderID        string       // 平台发送者 ID。
+	SenderName      string       // 发送者展示名，缺失时由工具使用 ID 展示。
+	Text            string       // 消息正文，未做工具展示截断。
+	Reply           ReplyContext // 被引用消息的事实，由工具组织展示。
+	CreatedAt       time.Time    // 消息时间。
+	Media           []MediaItem  // 仅包含媒体项，切片位置加一即对外媒体序号。
 }
 
 type ReplyContext struct {
@@ -35,23 +36,25 @@ type ReplyContext struct {
 }
 
 type SearchRequest struct {
-	Platform  *string               // 显式指定的平台；nil 表示未提供，仅后台允许且必填。
-	ChatType  *contextinfo.ChatType // 显式指定的会话类型；仅后台允许且必填。
-	ChatID    *string               // 原生会话 ID；仅后台允许且必填。
-	Query     string                // 工具输入的关键词文本。
-	QueryMode string                // 关键词组合方式。
-	User      string                // 同时用于用户 ID 精确匹配或昵称包含匹配，不解析特殊写法。
-	Since     string                // 用户输入的开始时间。
-	Until     string                // 用户输入的结束时间。
-	Hours     int                   // 无有效 Since 时使用的最近小时数。
-	Days      int                   // 无有效 Since 和 Hours 时使用的最近天数。
-	Limit     int                   // 用户请求的数量，组件统一应用默认值和上限。
+	IncludeAvatar bool                  // 请求时附带同一会话中发送者最新的非空头像。
+	Platform      *string               // 显式指定的平台；nil 表示未提供，仅后台允许且必填。
+	ChatType      *contextinfo.ChatType // 显式指定的会话类型；仅后台允许且必填。
+	ChatID        *string               // 原生会话 ID；仅后台允许且必填。
+	Query         string                // 工具输入的关键词文本。
+	QueryMode     string                // 关键词组合方式。
+	User          string                // 同时用于用户 ID 精确匹配或昵称包含匹配，不解析特殊写法。
+	Since         string                // 用户输入的开始时间。
+	Until         string                // 用户输入的结束时间。
+	Hours         int                   // 无有效 Since 时使用的最近小时数。
+	Days          int                   // 无有效 Since 和 Hours 时使用的最近天数。
+	Limit         int                   // 用户请求的数量，组件统一应用默认值和上限。
 }
 
 type AroundRequest struct {
-	MessageID string // 工具已规范化且检查为非空的消息 ID。
-	Before    int    // 消息之前的数量，组件应用默认值和上限。
-	After     int    // 消息之后的数量，组件应用默认值和上限。
+	IncludeAvatar bool   // 请求时附带同一会话中发送者最新的非空头像。
+	MessageID     string // 工具已规范化且检查为非空的消息 ID。
+	Before        int    // 消息之前的数量，组件应用默认值和上限。
+	After         int    // 消息之后的数量，组件应用默认值和上限。
 }
 
 type MediaItem struct {

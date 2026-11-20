@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"elbot/internal/storage"
@@ -116,6 +117,51 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 	}
 	if !strings.Contains(result.Data.Content, "...[单条消息过长，已截断]") || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Data.Outputs) != 1 {
 		t.Fatalf("result=%+v log=%q", result, logContent)
+	}
+}
+
+func TestChatHistoryIncludeAvatar(t *testing.T) {
+	ctx, fixture, _ := newHistoryMediaToolTest(t)
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqofficial", ChatType: "group", ChatID: "g"}})
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := old.Add(24 * time.Hour)
+	add := func(id, chat, user, text, url string, at time.Time) {
+		t.Helper()
+		err := fixture.history.Append(ctx, &storage.ChatMessage{Platform: "qqofficial", ChatType: "group", ChatID: chat, PlatformMessageID: id, SenderID: user, Text: text, SenderAvatarURL: url, CreatedAt: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("a", "g", "alice", "needle1", "https://ex/old", old)
+	add("b", "g", "alice", "needle2", "", old)
+	add("c", "g", "bob", "needle3", "", old)
+	add("d", "g", "alice", "today", "https://ex/tie", now)
+	add("e", "g", "alice", "today", "https://ex/latest", now)
+	add("f", "g", "alice", "late", "https://ex/late", now.Add(-time.Nanosecond).In(time.FixedZone("east", 8*3600)))
+	add("h", "g", "alice", "today", "", now.Add(time.Hour))
+	add("i", "other", "alice", "elsewhere", "https://ex/other", now.Add(time.Hour))
+	for _, name := range []string{"search_chat_history", "get_chat_history_around"} {
+		caller := builtinTestTool(t, name, builtin.Deps{ChatHistory: fixture.manager})
+		args := `{"query":"needle"`
+		if name == "get_chat_history_around" {
+			args = `{"message_id":"b","before":1,"after":1`
+		}
+		run := func(option string) string {
+			t.Helper()
+			res, _, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(args + option + `}`)})
+			if err != nil || res.Status != operationresult.Success {
+				t.Fatalf("%s: %v %v", name, res, err)
+			}
+			return res.Data.Content
+		}
+		off := run("")
+		if run(`,"include_avatar":false`) != off || strings.Contains(off, "https://") {
+			t.Fatalf("unexpected default: %s", off)
+		}
+		want := off + "\n头像（发送者 ID → URL）\nalice → https://ex/latest"
+		if got := run(`,"include_avatar":true`); got != want {
+			t.Errorf("%s got %q, want %q", name, got, want)
+		}
 	}
 }
 

@@ -19,21 +19,23 @@ const (
 )
 
 type SearchQuery struct {
-	Platform    string               // 本次查询的平台。
-	ChatType    contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID      string               // 本次查询的聊天范围。
-	QueryTerms  []string             // 已拆分并去除空项的关键词。
-	QueryMode   string               // 关键词组合方式，由查询提供方执行。
-	SenderQuery string               // 用户 ID 精确匹配或昵称包含匹配，空值不筛选。
-	Since       *time.Time           // 可选开始时间。
-	Until       *time.Time           // 可选结束时间。
-	Limit       int                  // 已应用默认值和上限的数量。
+	IncludeAvatar bool                 // 请求时附带同一会话中发送者最新的非空头像。
+	Platform      string               // 本次查询的平台。
+	ChatType      contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID        string               // 本次查询的聊天范围。
+	QueryTerms    []string             // 已拆分并去除空项的关键词。
+	QueryMode     string               // 关键词组合方式，由查询提供方执行。
+	SenderQuery   string               // 用户 ID 精确匹配或昵称包含匹配，空值不筛选。
+	Since         *time.Time           // 可选开始时间。
+	Until         *time.Time           // 可选结束时间。
+	Limit         int                  // 已应用默认值和上限的数量。
 }
 
 type AroundQuery struct {
-	Key    share.MessageKey // 当前聊天内的目标消息。
-	Before int              // 已应用默认值和上限的向前数量。
-	After  int              // 已应用默认值和上限的向后数量。
+	IncludeAvatar bool             // 请求时附带同一会话中发送者最新的非空头像。
+	Key           share.MessageKey // 当前聊天内的目标消息。
+	Before        int              // 已应用默认值和上限的向前数量。
+	After         int              // 已应用默认值和上限的向后数量。
 }
 
 func (m *Manager) Search(ctx context.Context, req share.SearchRequest) (operationresult.Result[[]share.Message], error) {
@@ -47,7 +49,8 @@ func (m *Manager) Search(ctx context.Context, req share.SearchRequest) (operatio
 
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.now())
 	return m.backend.Search(ctx, SearchQuery{
-		Platform: chat.Data.Platform, ChatID: chat.Data.ChatID,
+		IncludeAvatar: req.IncludeAvatar,
+		Platform:      chat.Data.Platform, ChatID: chat.Data.ChatID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
 		SenderQuery: strings.TrimSpace(req.User),
 		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.Data.ChatType,
@@ -64,8 +67,9 @@ func (m *Manager) Around(ctx context.Context, req share.AroundRequest) (operatio
 	}
 
 	return m.backend.Around(ctx, AroundQuery{
-		Key:    share.MessageKey{Platform: chat.Data.Platform, ChatID: chat.Data.ChatID, MessageID: req.MessageID, ChatType: chat.Data.ChatType},
-		Before: clampChatHistoryWindow(req.Before), After: clampChatHistoryWindow(req.After),
+		IncludeAvatar: req.IncludeAvatar,
+		Key:           share.MessageKey{Platform: chat.Data.Platform, ChatID: chat.Data.ChatID, MessageID: req.MessageID, ChatType: chat.Data.ChatType},
+		Before:        clampChatHistoryWindow(req.Before), After: clampChatHistoryWindow(req.After),
 	})
 }
 

@@ -100,6 +100,7 @@ type inboundMessage struct {
 }
 
 type inboundAuthor struct {
+	Avatar         string `json:"avatar"`          // 消息发送者头像 URL，可缺省。
 	Username       string `json:"username"`        // 平台昵称。
 	MemberNickname string `json:"member_nickname"` // 群名片，展示时优先于昵称。
 	UserOpenID     string `json:"user_openid,omitempty"`

@@ -246,6 +246,7 @@ type PlatformMessageAlias struct {
 }
 
 type ChatMessage struct {
+	SenderAvatarURL          string // 写入时为事件头像；历史查询开启头像时为会话内最新值。
 	Seq                      int64
 	ID                       string
 	Platform                 string
@@ -309,18 +310,20 @@ type MediaReference struct {
 }
 
 type ChatHistorySearchRequest struct {
-	Platform    string
-	ChatType    contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID      string
-	QueryTerms  []string
-	QueryMode   string
-	SenderQuery string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
-	Since       *time.Time
-	Until       *time.Time
-	Limit       int
+	IncludeAvatar bool // 请求时附带同一会话中发送者最新的非空头像。
+	Platform      string
+	ChatType      contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID        string
+	QueryTerms    []string
+	QueryMode     string
+	SenderQuery   string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
+	Since         *time.Time
+	Until         *time.Time
+	Limit         int
 }
 
 type ChatHistoryAroundRequest struct {
+	IncludeAvatar     bool // 请求时附带同一会话中发送者最新的非空头像。
 	Platform          string
 	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
 	ChatID            string

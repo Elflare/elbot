@@ -237,7 +237,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	adapter.handleGroupMessage(ctx, handler.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID:           "msg-1",
 		GroupOpenID:  "group-1",
-		Author:       inboundAuthor{MemberOpenID: "member-1"},
+		Author:       inboundAuthor{MemberOpenID: "member-1", Avatar: "https://example.com/avatar"},
 		Content:      "普通消息",
 		Timestamp:    "2026-08-29T12:34:56+08:00",
 		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_reply-1"}},
@@ -252,6 +252,10 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	}
 	if row.Raw != "普通消息" || row.ReplyToPlatformMessageID != "reply-1" {
 		t.Fatalf("chat history raw/reply = %q/%q", row.Raw, row.ReplyToPlatformMessageID)
+	}
+	rows, err := history.Around(ctx, storage.ChatHistoryAroundRequest{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1", PlatformMessageID: "msg-1", IncludeAvatar: true})
+	if err != nil || len(rows) != 1 || rows[0].SenderAvatarURL != "https://example.com/avatar" {
+		t.Fatalf("stored avatar: %v, %v", rows, err)
 	}
 	wantTime := time.Date(2026, 8, 29, 12, 34, 56, 0, time.FixedZone("UTC+8", 8*60*60))
 	if !row.CreatedAt.Equal(wantTime) {

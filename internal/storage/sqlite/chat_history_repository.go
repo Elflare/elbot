@@ -164,6 +164,15 @@ func migrateChatHistory(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	var hasAvatar bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('chat_messages') WHERE name='sender_avatar_url')`).Scan(&hasAvatar); err != nil {
+		return err
+	}
+	if !hasAvatar {
+		if _, err = tx.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN sender_avatar_url TEXT`); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -178,11 +187,12 @@ func (r *ChatHistoryRepository) Append(ctx context.Context, message *storage.Cha
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO chat_messages (
     id, platform, chat_id, chat_type, platform_message_id,
-    sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at, sender_avatar_url
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(platform, chat_type, chat_id, platform_message_id) DO UPDATE SET
     sender_id = excluded.sender_id,
     sender_name = excluded.sender_name,
+    sender_avatar_url = COALESCE(excluded.sender_avatar_url, chat_messages.sender_avatar_url),
     text = excluded.text,
     raw = excluded.raw,
     reply_to_platform_message_id = excluded.reply_to_platform_message_id,
@@ -201,6 +211,7 @@ ON CONFLICT(platform, chat_type, chat_id, platform_message_id) DO UPDATE SET
 		nullString(message.ReplyToPlatformMessageID),
 		nullString(message.Metadata),
 		storage.FormatTime(message.CreatedAt),
+		nullString(message.SenderAvatarURL),
 	)
 	if err != nil {
 		return fmt.Errorf("append chat message: %w", err)
@@ -307,6 +318,9 @@ LIMIT ?`, params...)
 		return nil, err
 	}
 	slices.Reverse(messages)
+	if req.IncludeAvatar {
+		return r.loadLatestSenderAvatars(ctx, messages)
+	}
 	return messages, nil
 }
 
@@ -327,7 +341,53 @@ func (r *ChatHistoryRepository) Around(ctx context.Context, req storage.ChatHist
 	out = append(out, previous...)
 	out = append(out, *target)
 	out = append(out, next...)
+	if req.IncludeAvatar {
+		return r.loadLatestSenderAvatars(ctx, out)
+	}
 	return out, nil
+}
+
+// loadLatestSenderAvatars looks outside the result window, but never outside its chat.
+func (r *ChatHistoryRepository) loadLatestSenderAvatars(ctx context.Context, messages []storage.ChatMessage) ([]storage.ChatMessage, error) {
+	if len(messages) == 0 {
+		return messages, nil
+	}
+	scope := messages[0]
+	avatars := make(map[string]string)
+	params := []any{scope.Platform, scope.ChatType, scope.ChatID}
+	for _, m := range messages {
+		if _, seen := avatars[m.SenderID]; !seen {
+			avatars[m.SenderID] = ""
+			params = append(params, m.SenderID)
+		}
+	}
+	// FormatTime preserves RFC3339 offsets and up to nine fractional digits.
+	// Compare UTC whole seconds first, then fractions (SQLite date functions round to ms).
+	rows, err := r.db.QueryContext(ctx, `WITH ranked AS (
+   SELECT sender_id, sender_avatar_url, row_number() OVER (PARTITION BY sender_id ORDER BY
+     unixepoch(substr(created_at,1,19) || iif(substr(created_at,-1)='Z','Z',substr(created_at,-6))) DESC,
+     CAST('0' || substr(created_at,20) AS REAL) DESC, seq DESC) AS n
+   FROM chat_messages WHERE platform=? AND chat_type=? AND chat_id=?
+     AND sender_avatar_url IS NOT NULL AND sender_id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(avatars)), ",")+`)
+ ) SELECT sender_id, sender_avatar_url FROM ranked WHERE n=1`, params...)
+	if err != nil {
+		return nil, fmt.Errorf("load latest sender avatars: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, url string
+		if err := rows.Scan(&id, &url); err != nil {
+			return nil, err
+		}
+		avatars[id] = url
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range messages {
+		messages[i].SenderAvatarURL = avatars[messages[i].SenderID]
+	}
+	return messages, nil
 }
 
 func (r *ChatHistoryRepository) DeleteBefore(ctx context.Context, cutoff time.Time) (int, error) {
