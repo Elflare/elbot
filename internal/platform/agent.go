@@ -65,7 +65,6 @@ func (m *Supervisor) ConnectAgent(source AgentCapabilities) error {
 		return m.agentErr
 	}
 	m.agentConnected, m.agent = true, source
-	defer m.configureCloseSteps()
 	for _, connect := range m.agentWiring {
 		if m.agentErr = connect(source); m.agentErr != nil {
 			break
@@ -77,7 +76,7 @@ func (m *Supervisor) ConnectAgent(source AgentCapabilities) error {
 func (m *Supervisor) handleMessage(ctx context.Context, text string, msg share.MessageContext) error {
 	ctx = share.WithMessageContext(ctx, msg)
 	// Hook 仍通过根部读取原始平台事实；发送器和协议对象不进入 Agent 请求。
-	ctx = WithMessageContext(ctx, projectMessageContext(msg))
+	ctx = WithMessageContext(ctx, MessageContext{RawText: msg.RawText, PlatformMessage: msg.PlatformMessage, Reply: msg.Reply})
 	return m.agent.HandleMessage(ctx, messageRequest(text, msg))
 }
 
@@ -122,15 +121,6 @@ func messageSegments(segments []share.MessageSegment) []agent.MessageSegment {
 			Media: media.PlatformMedia{Type: string(segment.Type), MediaID: segment.MediaID, URL: segment.URL, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}}
 	}
 	return result
-}
-
-func projectMessageContext(msg share.MessageContext) MessageContext {
-	reply := msg.Reply
-	reply.Segments = slices.Clone(reply.Segments)
-	return MessageContext{
-		RawText: msg.RawText, PlatformMessage: slices.Clone(msg.PlatformMessage),
-		Reply: reply,
-	}
 }
 
 // agentEvents 将 Agent 公共事件转为 CLI 自有展示数据，不泄露完整 Agent。

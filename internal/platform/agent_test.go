@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -15,23 +14,6 @@ type testMediaResolver struct {
 	calls   int
 	segment share.MessageSegment
 	limit   int64
-}
-
-func TestPublicMessageProjectionCopiesFacts(t *testing.T) {
-	input := share.MessageContext{
-		RawText: "original", PlatformMessage: json.RawMessage(`{"id":1}`),
-		Reply: share.ReplyContext{MessageID: "reply", SenderID: "actor", SenderName: "name", Text: "quoted",
-			Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "quoted"}}},
-	}
-	got := projectMessageContext(input)
-	if got.RawText != input.RawText || got.Reply.MessageID != "reply" || got.Reply.SenderID != "actor" || got.Reply.SenderName != "name" || got.Reply.Text != "quoted" || got.Reply.Segments[0].Text != "quoted" {
-		t.Fatalf("lost public facts: %+v", got)
-	}
-	got.PlatformMessage[0] = '!'
-	got.Reply.Segments[0].Text = "changed"
-	if string(input.PlatformMessage) != `{"id":1}` || input.Reply.Segments[0].Text != "quoted" {
-		t.Fatal("projection aliases internal input")
-	}
 }
 
 func (r *testMediaResolver) ResolveMedia(_ context.Context, segment share.MessageSegment, limit int64) (operationresult.Result[delivery.Source], error) {

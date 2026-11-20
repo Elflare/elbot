@@ -18,7 +18,7 @@ type platformLifecycle struct {
 	beginClose func()
 	wait       func(context.Context) error
 	waitExit   func(context.Context) error // 本地 CLI 的退出信号；服务适配器不结束整线。
-	attempted  bool                        // Start 已被调用，包含部分启动失败，必须等待真实退出。
+	attempted  bool                        // Start 已成功，可读取关键平台发布的退出结果。
 	running    bool                        // 用于向仍在运行的平台发送故障通知。
 }
 
@@ -29,7 +29,6 @@ type closeStep struct {
 
 type lifecycle struct {
 	mu               sync.Mutex
-	parent           context.Context
 	ctx              context.Context
 	cancel           context.CancelFunc
 	runtimes         []*platformLifecycle
@@ -38,7 +37,6 @@ type lifecycle struct {
 	startupDone      chan struct{} // Start 结果已发布，之后不再登记接入观察者。
 	ingressDone      chan struct{} // 停止已发起且所有接入实际退出。
 	finalDone        chan struct{} // 所有自有资源实际释放。
-	ingressOnce      sync.Once
 	monitorWG        sync.WaitGroup
 	startErr, runErr error
 	closeGate        chan struct{} // 串行化可重试的最终清理。
@@ -47,7 +45,6 @@ type lifecycle struct {
 }
 
 func (l *lifecycle) init(ctx context.Context) {
-	l.parent = ctx
 	l.ctx, l.cancel = context.WithCancel(ctx)
 	l.startupDone = make(chan struct{})
 	l.ingressDone = make(chan struct{})
@@ -61,8 +58,6 @@ func (l *lifecycle) Start() error {
 	if l.started {
 		l.mu.Unlock()
 		<-l.startupDone
-		l.mu.Lock()
-		defer l.mu.Unlock()
 		return l.startErr
 	}
 	if l.closing {
@@ -70,39 +65,33 @@ func (l *lifecycle) Start() error {
 		return context.Canceled
 	}
 	l.started = true
-	var err error
 	l.mu.Unlock()
-	go func() {
-		select {
-		case <-l.ctx.Done():
-			l.BeginClose()
-		case <-l.ingressDone:
-		}
-	}()
+
+	var err error
 	for _, runtime := range l.runtimes {
-		if l.ctx.Err() != nil {
-			err = l.parent.Err()
+		if err = l.ctx.Err(); err != nil {
+			break
+		}
+		if err = runtime.start(l.ctx); err != nil {
+			err = fmt.Errorf("start %s: %w", runtime.name, err)
 			break
 		}
 		l.mu.Lock()
-		runtime.attempted = true
-		runtime.running = true
+		runtime.attempted, runtime.running = true, true
 		l.mu.Unlock()
-		startErr := runtime.start(l.ctx)
 		l.monitorWG.Add(1)
 		go l.observe(runtime)
-		if startErr != nil {
-			err = fmt.Errorf("start %s: %w", runtime.name, startErr)
-			break
-		}
 	}
 	l.mu.Lock()
+	if err == nil {
+		err = l.ctx.Err()
+	}
+	if err == nil {
+		context.AfterFunc(l.ctx, l.BeginClose)
+	}
 	l.startErr = err
 	close(l.startupDone)
 	l.mu.Unlock()
-	if err != nil {
-		l.BeginClose()
-	}
 	return err
 }
 
@@ -139,13 +128,13 @@ func (l *lifecycle) BeginClose() {
 		runtime.beginClose()
 	}
 	if !started {
-		l.ingressOnce.Do(func() { close(l.ingressDone) })
+		close(l.ingressDone)
 		return
 	}
 	go func() {
 		<-l.startupDone
 		l.monitorWG.Wait()
-		l.ingressOnce.Do(func() { close(l.ingressDone) })
+		close(l.ingressDone)
 	}()
 }
 

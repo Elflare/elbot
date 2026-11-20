@@ -157,36 +157,37 @@ func TestConcurrentStartAndRepeatedClose(t *testing.T) {
 	}
 }
 
-func TestPartialStartWaitsForActualExit(t *testing.T) {
+func TestStartFailureIsPublishedWithoutShutdown(t *testing.T) {
 	l := testLifecycle()
 	fault := errors.New("start failed")
-	exit := make(chan struct{})
-	r, _ := testRuntime("partial", false, nil)
-	r.start = func(context.Context) error { return fault }
-	r.beginClose = func() {}
-	r.wait = func(context.Context) error { <-exit; return nil }
-	l.onFailure = func(_ string, err error) { t.Errorf("startup failure reported twice: %v", err) }
+	entered, release := make(chan struct{}), make(chan struct{})
+	r := &platformLifecycle{name: "remote", start: func(context.Context) error {
+		close(entered)
+		<-release
+		return fault
+	}}
 	l.runtimes = []*platformLifecycle{r}
-	if err := l.Start(); !errors.Is(err, fault) {
-		t.Fatal(err)
+	results := make(chan error, 2)
+	start := func() { results <- l.Start() }
+	go start()
+	<-entered
+	go start()
+	close(release)
+	first, second := <-results, <-results
+	if !errors.Is(first, fault) || second != first || l.ctx.Err() != nil {
+		t.Fatalf("Start = %v, %v; platform context = %v", first, second, l.ctx.Err())
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := l.Close(ctx); err != context.Canceled {
-		t.Fatalf("Close = %v", err)
+}
+
+func TestStartReportsIngressCancellation(t *testing.T) {
+	l := testLifecycle()
+	r, _ := testRuntime("cli", true, nil)
+	r.start = func(context.Context) error { l.BeginClose(); return nil }
+	l.runtimes = []*platformLifecycle{r}
+	if err := l.Start(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Start = %v", err)
 	}
-	select {
-	case <-l.Done():
-		t.Fatal("closed while ingress remained")
-	default:
-	}
-	close(exit)
-	if err := l.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := l.Wait(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	<-l.ingressDone
 }
 
 func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
@@ -205,6 +206,9 @@ func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
 			return nil
 		}},
 		{"adapter", func(context.Context) error { order = append(order, "adapter"); return nil }},
+	}
+	if err := l.Start(); err != nil {
+		t.Fatal(err)
 	}
 	if err := l.Close(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
@@ -227,9 +231,6 @@ func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
 	case <-l.Done():
 	default:
 		t.Fatal("Done not closed")
-	}
-	if err := l.Start(); err != context.Canceled {
-		t.Fatal(err)
 	}
 }
 
@@ -262,7 +263,7 @@ func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 	}
 }
 
-func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
+func TestCloseLogsFailureAndReleasesRemainingResources(t *testing.T) {
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) { records = append(records, record) }, signal.ConnectOptions{})
 	if err != nil {
@@ -275,6 +276,9 @@ func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
 	l.closeSteps = []closeStep{
 		{"ui", func(context.Context) error { return fault }},
 		{"adapter", func(context.Context) error { adapterClosed = true; return nil }},
+	}
+	if err := l.Start(); err != nil {
+		t.Fatal(err)
 	}
 	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)

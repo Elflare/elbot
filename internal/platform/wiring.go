@@ -66,6 +66,13 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 			return err
 		}
 	}
+	m.closeSteps = append(m.closeSteps, closeStep{"notifications", m.notifications.Close})
+	for _, connection := range m.connections {
+		m.closeSteps = append(m.closeSteps, closeStep{"notification receiver", connection.Close})
+	}
+	for _, adapter := range m.adapters {
+		m.closeSteps = append(m.closeSteps, closeStep{adapter.Name(), adapter.Close})
+	}
 	// 配置只在构造时读取，运行期故障观察不持有可变配置。
 	superadmins := make(map[string][]string, len(cfg.Security.Superadmins))
 	for name, ids := range cfg.Security.Superadmins {
@@ -128,22 +135,9 @@ func (m *Supervisor) connectNotifications(adapter interface {
 		return err
 	}
 	connection, err := adapter.ConnectNotifications(queue)
-	if connection != nil {
-		m.connections = append(m.connections, connection)
+	if err != nil {
+		return err
 	}
-	return err
-}
-
-// configureCloseSteps 在构造及 ConnectAgent 后调用，启动后不再改变资源列表。
-func (m *Supervisor) configureCloseSteps() {
-	m.closeSteps = append([]closeStep(nil), m.agentCloseSteps...)
-	if m.notifications != nil {
-		m.closeSteps = append(m.closeSteps, closeStep{"notifications", m.notifications.Close})
-	}
-	for _, connection := range m.connections {
-		m.closeSteps = append(m.closeSteps, closeStep{"notification receiver", connection.Close})
-	}
-	for _, adapter := range m.adapters {
-		m.closeSteps = append(m.closeSteps, closeStep{adapter.Name(), adapter.Close})
-	}
+	m.connections = append(m.connections, connection)
+	return nil
 }

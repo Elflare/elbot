@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -105,6 +104,9 @@ func TestDisabledPlatformsRetainCodesAndConfigDefinitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		if err := m.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -179,7 +181,6 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	m := &Supervisor{}
 	m.lifecycle.init(context.Background())
 	err := m.wire(&config.Config{}, SupervisorDeps{Mode: "service", Store: store}, append(registrations(""), entry))
-	m.configureCloseSteps()
 	t.Cleanup(func() {
 		if err := m.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -193,6 +194,9 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	}
 	if err := m.ConnectAgent(nil); err != nil || connected != 1 {
 		t.Fatalf("Agent connected %d times: %v", connected, err)
+	}
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
 	}
 	sessions, err := session.NewSupervisor(t.Context(), &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork}}, session.SupervisorDeps{
 		Store: store, Models: registrationModels{}, Materials: registrationMaterials{}, SessionIDCode: m.SessionIDCode,
@@ -243,50 +247,11 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	}
 }
 
-func TestRegisteredPartialFailuresRetainCleanup(t *testing.T) {
-	for _, phase := range []string{"construction", "Agent connection"} {
-		t.Run(phase, func(t *testing.T) {
-			fault := errors.New(phase)
-			runtime := &registeredTestRuntime{name: "future"}
-			entry := testRegistration()
-			var released []string
-			entry.build = func(m *Supervisor, _ SupervisorDeps, _ refcontext.Options, _ map[string]any, _ share.CommonConfig) error {
-				m.ownRuntime(runtime, false, nil, entry.definition.ValidateNotificationTarget)
-				if phase == "construction" {
-					return fault
-				}
-				m.agentWiring = append(m.agentWiring, func(AgentCapabilities) error {
-					m.agentCloseSteps = append(m.agentCloseSteps, closeStep{"partial connection", func(context.Context) error {
-						if runtime.closed {
-							t.Error("adapter closed before Agent resources")
-						}
-						released = append(released, "Agent")
-						return nil
-					}})
-					return fault
-				})
-				return nil
-			}
-			m := &Supervisor{}
-			m.lifecycle.init(context.Background())
-			err := m.wire(&config.Config{}, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)}, []registration{entry})
-			m.configureCloseSteps()
-			if phase == "Agent connection" {
-				if err != nil {
-					t.Fatal(err)
-				}
-				err = m.ConnectAgent(nil)
-			}
-			if !errors.Is(err, fault) {
-				t.Fatalf("partial failure=%v", err)
-			}
-			if err := m.Close(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-			if !runtime.closed || (phase == "Agent connection" && len(released) != 1) {
-				t.Fatalf("closed=%v released=%v", runtime.closed, released)
-			}
-		})
+func TestConstructionFailureDoesNotReturnSupervisor(t *testing.T) {
+	cfg := &config.Config{Platform: map[string]map[string]any{"qqofficial": {"enabled": true}}}
+	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)})
+	if err == nil || m != nil {
+		t.Fatalf("NewSupervisor = %v, %v", m, err)
 	}
 }
 

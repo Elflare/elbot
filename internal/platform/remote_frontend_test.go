@@ -41,30 +41,23 @@ func TestCLIFrontendUsesConfigDirectory(t *testing.T) {
 		},
 	}
 	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		if err := m.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	})
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case record := <-logs:
+		if record.Level != slog.LevelError || !strings.Contains(record.Content, "index.html is not a regular file") {
+			t.Fatalf("unexpected initialization error: %+v", record)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("did not inspect frontend next to configuration")
 	}
-	for _, adapter := range m.adapters {
-		if adapter.Name() != "cli" {
-			continue
-		}
-		if err := adapter.Start(t.Context(), nil); err != nil {
-			t.Fatal(err)
-		}
-		select {
-		case record := <-logs:
-			if record.Level != slog.LevelError || !strings.Contains(record.Content, "index.html is not a regular file") {
-				t.Fatalf("unexpected initialization error: %+v", record)
-			}
-		case <-time.After(time.Second):
-			t.Fatal("did not inspect frontend next to configuration")
-		}
-		return
-	}
-	t.Fatal("missing remote CLI")
 }

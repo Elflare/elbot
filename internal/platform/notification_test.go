@@ -72,9 +72,8 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			m.connections = append(m.connections, connection)
+			t.Cleanup(func() { _ = connection.Close(context.Background()) })
 		}
-		m.configureCloseSteps()
 		// 根部必须使用构造时的配置快照，并保留停止接入后的通知能力。
 		cfg.Security.Superadmins["healthy"][0] = "changed"
 		m.BeginClose()
@@ -113,6 +112,9 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 func TestServiceNotificationBusinessIgnoresLogFailure(t *testing.T) {
 	m, err := NewSupervisor(t.Context(), &config.Config{}, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {

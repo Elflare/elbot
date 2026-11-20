@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -30,12 +31,12 @@ func registrations(frontendDir string) []registration {
 	tgDefinition := telegram.Definition()
 	entries := []registration{
 		{name: config.PlatformCLI, definition: cliDefinition, build: func(m *Supervisor, deps SupervisorDeps, _ refcontext.Options, raw map[string]any, common share.CommonConfig) error {
+			cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
+			if err != nil {
+				return err
+			}
 			var adapter *cli.Adapter
 			if deps.Mode == "tui" {
-				cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
-				if err != nil {
-					return err
-				}
 				_, client, err := cfgCLI.Client("")
 				clientID := ""
 				if err != nil && !errors.Is(err, cli.ErrClientNotConfigured) {
@@ -48,10 +49,6 @@ func registrations(frontendDir string) []registration {
 				m.primary = adapter
 				m.ownRuntime(adapter, true, adapter.WaitExit, cliDefinition.ValidateNotificationTarget)
 			} else {
-				cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
-				if err != nil {
-					return err
-				}
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
@@ -65,10 +62,11 @@ func registrations(frontendDir string) []registration {
 				adapter.SetCompleter(source.Complete)
 				adapter.SetControlContinuation(source.ContinueControlInput)
 				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
-				if ui != nil {
-					m.agentCloseSteps = append(m.agentCloseSteps, closeStep{"cli UI", ui.Close})
+				if err != nil {
+					return err
 				}
-				return err
+				m.closeSteps = slices.Insert(m.closeSteps, 0, closeStep{"cli UI", ui.Close})
+				return nil
 			})
 			return nil
 		}},
@@ -83,10 +81,11 @@ func registrations(frontendDir string) []registration {
 					return refcontext.Apply(ctx, references, opts)
 				},
 			})
-			if adapter != nil {
-				m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil, qqDefinition.ValidateNotificationTarget)
+			if err != nil {
+				return err
 			}
-			return err
+			m.ownRuntime(adapter, adapter.Enabled(), nil, qqDefinition.ValidateNotificationTarget)
+			return nil
 		}},
 		{name: config.PlatformQQOneBot, definition: obDefinition, build: func(m *Supervisor, deps SupervisorDeps, references refcontext.Options, raw map[string]any, common share.CommonConfig) error {
 			if raw == nil {
@@ -102,10 +101,11 @@ func registrations(frontendDir string) []registration {
 				FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
 				FindOutputs:           deps.Store.Media().FindOutputs,
 			})
-			if adapter != nil {
-				m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil, obDefinition.ValidateNotificationTarget)
+			if err != nil {
+				return err
 			}
-			return err
+			m.ownRuntime(adapter, adapter.Enabled(), nil, obDefinition.ValidateNotificationTarget)
+			return nil
 		}},
 		{name: config.PlatformTelegram, definition: tgDefinition, build: func(m *Supervisor, deps SupervisorDeps, references refcontext.Options, raw map[string]any, common share.CommonConfig) error {
 			if raw == nil {
@@ -118,14 +118,15 @@ func registrations(frontendDir string) []registration {
 					return refcontext.Apply(ctx, references, opts)
 				},
 			})
-			if adapter != nil {
-				m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil, tgDefinition.ValidateNotificationTarget)
-				m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
-					adapter.SetCommandCatalog(source.Commands())
-					return nil
-				})
+			if err != nil {
+				return err
 			}
-			return err
+			m.ownRuntime(adapter, adapter.Enabled(), nil, tgDefinition.ValidateNotificationTarget)
+			m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
+				adapter.SetCommandCatalog(source.Commands())
+				return nil
+			})
+			return nil
 		}},
 	}
 	for i := range entries {
