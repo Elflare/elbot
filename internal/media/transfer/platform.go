@@ -80,6 +80,10 @@ func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resol
 		input.MIMEType = source.MIMEType
 	}
 	limits := share.ImportLimits{MaxImportBytes: m.options.MaxImportBytes, DownloadTimeout: m.options.DownloadTimeout}
+	return m.ImportSource(ctx, source, input, limits)
+}
+
+func (m *Manager) ImportSource(ctx context.Context, source delivery.Source, input share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {
 	switch {
 	case source.MediaID != "":
 		return m.objects.Info(ctx, source.MediaID)

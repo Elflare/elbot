@@ -23,9 +23,7 @@ import (
 // Media 是事件输入和报告附件需要的归档与引用能力。
 type Media interface {
 	background.ReportMedia
-	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportSource(context.Context, delivery.Source, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
 	AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error
 }
 
@@ -106,16 +104,8 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 			continue
 		}
 		input := media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}
-		var info operationresult.Result[media.MediaInfo]
 		step, level = "import", slog.LevelWarn
-		switch {
-		case seg.Source.MediaID != "":
-			info, err = s.media.Info(ctx, seg.Source.MediaID)
-		case seg.Source.URL != "":
-			info, err = s.media.ImportURL(ctx, seg.Source.URL, input, limits)
-		default:
-			info, err = s.media.ImportBytes(ctx, seg.Source.Data, input, limits)
-		}
+		info, err := s.media.ImportSource(ctx, seg.Source, input, limits)
 		if err != nil {
 			return operationresult.Result[[]llm.MessageSegment]{}, fmt.Errorf("segment %d: %w", i, err)
 		}
@@ -190,12 +180,7 @@ func (s *Service) importReportSegments(ctx context.Context, segments []delivery.
 			}
 			out[i] = prepared.Data
 		} else {
-			var info operationresult.Result[media.MediaInfo]
-			if seg.Source.MediaID != "" {
-				info, err = s.media.Info(ctx, seg.Source.MediaID)
-			} else {
-				info, err = s.media.ImportURL(ctx, seg.Source.URL, media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}, limits)
-			}
+			info, err := s.media.ImportSource(ctx, seg.Source, media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}, limits)
 			if err != nil {
 				return operationresult.Result[[]delivery.Output]{}, err
 			}

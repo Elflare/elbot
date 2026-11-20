@@ -91,17 +91,7 @@ func TestRouterPreservesOutputActions(t *testing.T) {
 
 type releasingMedia struct {
 	*media.MediaCenter
-	resolved, released int
-	failAt             int
-}
-
-func (m *releasingMedia) ResolveForOutput(ctx context.Context, id string) (operationresult.Result[delivery.Source], media.UsageID, error) {
-	m.resolved++
-	if m.resolved == m.failAt {
-		return operationresult.Result[delivery.Source]{}, "", errors.New("resolve failed")
-	}
-	source, release, err := m.MediaCenter.ResolveForOutput(ctx, id)
-	return source, release, err
+	released int
 }
 
 func (m *releasingMedia) PublishUsageFinished(ctx context.Context, ids []media.UsageID) {
@@ -137,25 +127,24 @@ func TestMediaSendFailureDiscardsPartialReceiptAndReleasesSources(t *testing.T) 
 	if err != wantErr || receipt.Status != "" || len(receipt.Data.PlatformMessageIDs) != 0 || calls != 1 || saved != 0 {
 		t.Fatalf("send result=%+v err=%v calls=%d saved=%d", receipt, err, calls, saved)
 	}
-	if center.released != 2 || outputs[0].Source.MediaID != "" {
+	if center.released != 1 || outputs[0].Source.MediaID != "" {
 		t.Fatalf("release=%d original=%#v", center.released, outputs)
 	}
 }
 
-func TestMediaResolutionFailureReleasesPreparedSources(t *testing.T) {
-	store := testutil.NewSQLiteStore(t)
-	root := t.TempDir()
-	center := &releasingMedia{MediaCenter: mediatest.New(t, media.MediaCenterDeps{Store: store}, root), failAt: 2}
+type rejectedBatch struct{}
+
+func (rejectedBatch) PrepareOutputs(context.Context, []media.OutputRequest) (operationresult.Result[[]media.PreparedOutput], media.UsageID, error) {
+	return operationresult.Result[[]media.PreparedOutput]{Status: operationresult.InvalidArguments}, "", nil
+}
+func TestRejectedBatchIsNotSentOrReleasedByRouter(t *testing.T) {
 	router := New(Options{Primary: testSender{send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		t.Fatal("sent after media resolution failure")
+		t.Fatal("sent rejected batch")
 		return delivery.Receipt{}, nil
-	}}, Media: center, PublishUsageFinished: center.PublishUsageFinished})
-	_, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{
-		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("first")}},
-		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("second")}},
-	})
-	if err == nil || center.released != 1 {
-		t.Fatalf("err=%v released=%d", err, center.released)
+	}}, Media: rejectedBatch{}, PublishUsageFinished: func(context.Context, []media.UsageID) { t.Fatal("released rejected batch") }})
+	got, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{{Kind: delivery.KindImage}})
+	if err != nil || got.Status != operationresult.InvalidArguments {
+		t.Fatal(got, err)
 	}
 }
 
@@ -166,7 +155,7 @@ type orderedMediaSender struct {
 }
 
 func (s *orderedMediaSender) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	for _, out := range outputs {
+	for i, out := range outputs {
 		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
 			continue
 		}
@@ -179,6 +168,7 @@ func (s *orderedMediaSender) SendTo(_ context.Context, _ delivery.Target, output
 		}
 		s.contents = append(s.contents, string(data))
 		s.names = append(s.names, out.Name)
+		outputs[i] = delivery.Text("mutated by sender")
 	}
 	return delivery.Receipt{
 		PlatformMessageIDs: []string{"sent-1"},
@@ -218,6 +208,9 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}
 	if result, err := dispatcher.SendTo(messageCtx, delivery.Target{}, outputs); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("send result=%+v err=%v", result, err)
+	}
+	if outputs[0].Kind != delivery.KindImage || outputs[0].Source.URL != server.URL {
+		t.Fatal("sender modified caller outputs")
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
 		t.Fatalf("sent contents = %q", got)

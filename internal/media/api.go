@@ -44,6 +44,20 @@ func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (operationre
 	return mediaInfoResult(m.objects.ValidateImage(ctx, id))
 }
 
+// ImportSource 读取已有 ID 的元数据，或归档调用方允许的来源。
+func (m *MediaCenter) ImportSource(ctx context.Context, source delivery.Source, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
+	return mediaInfoResult(m.transfer.ImportSource(ctx, source, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
+}
+
+// PrepareOutputs 成功时返回整批的使用 ID，发送与回执处理结束后由调用方发布。
+func (m *MediaCenter) PrepareOutputs(ctx context.Context, requests []OutputRequest) (operationresult.Result[[]PreparedOutput], UsageID, error) {
+	if m.closed.Load() {
+		return operationresult.Result[[]PreparedOutput]{Status: operationresult.Unavailable, Message: "media center is closed"}, "", nil
+	}
+	result, id, err := m.transfer.PrepareOutputs(ctx, requests)
+	return result, UsageID(id), err
+}
+
 // ImportBytes 归档字节内容并返回通用信息。
 func (m *MediaCenter) ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
 	return mediaInfoResult(m.objects.ImportBytes(ctx, data, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
@@ -64,19 +78,6 @@ func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size in
 	return mediaInfoResult(m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits)))
 }
 
-// Read 读取完整内容并结束本次读取持有，保留读取和清理错误。
-// 释放失败的自有持有交给 Cleanup 重试。
-func (m *MediaCenter) Read(ctx context.Context, id string) (operationresult.Result[[]byte], MediaInfo, error) {
-	data, info, err := m.objects.Read(ctx, id)
-	return data, MediaInfo(info), err
-}
-
-// Export 写入调用方指定的目标文件，并结束本次读取持有。
-// 释放失败的自有持有交给 Cleanup 重试，原调用仍返回错误。
-func (m *MediaCenter) Export(ctx context.Context, id, destination string) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.objects.Export(ctx, id, destination))
-}
-
 // AcquireForLLM 准备请求副本；实际请求结束后发布对应使用 ID。
 func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], UsageID, error) {
 	if m.closed.Load() {
@@ -84,16 +85,6 @@ func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessa
 	}
 	prepared, id, err := m.transfer.AcquireForLLM(ctx, messages)
 	return prepared, UsageID(id), err
-}
-
-// ResolveForOutput 优先借用本地归档路径，否则返回 S3 签名 URL。
-// 发送及回执处理结束后发布使用结束；失败资源仍归 Media。
-func (m *MediaCenter) ResolveForOutput(ctx context.Context, id string) (operationresult.Result[delivery.Source], UsageID, error) {
-	if m.closed.Load() {
-		return operationresult.Result[delivery.Source]{Status: operationresult.Unavailable, Message: "media center is closed"}, "", nil
-	}
-	source, usage, err := m.transfer.ResolveForOutput(ctx, id)
-	return source, UsageID(usage), err
 }
 
 // Workspace 为调用创建私有目录，随使用结束交由 Media 清理。

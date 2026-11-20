@@ -56,7 +56,7 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 	if deleted, err := cleanupSandbox(ctx, sandbox, cutoff); err != nil || deleted != 1 {
 		t.Fatalf("expired cache: %d %v", deleted, err)
 	}
-	if data, _, err := center.Read(ctx, item.Data.ID); err != nil || data.Status != operationresult.Success || string(data.Data) != "cached" {
+	if data, _, err := mediatest.Read(ctx, center, item.Data.ID); err != nil || data.Status != operationresult.Success || string(data.Data) != "cached" {
 		t.Fatalf("media body deleted: %q %v", data, err)
 	}
 }

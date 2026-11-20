@@ -487,13 +487,13 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 	if err != nil || info.Status != operationresult.Success {
 		t.Fatalf("import output: %+v %v", info, err)
 	}
-	source, usage, err := m.ResolveForOutput(t.Context(), info.Data.ID)
-	if err != nil || source.Status != operationresult.Success || source.Data.MediaID != info.Data.ID {
-		t.Fatalf("resolved source = %+v, error = %v", source, err)
+	prepared, usage, err := m.PrepareOutputs(t.Context(), []media.OutputRequest{{Source: delivery.Source{MediaID: info.Data.ID}}})
+	if err != nil || prepared.Status != operationresult.Success || prepared.Data[0].Source.MediaID != info.Data.ID {
+		t.Fatalf("prepared output = %+v, error = %v", prepared, err)
 	}
 	defer m.MediaCenter.PublishUsageFinished(t.Context(), []media.UsageID{usage})
 	_, err = s.SendTo(t.Context(), delivery.Target{ChatID: "user"}, []delivery.Output{
-		delivery.Text("before"), {Kind: delivery.KindFile, Name: "named.txt", Source: source.Data}, delivery.Text("after"),
+		delivery.Text("before"), {Kind: delivery.KindFile, Name: "named.txt", Source: prepared.Data[0].Source}, delivery.Text("after"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -502,7 +502,7 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(source.Data.Path); err != nil {
+	if _, err := os.Stat(prepared.Data[0].Source.Path); err != nil {
 		t.Fatalf("archive no longer accessible: %v", err)
 	}
 	var ids []string

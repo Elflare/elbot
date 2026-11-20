@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
+	"elbot/internal/media/transfer"
 )
 
 // IDPrefix 是内容寻址媒体标识的前缀。
@@ -86,3 +87,7 @@ func ValidID(id string) bool { return share.ValidID(id) }
 
 // SanitizeName 清理展示名称，供媒体边界与发送方共用。
 func SanitizeName(name string) string { return share.SanitizeName(name) }
+
+// OutputRequest 指一个待发送媒体项，PreparedOutput 保留其原输出下标。
+type OutputRequest = transfer.OutputRequest
+type PreparedOutput = transfer.PreparedOutput

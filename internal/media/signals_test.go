@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"errors"
 	"io"
 	"os"
@@ -217,7 +218,7 @@ func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs.fail.Store(true)
-	_, id, err := m.ResolveForOutput(t.Context(), item.ID)
+	_, id, err := m.PrepareOutputs(t.Context(), []OutputRequest{{Source: delivery.Source{MediaID: item.ID}}})
 	if err == nil || id != "" || refs.calls.Load() != 1 {
 		t.Fatalf("failed prepare handed ownership out: %q %v", id, err)
 	}

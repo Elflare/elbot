@@ -26,6 +26,19 @@
     - [x] 第 6 批：responses
     - [x] 第 7 批：share（最后按实际消费者核对共享契约）
 - [ ] platform包
+    - [x] platform 根部（不含子包）
+    - [x] dispatch、notification、headless
+    - [ ] refcontext（结合平台适配器核对引用恢复）
+    - [ ] qq-onebot
+    - [ ] qqofficial
+    - [ ] telegram
+    - [ ] cli
+        - [ ] cli 根部（不含子包）
+        - [ ] cli/local
+        - [ ] cli/remote（不含 management）
+        - [ ] cli/remote/management
+        - [ ] cli/share
+    - [ ] share（最后按实际消费者核对共享契约）
 - [ ] tool包
 - [ ] hook 包
 - [ ] background包

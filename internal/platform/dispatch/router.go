@@ -8,6 +8,7 @@ import (
 	"elbot/internal/operationresult"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 
@@ -28,11 +29,7 @@ type Options struct {
 	// SaveMediaOutput 关联实际发送消息与媒体，由根部注入借用的存储能力。
 	SaveMediaOutput func(context.Context, storage.MediaOutput) error
 	Media           interface {
-		Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
-		ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ResolveForOutput(context.Context, string) (operationresult.Result[delivery.Source], media.UsageID, error)
+		PrepareOutputs(context.Context, []media.OutputRequest) (operationresult.Result[[]media.PreparedOutput], media.UsageID, error)
 	}
 	MediaRetentionDays int
 }
@@ -44,11 +41,7 @@ type Router struct {
 	senders              map[string]delivery.MessageSender
 	saveMediaOutput      func(context.Context, storage.MediaOutput) error
 	media                interface {
-		Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
-		ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-		ResolveForOutput(context.Context, string) (operationresult.Result[delivery.Source], media.UsageID, error)
+		PrepareOutputs(context.Context, []media.OutputRequest) (operationresult.Result[[]media.PreparedOutput], media.UsageID, error)
 	}
 	mediaRetentionDays int
 }
@@ -107,28 +100,26 @@ func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []d
 	if selected.Status != operationresult.Success {
 		return operationresult.Result[delivery.Receipt]{Status: selected.Status, Message: selected.Message}, nil
 	}
-	prepared, err := r.prepareMediaOutputs(ctx, outputs)
+	sent := slices.Clone(outputs)
+	var mediaIDs map[int]string
+	if requests := mediaOutputRequests(outputs); len(requests) != 0 {
+		prepared, usage, err := r.media.PrepareOutputs(ctx, requests)
+		if err != nil || prepared.Status != operationresult.Success {
+			return operationresult.Result[delivery.Receipt]{Status: prepared.Status, Message: prepared.Message}, err
+		}
+		defer r.publishUsageFinished(ctx, []media.UsageID{usage})
+		mediaIDs = make(map[int]string, len(prepared.Data))
+		for _, item := range prepared.Data {
+			sent[item.Index].Name = item.Name
+			sent[item.Index].Source = item.Source
+			mediaIDs[item.Index] = item.Source.MediaID
+		}
+	}
+	receipt, err := selected.Data.SendTo(ctx, target, sent)
 	if err != nil {
 		return operationresult.Result[delivery.Receipt]{}, err
 	}
-	if prepared.Status != operationresult.Success {
-		return operationresult.Result[delivery.Receipt]{Status: prepared.Status, Message: prepared.Message}, nil
-	}
-	resolved, usages, err := r.resolveMediaOutputs(ctx, prepared.Data)
-	if len(usages) != 0 {
-		defer r.publishUsageFinished(ctx, usages)
-	}
-	if err != nil {
-		return operationresult.Result[delivery.Receipt]{}, err
-	}
-	if resolved.Status != operationresult.Success {
-		return operationresult.Result[delivery.Receipt]{Status: resolved.Status, Message: resolved.Message}, nil
-	}
-	receipt, err := selected.Data.SendTo(ctx, target, resolved.Data)
-	if err != nil {
-		return operationresult.Result[delivery.Receipt]{}, err
-	}
-	r.cacheMediaReceipt(ctx, prepared.Data, receipt)
+	r.cacheMediaReceipt(ctx, outputs, mediaIDs, receipt)
 	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
 }
 

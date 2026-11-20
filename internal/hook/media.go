@@ -7,18 +7,17 @@ import (
 	"elbot/internal/operationresult"
 	"io"
 
+	"elbot/internal/delivery"
 	"elbot/internal/media"
 )
 
 // MediaAPI is the host-only media capability. It is never serialized to hook.v2.
 // Go hooks share the center rather than accessing its storage implementation.
 type MediaAPI interface {
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-	ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportSource(context.Context, delivery.Source, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	Hold(context.Context, string) (operationresult.Result[*media.HeldMedia], error)
+	PublishUsageFinished(context.Context, []media.UsageID)
 	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-	Read(context.Context, string) (operationresult.Result[[]byte], media.MediaInfo, error)
-	Export(context.Context, string, string) (operationresult.Result[media.MediaInfo], error)
 	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
 	AddReference(context.Context, media.Reference) error
 	RemoveReference(context.Context, media.Reference) error

@@ -43,73 +43,47 @@ func mediaInfo(item *storage.Media) share.MediaInfo {
 	return share.MediaInfo{ID: item.ID, Name: item.Name, MIMEType: item.MIMEType, Size: item.Size}
 }
 
-// Read 读取完整内容；读取器和引用释放故障独立记录。
-// 释放失败的自有持有交给 Cleanup 重试。
-func (m *Manager) Read(ctx context.Context, id string) (operationresult.Result[[]byte], share.MediaInfo, error) {
-	retained, err := m.Hold(ctx, id)
+// Read 读取本次持有的内容，不另取引用。
+func (h *heldMedia) Read(ctx context.Context) ([]byte, error) {
+	reader, err := h.Open(ctx)
 	if err != nil {
-		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
-	}
-	if retained.Status != operationresult.Success {
-		return operationresult.Result[[]byte]{Status: retained.Status, Message: retained.Message}, share.MediaInfo{}, nil
-	}
-	held := retained.Data
-	defer m.releaseOwned(ctx, held)
-	info := held.Info()
-	reader, err := held.Open(ctx)
-	if err != nil {
-		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
+		return nil, err
 	}
 	defer closeMediaReader(ctx, reader)
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
+		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
+		return nil, err
 	}
-	return operationresult.Result[[]byte]{Status: operationresult.Success, Data: data}, info, nil
+	return data, nil
 }
 
-// Export 将对象写入目标文件并释放本次持有。
-// 释放失败的自有持有交给 Cleanup 重试。
-func (m *Manager) Export(ctx context.Context, id, destination string) (operationresult.Result[share.MediaInfo], error) {
-	retained, err := m.Hold(ctx, id)
+// Export 写入目标文件，目标关闭失败属于写入失败。
+func (h *heldMedia) Export(ctx context.Context, destination string) error {
+	reader, err := h.Open(ctx)
 	if err != nil {
-		return operationresult.Result[share.MediaInfo]{}, err
-	}
-	if retained.Status != operationresult.Success {
-		return operationresult.Result[share.MediaInfo]{Status: retained.Status, Message: retained.Message}, nil
-	}
-	held := retained.Data
-	defer m.releaseOwned(ctx, held)
-	info := held.Info()
-	reader, err := held.Open(ctx)
-	if err != nil {
-		return operationresult.Result[share.MediaInfo]{}, err
+		return err
 	}
 	defer closeMediaReader(ctx, reader)
 	file, err := os.Create(destination)
 	if err != nil {
-		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("create media export: %w", err)
+		return fmt.Errorf("create media export: %w", err)
 	}
 	_, err = io.Copy(file, reader)
 	if closeErr := file.Close(); closeErr != nil {
 		if err == nil {
-			return operationresult.Result[share.MediaInfo]{}, closeErr
+			return closeErr
 		}
 		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 	}
 	if err != nil {
-		return operationresult.Result[share.MediaInfo]{}, err
+		return err
 	}
-	if err := ctx.Err(); err != nil {
-		return operationresult.Result[share.MediaInfo]{}, err
-	}
-	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: info}, nil
+	return ctx.Err()
 }
 
-// backendForStoredMedia 按内部记录选择后端，不向调用者暴露记录。
 func (m *Manager) backendForStoredMedia(item *storage.Media) (share.Backend, error) {
 	switch item.Backend {
 	case "local":

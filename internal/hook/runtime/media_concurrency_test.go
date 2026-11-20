@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/delivery"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
@@ -15,16 +16,19 @@ import (
 
 type mediaProbe struct {
 	mediaAPI
-	importURL func(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
-	export    func(context.Context, string, string) (operationresult.Result[media.MediaInfo], error)
-	remove    func(context.Context, media.Reference) error
+	importSource func(context.Context, delivery.Source, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	add          func(context.Context, media.Reference) error
+	remove       func(context.Context, media.Reference) error
 }
 
-func (p mediaProbe) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
-	return p.importURL(ctx, url, input, limits)
+func (p mediaProbe) ImportSource(ctx context.Context, source delivery.Source, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
+	return p.importSource(ctx, source, input, limits)
 }
-func (p mediaProbe) Export(ctx context.Context, id, path string) (operationresult.Result[media.MediaInfo], error) {
-	return p.export(ctx, id, path)
+func (p mediaProbe) AddReference(ctx context.Context, ref media.Reference) error {
+	if p.add != nil {
+		return p.add(ctx, ref)
+	}
+	return p.mediaAPI.AddReference(ctx, ref)
 }
 func (p mediaProbe) RemoveReference(ctx context.Context, ref media.Reference) error {
 	if p.remove != nil {
@@ -47,7 +51,7 @@ func awaitMediaResult(t *testing.T, done <-chan error) error {
 func TestSlowMediaImportDoesNotBlockTextAndCancellation(t *testing.T) {
 	m, center, dir, _ := testMediaRuntime(t)
 	started, unblock := make(chan struct{}), make(chan struct{})
-	m.media.api = mediaProbe{mediaAPI: center, importURL: func(ctx context.Context, _ string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
+	m.media.api = mediaProbe{mediaAPI: center, importSource: func(ctx context.Context, _ delivery.Source, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 		close(started)
 		<-unblock
 		return center.ImportBytes(ctx, []byte("image"), media.Input{MIMEType: "image/png"}, limits)
@@ -94,11 +98,11 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	started, unblock := make(chan struct{}), make(chan struct{})
-	m.media.api = mediaProbe{mediaAPI: center, export: func(ctx context.Context, id, path string) (operationresult.Result[media.MediaInfo], error) {
+	m.media.api = mediaProbe{mediaAPI: center, add: func(ctx context.Context, ref media.Reference) error {
+		err := center.AddReference(ctx, ref)
 		close(started)
 		<-unblock
-		// 模拟已进入不可中断 I/O；Close 必须等真实调用退出。
-		return center.Export(context.WithoutCancel(ctx), id, path)
+		return err
 	}}
 	t.Cleanup(func() {
 		select {
@@ -134,8 +138,8 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	default:
 	}
 	close(unblock)
-	if err := awaitMediaResult(t, done); err != nil {
-		t.Fatal(err)
+	if err := awaitMediaResult(t, done); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled export, got %v", err)
 	}
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
@@ -162,7 +166,7 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 	first := mediaCall(t, m, dir, "media.export", map[string]string{"media": a.Data.ID})
 	started, unblock := make(chan struct{}), make(chan struct{})
 	var removals atomic.Int32
-	m.media.api = mediaProbe{mediaAPI: center, export: center.Export, remove: func(ctx context.Context, ref media.Reference) error {
+	m.media.api = mediaProbe{mediaAPI: center, remove: func(ctx context.Context, ref media.Reference) error {
 		if removals.Add(1) == 1 {
 			close(started)
 			<-unblock

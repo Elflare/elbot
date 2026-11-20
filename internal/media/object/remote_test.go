@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
-	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -78,12 +77,12 @@ func TestS3PrimaryUsesStoredKey(t *testing.T) {
 		t.Fatal("wrong import backend")
 	}
 	m.options.Backend = "local"
-	data, _, err := m.Read(t.Context(), item.ID)
-	if err != nil || data.Status != operationresult.Success || string(data.Data) != "remote primary" {
+	held := holdTestMedia(t, m, item.ID)
+	defer m.releaseOwned(t.Context(), held)
+	data, err := held.Read(t.Context())
+	if err != nil || string(data) != "remote primary" {
 		t.Fatalf("stored backend ignored: %q %v", data, err)
 	}
-	held := holdTestMedia(t, m, item.ID)
-	defer held.Close(t.Context())
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
 	}

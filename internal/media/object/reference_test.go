@@ -44,7 +44,9 @@ func TestReadReturnsOriginalErrorAndLogsCleanup(t *testing.T) {
 		return &testReader{Reader: errorReader{readErr}, closeErr: closeErr}, nil
 	}
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return releaseErr }}
-	_, _, err := m.Read(t.Context(), item.ID)
+	held := holdTestMedia(t, m, item.ID)
+	_, err := held.Read(t.Context())
+	m.releaseOwned(t.Context(), held)
 	if err != readErr {
 		t.Fatalf("read error=%v", err)
 	}

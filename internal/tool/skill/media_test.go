@@ -142,7 +142,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							t.Fatalf("result %#v %v", result, err)
 						}
 						segment := result.Data.Segments[1]
-						data, _, readErr := center.Read(ctx, segment.MediaID)
+						data, _, readErr := mediatest.Read(ctx, center, segment.MediaID)
 						if readErr != nil || data.Status != operationresult.Success || string(data.Data) != "output" || segment.URL != "" {
 							t.Fatalf("result media %#v %q %v", segment, data, readErr)
 						}

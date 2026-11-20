@@ -65,6 +65,15 @@ func (m *fakeEventMedia) ImportReader(ctx context.Context, reader io.Reader, siz
 	m.inputs = append(m.inputs, input)
 	return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: id, Name: input.Name, MIMEType: input.MIMEType, Size: size}}, nil
 }
+func (m *fakeEventMedia) ImportSource(ctx context.Context, source delivery.Source, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
+	if source.MediaID != "" {
+		return m.Info(ctx, source.MediaID)
+	}
+	if source.URL != "" {
+		return m.ImportURL(ctx, source.URL, input, limits)
+	}
+	return m.ImportBytes(ctx, source.Data, input, limits)
+}
 func (m *fakeEventMedia) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return m.ImportBytes(ctx, []byte(url), input, limits)
 }

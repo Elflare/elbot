@@ -46,6 +46,11 @@ func (h *HeldMedia) Info() MediaInfo { return MediaInfo(h.held.Info()) }
 // Open 在已有持有下打开内容，不重新查询或增加引用。
 func (h *HeldMedia) Open(ctx context.Context) (io.ReadCloser, error) { return h.held.Open(ctx) }
 
+func (h *HeldMedia) Read(ctx context.Context) ([]byte, error) { return h.held.Read(ctx) }
+func (h *HeldMedia) Export(ctx context.Context, destination string) error {
+	return h.held.Export(ctx, destination)
+}
+
 // AddReference 添加持久业务引用，不承担 Agent 的会话提交事务。
 func (m *MediaCenter) AddReference(ctx context.Context, reference Reference) error {
 	return m.objects.AddReference(ctx, object.Reference(reference))

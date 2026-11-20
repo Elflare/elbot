@@ -80,7 +80,7 @@ func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T
 			t.Fatalf("compressed metadata = %#v", segment)
 		}
 	}
-	stored, _, err := center.Read(context.Background(), id)
+	stored, _, err := mediatest.Read(context.Background(), center, id)
 	if err != nil || stored.Status != operationresult.Success {
 		t.Fatalf("read stored media: %+v %v", stored, err)
 	}

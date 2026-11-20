@@ -158,12 +158,16 @@ func TestImportReadExportAndDeduplication(t *testing.T) {
 	if err != nil || info.Status != operationresult.Success || again != item || info.Data != item || backend.puts != 1 {
 		t.Fatalf("dedup/read changed metadata: %#v %#v %v", again, info, err)
 	}
-	data, got, err := m.Read(t.Context(), item.ID)
-	if err != nil || data.Status != operationresult.Success || string(data.Data) != "hello" || got != item {
-		t.Fatalf("Read = %q %#v %v", data, got, err)
+	held := holdTestMedia(t, m, item.ID)
+	data, err := held.Read(t.Context())
+	if err != nil || string(data) != "hello" || held.Info() != item {
+		t.Fatalf("read = %q %+v %v", data, held.Info(), err)
 	}
 	destination := filepath.Join(t.TempDir(), "export")
-	if _, err := m.Export(t.Context(), item.ID, destination); err != nil {
+	if err := held.Export(t.Context(), destination); err != nil {
+		t.Fatal(err)
+	}
+	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	exported, err := os.ReadFile(destination)

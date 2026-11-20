@@ -13,11 +13,8 @@ type usageMedia struct {
 	*media.MediaCenter
 }
 
-func (m *usageMedia) Info(context.Context, string) (operationresult.Result[media.MediaInfo], error) {
-	return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: "media:test"}}, nil
-}
-func (m *usageMedia) ResolveForOutput(context.Context, string) (operationresult.Result[delivery.Source], media.UsageID, error) {
-	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Path: "prepared"}}, "usage:one", nil
+func (*usageMedia) PrepareOutputs(context.Context, []media.OutputRequest) (operationresult.Result[[]media.PreparedOutput], media.UsageID, error) {
+	return operationresult.Result[[]media.PreparedOutput]{Status: operationresult.Success, Data: []media.PreparedOutput{{Source: delivery.Source{Path: "prepared"}}}}, "usage:one", nil
 }
 
 func TestSendPublishesUsageAndDiscardsFailedReceipt(t *testing.T) {

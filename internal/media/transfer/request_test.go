@@ -61,6 +61,7 @@ func (f *fakeObjects) AssociateHistory(ctx context.Context, key share.HistoryKey
 }
 
 type fakeHeld struct {
+	share.HeldMedia      // 交付测试只实现会使用的持有操作。
 	info                 share.MediaInfo
 	open                 func(context.Context) (io.ReadCloser, error)
 	sign                 func(context.Context) (string, error)

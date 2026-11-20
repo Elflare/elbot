@@ -113,20 +113,21 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			source, usageID, err := m.ResolveForOutput(t.Context(), id)
-			if err != nil || source.Status != operationresult.Success {
+			outputs, usageID, err := m.PrepareOutputs(t.Context(), []OutputRequest{{Source: delivery.Source{MediaID: id}}})
+			if err != nil || outputs.Status != operationresult.Success {
 				t.Fatal(err)
 			}
+			source := outputs.Data[0].Source
 			record, err := store.Media().Get(t.Context(), id)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if mode == "s3" {
-				if source.Data.Path != "" || source.Data.URL != value {
-					t.Fatalf("expected signed URL, got %+v", source.Data)
+				if source.Path != "" || source.URL != value {
+					t.Fatalf("expected signed URL, got %+v", source)
 				}
-			} else if source.Data.Path == "" || source.Data.Path != record.LocalPath || source.Data.URL != "" {
-				t.Fatalf("expected archive path %q, got %+v", record.LocalPath, source.Data)
+			} else if source.Path == "" || source.Path != record.LocalPath || source.URL != "" {
+				t.Fatalf("expected archive path %q, got %+v", record.LocalPath, source)
 			}
 			refs, err = store.MediaReferences().ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 1 {
@@ -142,7 +143,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				t.Fatalf("leaked holds=%d %v", len(refs), err)
 			}
 			if mode != "s3" {
-				data, err := os.ReadFile(source.Data.Path)
+				data, err := os.ReadFile(source.Path)
 				if err != nil || string(data) != "payload" {
 					t.Fatalf("archive after release=%q: %v", data, err)
 				}

@@ -113,7 +113,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if _, err := os.Stat(exported.Path); !os.IsNotExist(err) {
 		t.Fatalf("export survived close: %v", err)
 	}
-	if _, _, err := center.Read(ctx, imported.MediaID); err != nil {
+	if _, _, err := mediatest.Read(ctx, center, imported.MediaID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.MediaRequest(ctx, dir, "media.metadata", mustJSON(map[string]string{"media": imported.MediaID})); err == nil {

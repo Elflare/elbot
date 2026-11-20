@@ -203,7 +203,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, item, err := tools.mediaCenter.Read(ctx, ids[1])
+	stored, item, err := mediatest.Read(ctx, tools.mediaCenter, ids[1])
 	if err != nil || stored.Status != operationresult.Success {
 		t.Fatal(err)
 	}

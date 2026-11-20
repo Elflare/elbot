@@ -80,17 +80,19 @@ func TestImageImportCompressionAndValidation(t *testing.T) {
 	if err != nil || item.Status != operationresult.Success || item.Data.MIMEType != "image/jpeg" || item.Data.Name != "folder%2Fname.jpg" {
 		t.Fatalf("compressed = %#v %v", item, err)
 	}
-	data, _, err := m.Read(t.Context(), item.Data.ID)
-	if err != nil || data.Status != operationresult.Success {
+	held := holdTestMedia(t, m, item.Data.ID)
+	defer m.releaseOwned(t.Context(), held)
+	data, err := held.Read(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := jpeg.Decode(bytes.NewReader(data.Data))
+	decoded, err := jpeg.Decode(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 	bounds := decoded.Bounds()
-	if len(data.Data) >= 16*1024 || bounds.Dx() != 31 || bounds.Dy() != 15 {
-		t.Fatalf("compressed size=%d bounds=%v", len(data.Data), bounds)
+	if len(data) >= 16*1024 || bounds.Dx() != 31 || bounds.Dy() != 15 {
+		t.Fatalf("compressed size=%d bounds=%v", len(data), bounds)
 	}
 	white := color.NRGBAModel.Convert(decoded.At(bounds.Max.X-2, bounds.Max.Y/2)).(color.NRGBA)
 	if white.R < 240 || white.G < 240 || white.B < 240 {

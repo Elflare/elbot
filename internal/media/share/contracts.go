@@ -26,6 +26,8 @@ type HeldMedia interface {
 	// LocalPath 返回持有期间可借用的归档路径；仅有远端对象时为空。
 	LocalPath() string
 	Open(context.Context) (io.ReadCloser, error)
+	Read(context.Context) ([]byte, error)
+	Export(context.Context, string) error
 	SignedURL(context.Context) (string, error)
 	Close(context.Context) error
 }

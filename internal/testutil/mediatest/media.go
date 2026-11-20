@@ -3,6 +3,7 @@ package mediatest
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"path/filepath"
 	"testing"
 
@@ -24,4 +25,19 @@ func New(t *testing.T, deps media.MediaCenterDeps, root string, configure ...fun
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	return center
+}
+
+// Read 用真实持有读取归档，供跨包测试检查内容和元数据。
+func Read(ctx context.Context, center *media.MediaCenter, id string) (operationresult.Result[[]byte], media.MediaInfo, error) {
+	item, err := center.Hold(ctx, id)
+	if err != nil || item.Status != operationresult.Success {
+		return operationresult.Result[[]byte]{Status: item.Status, Message: item.Message}, media.MediaInfo{}, err
+	}
+	held := item.Data
+	defer center.PublishUsageFinished(ctx, []media.UsageID{held.UsageID})
+	data, err := held.Read(ctx)
+	if err != nil {
+		return operationresult.Result[[]byte]{}, media.MediaInfo{}, err
+	}
+	return operationresult.Result[[]byte]{Status: operationresult.Success, Data: data}, held.Info(), nil
 }

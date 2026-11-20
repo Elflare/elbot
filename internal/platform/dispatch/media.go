@@ -32,79 +32,29 @@ func (r *Router) ResolveMedia(ctx context.Context, name string, input share.Mess
 	return resolver.ResolveMedia(ctx, input, maxBytes)
 }
 
-func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[[]delivery.Output], error) {
-	// 输出构造入口已完成格式校验；这里只准备媒体。
-	prepared := append([]delivery.Output(nil), outputs...)
-	for i, out := range prepared {
-		if !isMediaOutputKind(out.Kind) {
-			continue
-		}
-		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
-		var item operationresult.Result[media.MediaInfo]
-		var err error
-		switch {
-		case out.Source.MediaID != "":
-			item, err = a.media.Info(ctx, out.Source.MediaID)
-		case out.Source.URL != "":
-			input.Source.URL = out.Source.URL
-			item, err = a.media.ImportURL(ctx, out.Source.URL, input, media.ImportLimits{})
-		case out.Source.Path != "":
-			item, err = a.media.ImportFile(ctx, out.Source.Path, input, media.ImportLimits{})
-		case len(out.Source.Data) > 0:
-			item, err = a.media.ImportBytes(ctx, out.Source.Data, input, media.ImportLimits{})
-		}
-		if err != nil {
-			return operationresult.Result[[]delivery.Output]{}, fmt.Errorf("prepare output media %d: %w", i, err)
-		}
-		if item.Status != operationresult.Success {
-			return operationresult.Result[[]delivery.Output]{Status: item.Status, Message: item.Message}, nil
-		}
-		prepared[i].Source = delivery.Source{MediaID: item.Data.ID, MIMEType: item.Data.MIMEType}
-		if prepared[i].Name == "" {
-			prepared[i].Name = item.Data.Name
-		} else {
-			prepared[i].Name = media.SanitizeName(prepared[i].Name)
+func mediaOutputRequests(outputs []delivery.Output) []media.OutputRequest {
+	var requests []media.OutputRequest
+	for i, out := range outputs {
+		if isMediaOutputKind(out.Kind) {
+			requests = append(requests, media.OutputRequest{Index: i, Name: out.Name, Source: out.Source})
 		}
 	}
-	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: prepared}, nil
+	return requests
 }
 
-// Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[[]delivery.Output], []media.UsageID, error) {
-	resolved := append([]delivery.Output(nil), outputs...)
-	var usages []media.UsageID
-	for i, out := range resolved {
-		if out.Source.MediaID == "" {
-			continue
-		}
-		source, usageID, err := a.media.ResolveForOutput(ctx, out.Source.MediaID)
-		if usageID != "" {
-			usages = append(usages, usageID)
-		}
-		if err != nil {
-			return operationresult.Result[[]delivery.Output]{}, usages, err
-		}
-		if source.Status != operationresult.Success {
-			return operationresult.Result[[]delivery.Output]{Status: source.Status, Message: source.Message}, usages, nil
-		}
-		resolved[i].Source = source.Data
-	}
-	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: resolved}, usages, nil
-}
-
-func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) {
-	if a.mediaRetentionDays <= 0 {
+func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, mediaIDs map[int]string, receipt delivery.Receipt) {
+	if a.mediaRetentionDays <= 0 || len(mediaIDs) == 0 {
 		return
 	}
 	expiresAt := time.Now().AddDate(0, 0, a.mediaRetentionDays)
 	for _, message := range receipt.SentMessages {
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
-			out := outputs[outputIndex]
-			if out.Source.MediaID == "" || !isMediaOutputKind(out.Kind) {
+			id, ok := mediaIDs[outputIndex]
+			if !ok {
 				continue
 			}
-			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: message.Platform, ChatType: message.ChatType, ChatID: message.ChatID, MessageID: message.PlatformMessageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
+			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: message.Platform, ChatType: message.ChatType, ChatID: message.ChatID, MessageID: message.PlatformMessageID, SegmentIndex: segmentIndex, Kind: string(outputs[outputIndex].Kind), MediaID: id, ExpiresAt: expiresAt}); err != nil {
 				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cache_sent_media_receipt_failed", Module: "delivery", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 			}
 			segmentIndex++

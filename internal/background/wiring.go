@@ -18,6 +18,7 @@ import (
 	"elbot/internal/background/maintenance"
 	"elbot/internal/background/share"
 	"elbot/internal/config"
+	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/signal"
@@ -162,20 +163,12 @@ func reportMessageMaps(mappings []share.ReportMessageMap) []storage.PlatformMess
 	return rows
 }
 
-func (b elnisBridge) Info(ctx context.Context, id string) (operationresult.Result[media.MediaInfo], error) {
-	return b.media.Info(ctx, id)
-}
-
-func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
-	return b.media.ImportURL(ctx, url, input, limits)
+func (b elnisBridge) ImportSource(ctx context.Context, source delivery.Source, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
+	return b.media.ImportSource(ctx, source, input, limits)
 }
 
 func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return b.media.ImportReader(ctx, reader, size, input, limits)
-}
-
-func (b elnisBridge) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
-	return b.media.ImportBytes(ctx, data, input, limits)
 }
 
 func (b elnisBridge) AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error {

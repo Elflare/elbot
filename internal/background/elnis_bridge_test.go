@@ -258,16 +258,16 @@ func TestElnisBridgeImportLimitsArePerCall(t *testing.T) {
 			case <-r.Context().Done():
 			}
 		}))
-		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil && result.Status == operationresult.Success {
+		if result, err := b.ImportSource(t.Context(), delivery.Source{URL: server.URL}, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil && result.Status == operationresult.Success {
 			t.Fatal("size limit ignored")
 		}
-		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil || result.Status != operationresult.Success {
+		if result, err := b.ImportSource(t.Context(), delivery.Source{URL: server.URL}, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil || result.Status != operationresult.Success {
 			t.Fatalf("import result=%+v err=%v", result, err)
 		}
-		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil && result.Status == operationresult.Success {
+		if result, err := b.ImportSource(t.Context(), delivery.Source{URL: server.URL}, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil && result.Status == operationresult.Success {
 			t.Fatal("timeout ignored")
 		}
-		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{}, media.ImportLimits{}); err != nil || result.Status != operationresult.Success {
+		if result, err := b.ImportSource(t.Context(), delivery.Source{URL: server.URL}, media.Input{}, media.ImportLimits{}); err != nil || result.Status != operationresult.Success {
 			t.Fatalf("per-call limits changed default imports: result=%+v err=%v", result, err)
 		}
 	})
@@ -316,10 +316,6 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	data, _, err := b.media.Read(ctx, out.Source.MediaID)
-	if err != nil || data.Status != operationresult.Success || string(data.Data) != "report image" {
-		t.Fatalf("lost report: %q %v", data, err)
-	}
 	refs, err := store.MediaReferences().ListMediaIDs(ctx, out.Source.MediaID)
 	if err != nil || len(refs) != 1 {
 		t.Fatal(refs, err)
@@ -333,6 +329,10 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 	}
 	if issues, err := store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
 		t.Fatal(issues, err)
+	}
+	data, _, err := mediatest.Read(ctx, b.media, out.Source.MediaID)
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "report image" {
+		t.Fatalf("lost report: %q %v", data, err)
 	}
 }
 
@@ -366,15 +366,11 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "url media") }))
 	defer server.Close()
-	info, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "download.txt", MIMEType: "text/plain"}, media.ImportLimits{})
+	info, err := b.ImportSource(t.Context(), delivery.Source{URL: server.URL}, media.Input{Name: "download.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil || info.Status != operationresult.Success || !media.ValidID(info.Data.ID) {
 		t.Fatal(info, err)
 	}
 	id := info.Data.ID
-	data, item, err := b.media.Read(t.Context(), id)
-	if err != nil || data.Status != operationresult.Success || string(data.Data) != "url media" || item.Name != "download.txt" {
-		t.Fatal(item, err)
-	}
 	if err := b.AddEventReference(t.Context(), id, "event", "report"); err != nil {
 		t.Fatal(err)
 	}
@@ -382,10 +378,14 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	if err != nil || len(refs) != 1 || refs[0].OwnerType != "elnis_event" || refs[0].OwnerID != "event" || refs[0].Purpose != "report" {
 		t.Fatal(refs, err)
 	}
+	data, item, err := mediatest.Read(t.Context(), b.media, id)
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "url media" || item.Name != "download.txt" {
+		t.Fatal(item, err)
+	}
 	if err := b.AddEventReference(t.Context(), "media:"+strings.Repeat("f", 64), "event", "report"); err == nil {
 		t.Fatal("accepted missing media")
 	}
-	if result, err := b.ImportURL(t.Context(), "invalid", media.Input{}, media.ImportLimits{}); err == nil && result.Status == operationresult.Success {
+	if result, err := b.ImportSource(t.Context(), delivery.Source{URL: "invalid"}, media.Input{}, media.ImportLimits{}); err == nil && result.Status == operationresult.Success {
 		t.Fatal("discarded import error")
 	}
 }
