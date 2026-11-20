@@ -502,8 +502,8 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(source.Data.Path); !os.IsNotExist(err) {
-		t.Fatalf("temporary delivery file still exists: %v", err)
+	if _, err := os.Stat(source.Data.Path); err != nil {
+		t.Fatalf("archive no longer accessible: %v", err)
 	}
 	var ids []string
 	for i, conn := range []*websocket.Conn{one, two} {

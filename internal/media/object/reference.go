@@ -64,6 +64,8 @@ func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[s
 // Info 返回持有记录的通用信息快照。
 func (h *heldMedia) Info() share.MediaInfo { return mediaInfo(&h.record) }
 
+func (h *heldMedia) LocalPath() string { return h.record.LocalPath }
+
 // Open 更新访问事实并打开内容，不重复查询或添加引用。
 func (h *heldMedia) Open(ctx context.Context) (io.ReadCloser, error) {
 	if h.released.Load() {

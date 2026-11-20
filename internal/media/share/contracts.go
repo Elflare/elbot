@@ -23,6 +23,8 @@ type Objects interface {
 // Open、SignedURL 的存储和传输故障原样返回。
 type HeldMedia interface {
 	Info() MediaInfo
+	// LocalPath 返回持有期间可借用的归档路径；仅有远端对象时为空。
+	LocalPath() string
 	Open(context.Context) (io.ReadCloser, error)
 	SignedURL(context.Context) (string, error)
 	Close(context.Context) error

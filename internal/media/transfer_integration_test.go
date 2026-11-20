@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -118,9 +117,16 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err != nil || source.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			data, err := os.ReadFile(source.Data.Path)
-			if err != nil || string(data) != "payload" {
-				t.Fatalf("output=%q %v", data, err)
+			record, err := store.Media().Get(t.Context(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "s3" {
+				if source.Data.Path != "" || source.Data.URL != value {
+					t.Fatalf("expected signed URL, got %+v", source.Data)
+				}
+			} else if source.Data.Path == "" || source.Data.Path != record.LocalPath || source.Data.URL != "" {
+				t.Fatalf("expected archive path %q, got %+v", record.LocalPath, source.Data)
 			}
 			refs, err = store.MediaReferences().ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 1 {
@@ -135,12 +141,15 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("leaked holds=%d %v", len(refs), err)
 			}
-			if _, err := os.Stat(source.Data.Path); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("output retained")
+			if mode != "s3" {
+				data, err := os.ReadFile(source.Data.Path)
+				if err != nil || string(data) != "payload" {
+					t.Fatalf("archive after release=%q: %v", data, err)
+				}
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if mode == "base64" && (puts != 0 || gets != 0) || mode == "hybrid" && (puts != 1 || gets != 0) || mode == "s3" && (puts != 1 || gets != 1) {
+			if mode == "base64" && (puts != 0 || gets != 0) || mode == "hybrid" && (puts != 1 || gets != 0) || mode == "s3" && (puts != 1 || gets != 0) {
 				t.Fatalf("remote puts=%d gets=%d", puts, gets)
 			}
 		})

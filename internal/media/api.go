@@ -86,7 +86,7 @@ func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessa
 	return prepared, UsageID(id), err
 }
 
-// ResolveForOutput 准备发送所需临时文件，不生成模型使用的签名 URL。
+// ResolveForOutput 优先借用本地归档路径，否则返回 S3 签名 URL。
 // 发送及回执处理结束后发布使用结束；失败资源仍归 Media。
 func (m *MediaCenter) ResolveForOutput(ctx context.Context, id string) (operationresult.Result[delivery.Source], UsageID, error) {
 	if m.closed.Load() {

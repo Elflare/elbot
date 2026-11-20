@@ -2,18 +2,13 @@ package transfer
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/operationresult"
-	"io"
-	"log/slog"
 	"os"
-	"path/filepath"
 
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
-// ResolveForOutput 在持有期间准备发送临时文件，不提供签名 URL。
-// 使用记录持有临时目录和媒体；准备失败由 Media 收尾。
+// ResolveForOutput 只借用归档文件或签名 URL；持有持续到发送结束。
 func (m *Manager) ResolveForOutput(ctx context.Context, id string) (result operationresult.Result[delivery.Source], usageID string, err error) {
 	retained, usageID, err := m.Hold(ctx, id)
 	if err != nil {
@@ -29,38 +24,22 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (result opera
 			usageID = ""
 		}
 	}()
-	dir, err := os.MkdirTemp("", "elbot-output-*")
-	if err != nil {
-		return operationresult.Result[delivery.Source]{}, usageID, err
-	}
-	m.usagesMu.Lock()
-	u := m.usages[usageID]
-	m.usagesMu.Unlock()
-	u.mu <- struct{}{}
-	u.dir = dir
-	<-u.mu
-	reader, err := held.Open(ctx)
-	if err != nil {
-		return operationresult.Result[delivery.Source]{}, usageID, err
-	}
-	defer m.closeMediaReader(ctx, reader)
-	path := filepath.Join(dir, "media")
-	file, err := os.Create(path)
-	if err != nil {
-		return operationresult.Result[delivery.Source]{}, usageID, err
-	}
-	_, err = io.Copy(file, reader)
-	if closeErr := file.Close(); closeErr != nil {
-		if err == nil {
-			return operationresult.Result[delivery.Source]{}, usageID, closeErr
+	source := delivery.Source{MediaID: id, MIMEType: held.Info().MIMEType, Path: held.LocalPath()}
+	if source.Path != "" {
+		if _, err := os.Stat(source.Path); os.IsNotExist(err) {
+			source.Path = ""
+		} else if err != nil {
+			return operationresult.Result[delivery.Source]{}, usageID, err
 		}
-		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 	}
-	if err != nil {
-		return operationresult.Result[delivery.Source]{}, usageID, err
+	if source.Path == "" {
+		source.URL, err = held.SignedURL(ctx)
+		if err != nil {
+			return operationresult.Result[delivery.Source]{}, usageID, err
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[delivery.Source]{}, usageID, err
 	}
-	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{MediaID: id, Path: path, MIMEType: held.Info().MIMEType}}, usageID, nil
+	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: source}, usageID, nil
 }

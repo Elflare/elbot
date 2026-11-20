@@ -69,6 +69,7 @@ type fakeHeld struct {
 }
 
 func (h *fakeHeld) Info() share.MediaInfo { return h.info }
+func (h *fakeHeld) LocalPath() string     { return "" }
 func (h *fakeHeld) Open(ctx context.Context) (io.ReadCloser, error) {
 	h.opens.Add(1)
 	if h.open != nil {
