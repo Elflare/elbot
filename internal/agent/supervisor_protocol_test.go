@@ -9,6 +9,8 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"encoding/json"
@@ -204,6 +206,64 @@ func TestSupervisorStopCancelsActiveMessage(t *testing.T) {
 	default:
 		t.Fatal("supervisor did not stop")
 	}
+}
+
+func TestAddressedTasksAndStopAreIndependent(t *testing.T) {
+	deps := isolatedModuleDeps(t)
+	client := &contractBlockingClient{entered: make(chan context.Context, 2)}
+	contractModels(t, &deps, client)
+	m := contractSupervisor(t, deps)
+	base, cancel := context.WithCancel(testutil.WithCLIConversation(t.Context()))
+	defer cancel()
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}
+	create := func() context.Context {
+		t.Helper()
+		created, err := m.sessions.Create(base, scope, session.CreateRequest{})
+		if err != nil || created.Status != operationresult.Success {
+			t.Fatal(created, err)
+		}
+		info, _ := contextinfo.ConversationFromContext(base)
+		info.TargetSessionID = created.Data.ID
+		return contextinfo.WithConversation(base, info)
+	}
+	first, second := create(), create()
+	start := func(ctx context.Context) (context.Context, chan error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- m.HandleMessage(ctx, MessageRequest{Text: "hello"}) }()
+		select {
+		case call := <-client.entered:
+			return call, done
+		case err := <-done:
+			t.Fatalf("input exited early: %v", err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("model did not start")
+		}
+		return nil, nil
+	}
+	firstCall, firstDone := start(first)
+	secondCall, secondDone := start(second)
+	stop := func(ctx, call context.Context, done chan error) {
+		t.Helper()
+		if err := m.HandleMessage(ctx, MessageRequest{Text: "/stop"}); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-call.Done():
+		case <-time.After(time.Second):
+			t.Fatal("target not stopped")
+		}
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("task did not finish")
+		}
+	}
+	stop(second, secondCall, secondDone)
+	if firstCall.Err() != nil {
+		t.Fatal("second stop canceled first task")
+	}
+	stop(first, firstCall, firstDone)
 }
 
 func TestSupervisorHookEntrypoints(t *testing.T) {

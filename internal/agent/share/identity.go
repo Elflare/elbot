@@ -26,10 +26,10 @@ func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 		ChatType: info.Source.ChatType,
 		Owner:    actor.ActorIdentity,
 
-		Platform:     info.Source.Platform,
-		ChatID:       info.Source.ChatID,
-		ViewID:       info.ViewID,
-		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
+		Platform:        info.Source.Platform,
+		ChatID:          info.Source.ChatID,
+		TargetSessionID: info.TargetSessionID,
+		IsSuperadmin:    actor.Role == contextinfo.RoleSuperadmin,
 	}
 }
 

@@ -10,14 +10,14 @@ import (
 
 // Scope 标识前台会话所属的用户和平台范围。
 type Scope struct {
-	ViewID       string                    // 仅用于区分当前绑定，不参与历史访问裁决。
-	TaskType     string                    // 后台任务类型；前台聊天为空。
-	TaskID       string                    // 类型内的原生任务 ID。
-	ChatType     contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。
-	Owner        contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
-	Platform     string                    // 平台标识。
-	ChatID       string                    // 平台内的会话范围。
-	IsSuperadmin bool                      // 已解析的超级管理员角色，用于会话访问裁决。
+	TargetSessionID string                    // 显式寻址的执行会话；不随连接或订阅变化。
+	TaskType        string                    // 后台任务类型；前台聊天为空。
+	TaskID          string                    // 类型内的原生任务 ID。
+	ChatType        contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。
+	Owner           contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform        string                    // 平台标识。
+	ChatID          string                    // 平台内的会话范围。
+	IsSuperadmin    bool                      // 已解析的超级管理员角色，用于会话访问裁决。
 }
 
 // CurrentBoundData 携带同一次准入读取的 Session 快照与绑定句柄。

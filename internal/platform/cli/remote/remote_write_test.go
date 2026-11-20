@@ -152,7 +152,7 @@ func TestRemoteOutputWriteFailureDoesNotReturnToAgent(t *testing.T) {
 	if _, err := stream.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: "partial"}); err != nil {
 		t.Fatalf("stream write failure escaped to Agent: %v", err)
 	}
-	if err := s.sendOutputs(t.Context(), []*remoteClientConn{client}, []delivery.Output{delivery.Text("tool output")}); err != nil {
+	if err := s.sendOutputs(t.Context(), []*remoteClientConn{client}, []delivery.Output{delivery.Text("tool output")}, ""); err != nil {
 		t.Fatalf("output write failure escaped to Agent: %v", err)
 	}
 }

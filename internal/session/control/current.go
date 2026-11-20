@@ -98,22 +98,41 @@ type CurrentBoundData struct {
 }
 
 func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (operationresult.Result[CurrentBoundData], error) {
-	ctx, release, err := s.EnterActivation(ctx, scope)
+	ctx, release, err := s.EnterActivation(ctx, scope, scope.TargetSessionID)
 	if err != nil {
 		return operationresult.Result[CurrentBoundData]{}, err
 	}
 	defer release()
 	binding := s.CurrentBinding(scope)
-	if binding == nil {
-		return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
+	id := scope.TargetSessionID
+	if id == "" {
+		if binding == nil {
+			return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
+		}
+		id = binding.SessionID()
 	}
-	row, err := s.deps.Sessions.Get(ctx, binding.SessionID())
+	row, err := s.deps.Sessions.Get(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
+		if scope.TargetSessionID != "" {
+			return operationresult.Result[CurrentBoundData]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
+		}
 		s.SetCurrent(ctx, scope, "")
 		return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 	}
 	if err != nil {
 		return operationresult.Result[CurrentBoundData]{}, err
+	}
+	if scope.TargetSessionID != "" {
+		if !share.CanAccess(scope, row) {
+			return operationresult.Result[CurrentBoundData]{Status: operationresult.Forbidden, Message: "无权访问该会话"}, nil
+		}
+		if row.Platform != scope.Platform || share.IsBackground(row) {
+			return operationresult.Result[CurrentBoundData]{Status: operationresult.Incompatible, Message: "此会话不能直接接受前台输入"}, nil
+		}
+		if binding == nil || binding.SessionID() != id {
+			s.SetCurrent(ctx, scope, id)
+			binding = s.CurrentBinding(scope)
+		}
 	}
 	return operationresult.Result[CurrentBoundData]{Status: operationresult.Success, Data: CurrentBoundData{Session: row, Binding: binding}}, nil
 }

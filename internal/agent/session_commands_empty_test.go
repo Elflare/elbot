@@ -121,7 +121,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 	}
 }
 
-func TestResumeCommandOnlySwitchesCallingView(t *testing.T) {
+func TestAddressedCommandUsesRequestedSession(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	platform := &commandCapturePlatform{PlatformCapabilities: deps.Platform}
 	deps.Platform = platform
@@ -132,41 +132,29 @@ func TestResumeCommandOnlySwitchesCallingView(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = m.Close(context.Background()) })
-	base := testutil.WithCLIConversation(t.Context())
-	info, _ := contextinfo.ConversationFromContext(base)
-	a := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatType: contextinfo.ChatPrivate, ChatID: "local", ViewID: "A"}
-	b := a
-	b.ViewID = "B"
-	history, err := m.sessions.Create(base, a, session.CreateRequest{Title: "history"})
-	if err != nil || history.Status != operationresult.Success {
-		t.Fatal(history, err)
+	ctx := testutil.WithCLIConversation(t.Context())
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatType: contextinfo.ChatPrivate, ChatID: "local"}
+	target, err := m.sessions.Create(ctx, scope, session.CreateRequest{Title: "target"})
+	if err != nil || target.Status != operationresult.Success {
+		t.Fatal(target, err)
 	}
-	running, err := m.sessions.Create(base, a, session.CreateRequest{Title: "current A"})
-	if err != nil || running.Status != operationresult.Success {
-		t.Fatal(running, err)
+	other, err := m.sessions.Create(ctx, scope, session.CreateRequest{Title: "other"})
+	if err != nil || other.Status != operationresult.Success {
+		t.Fatal(other, err)
 	}
-	before, err := m.sessions.CurrentBound(base, a)
-	if err != nil || before.Status != operationresult.Success {
-		t.Fatal(before, err)
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	info.TargetSessionID = target.Data.ID
+	ctx = contextinfo.WithConversation(ctx, info)
+	if err := m.HandleMessage(ctx, MessageRequest{Text: "/rename selected"}); err != nil {
+		t.Fatal(err)
 	}
-	info.ViewID = "B"
-	ctx := contextinfo.WithConversation(base, info)
-	for _, id := range []string{running.Data.ID, history.Data.ID} {
-		prior := len(platform.replies)
-		if err := m.HandleMessage(ctx, MessageRequest{Text: "/resume " + id}); err != nil {
-			t.Fatal(err)
-		}
-		if len(platform.replies) != prior+1 || platform.replies[prior].result.Status != operationresult.Success {
-			t.Fatalf("/resume %s: %+v", id, platform.replies)
-		}
-		left, err := m.sessions.CurrentBound(base, a)
-		if err != nil || left.Status != operationresult.Success || left.Data.Binding != before.Data.Binding || !left.Data.Binding.Valid() {
-			t.Fatalf("A changed: %+v %v", left, err)
-		}
-		right, err := m.sessions.GetOrCreateCurrent(ctx, b, "next input")
-		if err != nil || right.Status != operationresult.Success || right.Data.ID != id {
-			t.Fatalf("B current: %+v %v", right, err)
-		}
+	row, err := deps.Store.Sessions().Get(ctx, target.Data.ID)
+	if err != nil || row.Title != "selected" {
+		t.Fatal(row, err, platform.replies)
+	}
+	row, err = deps.Store.Sessions().Get(ctx, other.Data.ID)
+	if err != nil || row.Title != "other" {
+		t.Fatal(row, err)
 	}
 }
 func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {

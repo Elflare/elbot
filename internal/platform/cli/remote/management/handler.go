@@ -9,6 +9,7 @@ import (
 
 // HandlerOptions supplies the business and transport boundaries used by the API.
 type HandlerOptions struct {
+	SelectSession func(context.Context, string) // 提交已授权的当前连接订阅。
 	// Control exposes the business operations served by the HTTP API.
 	Control ControlCapabilities
 	// Authenticate validates the request and returns its actor context and connection binding.
@@ -18,15 +19,17 @@ type HandlerOptions struct {
 }
 
 type handler struct {
-	control      ControlCapabilities
-	authenticate func(context.Context, *http.Request) (context.Context, bool, error)
-	continueCall func(context.Context, control.Continuation)
+	selectSession func(context.Context, string)
+	control       ControlCapabilities
+	authenticate  func(context.Context, *http.Request) (context.Context, bool, error)
+	continueCall  func(context.Context, control.Continuation)
 }
 
 // NewHandler builds the management API under the /api/v1 prefix.
 func NewHandler(options HandlerOptions) http.Handler {
-	h := &handler{control: options.Control, authenticate: options.Authenticate, continueCall: options.Continue}
+	h := &handler{selectSession: options.SelectSession, control: options.Control, authenticate: options.Authenticate, continueCall: options.Continue}
 	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /view/session", h.setViewSession)
 	mux.HandleFunc("GET /sessions/{session_id}/questions", h.listQuestions)
 	mux.HandleFunc("PUT /sessions/{session_id}/questions/{id}/draft", h.saveQuestionDraft)
 	mux.HandleFunc("POST /sessions/{session_id}/questions/confirm", h.confirmAnswers)

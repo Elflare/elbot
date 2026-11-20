@@ -3,22 +3,23 @@ info:
   title: ElBot Frontend Management API
   version: 1.0.0
   description: >-
-    Static contract for the management endpoints served under /api/v1. All
-    successful responses are JSON. The API delegates business operations to
+    Static contract for the management endpoints served under /api/v1. Responses with a body are JSON. The API delegates business operations to
     Control and does not accept command text. Successful operations expose their
     data directly. Business rejections and failures are mapped to HTTP responses
     with an error code and the operation message; internal operation statuses are
     not HTTP statuses or wire codes. Execution and IO faults use internal_error
     with the original error message. Optional per-item faults in successful
     responses are plain strings. Supply X-CLI-Connection from the current WebSocket
-    to operate on its hello view_id; without this header, operations that allow
-    it to be omitted use the account's default view.
+    to operate on its subscribed session. Without a subscription the ordinary CLI
+    current-session semantics apply.
 servers:
   - url: /api/v1
 security:
   - ClientID: []
     BearerToken: []
 paths:
+  /view/session:
+    $ref: './frontend-api/paths/sessions.yaml#/~1view~1session'
   /sessions/{session_id}/questions:
     $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1questions'
   /sessions/{session_id}/questions/{id}/draft:

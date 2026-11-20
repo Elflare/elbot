@@ -27,12 +27,10 @@ ws://<host>:<port>/cli/v1/ws
 {
   "type": "hello",
   "client_id": "my-client",
-  "view_id": "tab-1",
   "token": "your-token"
 }
 ```
 
-`view_id` 可选。一个账号的不同标签页使用不同值。
 服务端校验 token 后回复：
 
 - `hello_ok` — 鉴权通过，可以开始交互
@@ -46,7 +44,9 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 `media_token` 仅用于下述 HTTP 附件接口，通过 `Authorization: Bearer <media_token>` 发送，不放入 URL。它绑定当前连接，断连失效；相同 `client_id` 的连接相互隔离。
 
-使用独立视图的客户端应在管理 API 请求中通过 `X-CLI-Connection` 发送本连接的 `api_token`，使新建、恢复、状态查询与 WebSocket 输入操作同一视图。省略该头使用默认视图；提交答案等要求连接凭据的接口仍须提供。管理 API 的身份认证仍使用配置的 client token 和 `X-Client-ID: <client_id>`。
+管理 API 使用配置的 client token 和 `X-Client-ID` 鉴权。要按会话收发，在 `hello_ok` 之后携带 `X-CLI-Connection: <api_token>`，向 `PUT /api/v1/view/session` 提交 `{"session_id":"cl93"}`。成功返回 204（无正文）；目标不存在或无权访问时保留原订阅。每条连接最多订阅一个会话，切换不恢复、停止或迁移任务。重连后需重新订阅；历史消息通过消息列表接口读取，不重放断线期间的增量。
+
+带同一连接头的状态、停止当前会话、确认和问答请求使用该请求开始时的会话。普通 CLI 可不订阅，继续使用平台当前会话；`/resume` 和 HTTP 执行恢复接口不等价于订阅。
 
 ## 消息格式
 
@@ -78,6 +78,8 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 {"type": "input", "text": "你好"}
 ```
 
+订阅连接必须在 `input` 带上与订阅一致的 `session_id`，例如 `{"type":"input","id":"m-1","session_id":"cl93","text":"你好"}`。未订阅的 CLI 省略该字段。目标不一致会返回 `error`，不会投递到另一个会话。
+
 将文本作为用户输入交给 Agent 处理。服务端不回复确认，处理结果通过 chat/stream 等消息异步返回。
 
 正文中的 `#文件路径` 或 `#"含空格的文件路径"` 按 Agent workspace 展开。引用引号未闭合、路径越界或目标不是普通文件时，显示拒绝原因并结束本次输入处理。不存在的引用保留原文；超限或二进制文件保留路径，不展开内容。
@@ -103,6 +105,10 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 查询成功时服务端回复 `complete_result`，没有候选时列表为空；查询失败时回复 `error`，携带原请求的 `id` 和错误原因。
 
 ## 服务端 → 客户端
+
+### user_input — 同步输入
+
+同账号订阅该会话的连接（含发送页）收到 `{"type":"user_input","session_id":"cl93","id":"m-1","text":"你好"}`。带附件时，`file_names` 按上传顺序列出名称，不转发原连接的附件 ID。这是输入回显，不是模型已处理或历史已写入的确认。发送页可用原输入 `id` 去重。对话输出（`chat`、`attachment`、`stream`、`status`）带所属 `session_id`；切页后忽略已在途的旧会话帧。命令回执和补全仍只返回原连接，账号级通知不按会话过滤。
 
 ### chat — 正式回复
 

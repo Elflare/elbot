@@ -95,7 +95,7 @@ type RemoteServer struct {
 }
 
 type remoteClientConn struct {
-	viewID     string                     // hello 指定的逻辑视图；独立于连接凭据，可在重连后复用。
+	sessionID  string                     // s.mu 保护；当前连接授权订阅的会话。
 	writeMu    sync.Mutex                 // Keep CLI chunks of one JSON envelope consecutive.
 	mediaToken string                     // 本连接的 HTTP 附件凭据，断连即撤销。
 	apiToken   string                     // 本连接的管理 API 路由凭据，断连即撤销。
@@ -105,17 +105,13 @@ type remoteClientConn struct {
 	server     *RemoteServer
 }
 
-func (s *RemoteServer) originalClient(ctx context.Context) (*remoteClientConn, bool) {
+func (s *RemoteServer) originalTarget(ctx context.Context) (remoteDisplayTarget, bool) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != s.Name() {
-		return nil, false
+		return remoteDisplayTarget{}, false
 	}
-	display, ok := info.PlatformData.(clishare.DisplayTarget)
-	if !ok {
-		return nil, false
-	}
-	target, ok := display.(remoteDisplayTarget)
-	return target.client, ok
+	target, ok := info.PlatformData.(remoteDisplayTarget)
+	return target, ok
 }
 
 func NewServer(opts ServerOptions) (*RemoteServer, error) {
@@ -195,15 +191,15 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platformshar
 		_ = wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgError, Text: "unauthorized"})
 		return
 	}
-	client := &remoteClientConn{id: clientID, viewID: hello.ViewID, conn: conn, server: s, mediaToken: rand.Text(), apiToken: rand.Text()}
+	client := &remoteClientConn{id: clientID, conn: conn, server: s, mediaToken: rand.Text(), apiToken: rand.Text()}
 	if !s.addClient(client) {
 		return
 	}
 	defer s.removeClient(client)
 	s.work.Done()
 	handshakeDone = true
-	msgCtx := s.messageContext(s.workCtx, client)
 	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID, MediaToken: client.mediaToken, APIToken: client.apiToken}); err != nil {
+		msgCtx := s.sessionContext(s.workCtx, client, "")
 		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgHelloOK, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(msgCtx), ResultStatus: events.LogStatus(err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
@@ -216,7 +212,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platformshar
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {
 			return
 		}
-		s.handleClientMessage(msgCtx, handler, client, msg)
+		s.handleClientMessage(s.workCtx, handler, client, msg)
 	}
 }
 
@@ -231,11 +227,17 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 	}
 	s.work.Add(1)
 	complete := s.completer
+	selected := client.sessionID
 	s.mu.Unlock()
+	ctx = s.sessionContext(ctx, client, selected)
 	go func() {
 		defer s.work.Done()
 		switch msg.Type {
 		case remoteMsgInput:
+			if msg.SessionID != selected {
+				_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: msg.ID, SessionID: msg.SessionID, Text: "输入目标与当前订阅不一致"})
+				return
+			}
 			text := strings.TrimSpace(msg.Text)
 			if text == "" && len(msg.FileIDs) == 0 {
 				return
@@ -259,6 +261,13 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			if err != nil {
 				s.inputMediaError(ctx, client, msg.ID, err)
 				return
+			}
+			if selected != "" {
+				echo := remoteMessage{Type: "user_input", SessionID: selected, ID: msg.ID, Text: msg.Text}
+				for _, f := range files.Data {
+					echo.FileNames = append(echo.FileNames, f.attachment.Name)
+				}
+				_ = s.writeClients(s.transportCtx, s.sessionClients(client.id, selected), echo)
 			}
 			_ = handler(ctx, text, input)
 		case remoteMsgComplete:
@@ -293,43 +302,55 @@ func (s *RemoteServer) PresentNotice(ctx context.Context, notice clishare.Notice
 }
 
 func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	if target.Empty() {
+		display, ok := s.originalTarget(ctx)
+		if !ok {
+			return delivery.Receipt{}, fmt.Errorf("cli target missing")
+		}
+		return delivery.Receipt{}, display.SendReply(ctx, outputs)
+	}
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
 
 		return delivery.Receipt{}, err
 	}
-	return delivery.Receipt{}, s.sendOutputs(ctx, clients, outputs)
+	return delivery.Receipt{}, s.sendOutputs(ctx, clients, outputs, "")
 }
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	client, ok := s.originalClient(ctx)
+	display, ok := s.originalTarget(ctx)
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
-	return remoteMessageStream{server: s, clientID: client.id, viewID: client.viewID, id: remoteStreamID.Add(1)}, nil
+	return display.StartStream(ctx)
 }
 
 var remoteStreamID atomic.Uint64
 
 type remoteMessageStream struct {
-	viewID   string // 流跨重连只投递给原逻辑视图。
-	server   *RemoteServer
-	clientID string
-	id       uint64 // Identifies one preview in the receiving TUI.
+	sessionID string // 流固定属于发起输入的会话，不随订阅变化。
+	server    *RemoteServer
+	clientID  string
+	id        uint64 // Identifies one preview in the receiving TUI.
 }
 
 func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	clients, err := s.server.viewClients(s.clientID, s.viewID)
-	if err == nil {
-		_ = s.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
-	}
+	clients := s.server.sessionClients(s.clientID, s.sessionID)
+	_ = s.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStream, SessionID: s.sessionID, StreamID: s.id, Event: &event})
 	return delivery.Receipt{}, nil
 }
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
+	s.mu.Lock()
+	selected := client.sessionID
+	s.mu.Unlock()
+	return s.sessionContext(ctx, client, selected)
+}
+
+func (s *RemoteServer) sessionContext(ctx context.Context, client *remoteClientConn, sessionID string) context.Context {
 	msg := platformshare.MessageContext{
 		Conversation: contextinfo.Conversation{
-			ViewID: client.viewID,
+			TargetSessionID: sessionID,
 			Source: contextinfo.Source{
 				Platform: s.Name(),
 
@@ -337,7 +358,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 				ChatID:   client.id,
 				Name:     client.id,
 			},
-			PlatformData: remoteDisplayTarget{server: s, client: client},
+			PlatformData: remoteDisplayTarget{server: s, client: client, sessionID: sessionID},
 			Identity: contextinfo.Identity{
 
 				ID:       client.id,
@@ -352,33 +373,27 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 }
 
 type remoteDisplayTarget struct {
-	server *RemoteServer
-	client *remoteClientConn
+	sessionID string // 输出路由在输入准入时固定。
+	server    *RemoteServer
+	client    *remoteClientConn
 }
 
 func (t remoteDisplayTarget) TargetID() string { return fmt.Sprintf("%p", t.client) }
 
 func (t remoteDisplayTarget) SendReply(ctx context.Context, outputs []delivery.Output) error {
-	if t.client.viewID == "" {
-		return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs)
+	if t.sessionID == "" {
+		return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs, "")
 	}
-	clients, err := t.server.viewClients(t.client.id, t.client.viewID)
-	if err != nil {
-		return err
-	}
-	return t.server.sendOutputs(ctx, clients, outputs)
+	return t.server.sendOutputs(ctx, t.server.sessionClients(t.client.id, t.sessionID), outputs, t.sessionID)
 }
 
 func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return remoteMessageStream{server: t.server, clientID: t.client.id, viewID: t.client.viewID, id: remoteStreamID.Add(1)}, nil
+	return remoteMessageStream{server: t.server, clientID: t.client.id, sessionID: t.sessionID, id: remoteStreamID.Add(1)}, nil
 }
 
 func (t remoteDisplayTarget) PresentStatus(ctx context.Context, status clishare.Status) error {
-	clients, err := t.server.viewClients(t.client.id, t.client.viewID)
-	if err != nil {
-		return nil
-	}
-	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, Snapshot: status.Snapshot})
+	clients := t.server.sessionClients(t.client.id, t.sessionID)
+	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, SessionID: t.sessionID, Snapshot: status.Snapshot})
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {
@@ -386,8 +401,8 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 		return nil, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	if target.Empty() {
-		if client, ok := s.originalClient(ctx); ok {
-			return []*remoteClientConn{client}, nil
+		if display, ok := s.originalTarget(ctx); ok {
+			return []*remoteClientConn{display.client}, nil
 		}
 		return nil, fmt.Errorf("cli target missing")
 	}
@@ -400,8 +415,16 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 	return nil, fmt.Errorf("cli target missing chat_id or superadmins")
 }
 
-func (s *RemoteServer) viewClients(id, viewID string) ([]*remoteClientConn, error) {
-	return s.onlineClients(func(c *remoteClientConn) bool { return c.id == id && c.viewID == viewID })
+func (s *RemoteServer) sessionClients(id, sessionID string) []*remoteClientConn {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var clients []*remoteClientConn
+	for c := range s.clients[id] {
+		if c.sessionID == sessionID {
+			clients = append(clients, c)
+		}
+	}
+	return clients
 }
 
 func (s *RemoteServer) onlineClients(match func(*remoteClientConn) bool) ([]*remoteClientConn, error) {

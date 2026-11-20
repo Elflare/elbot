@@ -33,6 +33,7 @@ const (
 )
 
 type remoteMessage struct {
+	FileNames  []string                `json:"file_names,omitempty"` // user_input 展示的附件名称，不传播连接私有的文件凭据。
 	RequestID  string                  `json:"request_id,omitempty"`
 	Result     *command.Result         `json:"result,omitempty"`
 	Error      *string                 `json:"error,omitempty"`
@@ -45,7 +46,7 @@ type remoteMessage struct {
 	Type       string                  `json:"type"`
 	ID         string                  `json:"id,omitempty"`
 	ClientID   string                  `json:"client_id,omitempty"`
-	ViewID     string                  `json:"view_id,omitempty"` // hello 中的页标识，仅在同一账号内区分当前会话。
+	SessionID  string                  `json:"session_id,omitempty"` // input 的显式目标或下行事件所属会话。
 	Token      string                  `json:"token,omitempty"`
 	Text       string                  `json:"text,omitempty"`
 	Blocks     []delivery.ContentBlock `json:"blocks,omitempty"`

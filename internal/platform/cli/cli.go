@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	clishare "elbot/internal/platform/cli/share"
@@ -26,13 +25,6 @@ func (a *Adapter) Wait(ctx context.Context) error  { return a.runtime.Wait(ctx) 
 func (a *Adapter) Close(ctx context.Context) error { return a.runtime.Close(ctx) }
 
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	if target.Empty() {
-		if info, ok := contextinfo.ConversationFromContext(ctx); ok {
-			if display, ok := info.PlatformData.(clishare.DisplayTarget); ok && display != nil {
-				return delivery.Receipt{}, display.SendReply(ctx, outputs)
-			}
-		}
-	}
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
@@ -40,11 +32,6 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
-		if display, ok := info.PlatformData.(clishare.DisplayTarget); ok && display != nil {
-			return display.StartStream(ctx)
-		}
-	}
 	streamRuntime, ok := a.runtime.(clishare.StreamRuntime)
 	if !ok {
 		return nil, fmt.Errorf("cli message stream is unavailable")

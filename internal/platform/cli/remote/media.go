@@ -300,7 +300,7 @@ func (s *RemoteServer) prepareInputFiles(ctx context.Context, text string, files
 	return strings.Join(texts, "\n\n"), segments, nil
 }
 
-func (s *RemoteServer) sendOutputs(ctx context.Context, clients []*remoteClientConn, outputs []delivery.Output) error {
+func (s *RemoteServer) sendOutputs(ctx context.Context, clients []*remoteClientConn, outputs []delivery.Output, sessionID string) error {
 	sent := 0
 	var failures []error
 
@@ -325,6 +325,7 @@ clientLoop:
 				}
 				msg = remoteMessage{Type: remoteMsgAttachment, Attachment: &file.Data}
 			}
+			msg.SessionID = sessionID
 			if err := client.write(ctx, msg); err != nil {
 				s.removeClient(client)
 				_ = client.conn.CloseNow()

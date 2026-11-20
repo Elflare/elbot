@@ -20,6 +20,12 @@ type managementAPIClientContextKey struct{}
 func (s *RemoteServer) managementHandler() http.Handler {
 	handler := management.NewHandler(management.HandlerOptions{
 		Control: s.control,
+		SelectSession: func(ctx context.Context, id string) {
+			c := ctx.Value(managementAPIClientContextKey{}).(*remoteClientConn)
+			s.mu.Lock()
+			c.sessionID = id
+			s.mu.Unlock()
+		},
 		Authenticate: func(ctx context.Context, req *http.Request) (context.Context, bool, error) {
 			ctx, client, err := s.managementContext(ctx, req)
 			if err != nil {

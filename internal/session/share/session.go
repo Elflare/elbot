@@ -12,29 +12,29 @@ import (
 
 // Scope 标识 current 绑定的归属及调用入口的访问范围。
 type Scope struct {
-	ViewID       string                    // 仅用于区分当前绑定，不参与历史访问裁决。
-	TaskType     string                    // 后台任务类型；前台聊天为空。
-	TaskID       string                    // 类型内的原生任务 ID。
-	ChatType     contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
-	Owner        contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
-	Platform     string                    // 平台标识。
-	ChatID       string                    // 平台内的会话范围。
-	IsSuperadmin bool                      // 已解析的超级管理员角色。
+	TargetSessionID string                    // 显式寻址的执行会话；不随连接或订阅变化。
+	TaskType        string                    // 后台任务类型；前台聊天为空。
+	TaskID          string                    // 类型内的原生任务 ID。
+	ChatType        contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
+	Owner           contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform        string                    // 平台标识。
+	ChatID          string                    // 平台内的会话范围。
+	IsSuperadmin    bool                      // 已解析的超级管理员角色。
 }
 
 // ScopeKey 仅包含稳定的归属和会话地址，不包含管理权限。
 type ScopeKey struct {
-	ViewID   string // 同一聊天地址内的交互视图；空值为默认视图。
-	TaskType string // 后台任务类型；前台聊天为空。
-	TaskID   string // 类型内的原生任务 ID。
-	Owner    contextinfo.ActorIdentity
-	Platform string
-	ChatType contextinfo.ChatType
-	ChatID   string
+	TargetSessionID string // 显式执行按会话准入；平台 current 使用空值。
+	TaskType        string // 后台任务类型；前台聊天为空。
+	TaskID          string // 类型内的原生任务 ID。
+	Owner           contextinfo.ActorIdentity
+	Platform        string
+	ChatType        contextinfo.ChatType
+	ChatID          string
 }
 
 func (s Scope) Key() ScopeKey {
-	return ScopeKey{ViewID: s.ViewID, TaskType: s.TaskType, TaskID: s.TaskID, Owner: s.Owner, Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID}
+	return ScopeKey{TargetSessionID: s.TargetSessionID, TaskType: s.TaskType, TaskID: s.TaskID, Owner: s.Owner, Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID}
 }
 
 // IsBackground 只读取当前模式；来源、范围名称和接管历史不决定当前身份。

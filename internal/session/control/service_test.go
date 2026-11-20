@@ -89,32 +89,30 @@ func (f *fixture) releaseCounts() (int, int) {
 	return len(f.releasedSessions), len(f.releasedBindings)
 }
 
-func TestViewsCompetingToResumeWhileAnotherViewRuns(t *testing.T) {
+func TestAddressedInputDoesNotSwitchBusyPlatformCurrent(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
-	a := privateScope()
-	a.ViewID = "A"
-	history := f.create(t, a, "history")
-	running := f.create(t, a, "running")
-	binding := f.s.CurrentBinding(a)
-	f.setBusy(running.ID)
-	start := make(chan struct{})
-	results := make(chan operationresult.Status, 2)
-	for _, view := range []string{"B", "C"} {
-		scope := a
-		scope.ViewID = view
-		go func() {
-			<-start
-			result, err := f.s.Resume(t.Context(), scope, history.ID)
-			if err != nil {
-				t.Error(err)
-			}
-			results <- result.Status
-		}()
+	scope := privateScope()
+	history := f.create(t, scope, "history")
+	current := f.create(t, scope, "current")
+	binding := f.s.CurrentBinding(scope)
+	f.setBusy(current.ID)
+	if r, err := f.s.Resume(t.Context(), scope, history.ID); err != nil || r.Status != operationresult.Busy {
+		t.Fatalf("ordinary resume: %+v %v", r, err)
 	}
-	close(start)
-	first, second := <-results, <-results
-	if first != operationresult.Success || second != operationresult.Success || f.s.CurrentBinding(a) != binding || !binding.Valid() {
-		t.Fatalf("concurrent resume: %v, %v; original binding valid=%v", first, second, binding.Valid())
+	for _, id := range []string{history.ID, current.ID, history.ID} {
+		address := scope
+		address.TargetSessionID = id
+		r, err := f.s.GetOrCreateCurrent(t.Context(), address, "input")
+		if err != nil || r.Status != operationresult.Success || r.Data.ID != id {
+			t.Fatalf("input for %s: %+v %v", id, r, err)
+		}
+	}
+	if f.s.CurrentBinding(scope) != binding || !binding.Valid() {
+		t.Fatal("platform binding changed")
+	}
+	scope.TargetSessionID = "missing"
+	if r, err := f.s.GetOrCreateCurrent(t.Context(), scope, "input"); err != nil || r.Status != operationresult.NotFound {
+		t.Fatalf("missing target %+v %v", r, err)
 	}
 }
 func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {

@@ -125,37 +125,59 @@ func TestRemoteServerEmptyTargetUsesContextClient(t *testing.T) {
 	}
 }
 
-type resumeViewProbe struct {
-	managementControlStub
-	view, session string
-}
+type subscriptionProbe struct{ managementControlStub }
 
-func (p *resumeViewProbe) ResumeSession(ctx context.Context, req control.ResumeSessionRequest) (operationresult.Result[control.ResumeSessionResult], error) {
-	info, _ := contextinfo.ConversationFromContext(ctx)
-	p.view, p.session = info.ViewID, req.SessionID
-	return operationresult.Result[control.ResumeSessionResult]{Status: operationresult.Success}, nil
+func (*subscriptionProbe) GetSession(ctx context.Context, req control.GetSessionRequest) (operationresult.Result[control.GetSessionResult], error) {
+	if req.SessionID == "denied" {
+		return operationresult.Result[control.GetSessionResult]{Status: operationresult.Forbidden}, nil
+	}
+	return operationresult.Result[control.GetSessionResult]{Status: operationresult.Success, Data: control.GetSessionResult{ID: req.SessionID}}, nil
 }
-
-func TestRemoteViewsRouteInputResumeAndOutput(t *testing.T) {
+func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	server := testRemoteServer(t)
-	probe := &resumeViewProbe{}
-	server.control = probe
+	server.control = &subscriptionProbe{}
 	inputs := make(chan context.Context, 2)
 	if err := server.Start(t.Context(), func(ctx context.Context, _ string, _ share.MessageContext) error { inputs <- ctx; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	a, _ := dialTestView(t, server, "A")
-	b, hello := dialTestView(t, server, "B")
-	input := func(c *websocket.Conn, text, view string) context.Context {
+	a, ha := dialTestConnection(t, server)
+	b, hb := dialTestConnection(t, server)
+	selectID := func(token, id string, want int) {
 		t.Helper()
-		if err := wsjson.Write(t.Context(), c, remoteMessage{Type: remoteMsgInput, Text: text}); err != nil {
+		req := httptest.NewRequest("PUT", "/api/v1/view/session", strings.NewReader(fmt.Sprintf(`{"session_id":%q}`, id)))
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("X-Client-ID", "user")
+		req.Header.Set("X-CLI-Connection", token)
+		w := httptest.NewRecorder()
+		server.managementHandler().ServeHTTP(w, req)
+		if w.Code != want {
+			t.Fatalf("select %s: %d %s", id, w.Code, w.Body)
+		}
+	}
+	selectID("", "S1", 409)
+	selectID(ha.APIToken, "S1", 204)
+	selectID(hb.APIToken, "S1", 204)
+	selectID(ha.APIToken, "denied", 403)
+	send := func(id string) {
+		t.Helper()
+		if err := wsjson.Write(t.Context(), b, remoteMessage{Type: remoteMsgInput, SessionID: id, Text: "question"}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	read := func(c *websocket.Conn, typ, id string) {
+		t.Helper()
+		got := readTestRemote(t, c)
+		if got.Type != typ || got.SessionID != id {
+			t.Fatalf("got %+v; want %s in %s", got, typ, id)
+		}
+	}
+	input := func(id string) context.Context {
+		t.Helper()
 		select {
 		case ctx := <-inputs:
 			info, _ := contextinfo.ConversationFromContext(ctx)
-			if info.ViewID != view || info.Source.ChatID != "user" || info.Identity.ID != "user" {
-				t.Fatalf("unexpected input context: %+v", info)
+			if info.TargetSessionID != id {
+				t.Fatalf("input %+v", info)
 			}
 			return ctx
 		case <-time.After(time.Second):
@@ -163,47 +185,35 @@ func TestRemoteViewsRouteInputResumeAndOutput(t *testing.T) {
 			return nil
 		}
 	}
-	ctxA := input(a, "run", "A")
-	stream, err := server.StartStream(ctxA)
+	send("S1")
+	ctx := input("S1")
+	read(a, "user_input", "S1")
+	read(b, "user_input", "S1")
+	stream, err := server.StartStream(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctxB := input(b, "/resume S2", "B")
-	req := httptest.NewRequest("POST", "/api/v1/sessions/S2/resume", strings.NewReader(`{}`))
-	req.Header.Set("Authorization", "Bearer secret")
-	req.Header.Set("X-Client-ID", "user")
-	req.Header.Set("X-CLI-Connection", hello.APIToken)
-	w := httptest.NewRecorder()
-	server.managementHandler().ServeHTTP(w, req)
-	if w.Code != 200 || probe.view != "B" || probe.session != "S2" {
-		t.Fatalf("resume: %d %s, view=%s session=%s", w.Code, w.Body, probe.view, probe.session)
-	}
-	if _, err := stream.Send(ctxA, delivery.StreamEvent{}); err != nil {
+	stream.Send(ctx, delivery.StreamEvent{})
+	read(a, remoteMsgStream, "S1")
+	read(b, remoteMsgStream, "S1")
+	selectID(hb.APIToken, "S2", 204)
+	stream.Send(ctx, delivery.StreamEvent{})
+	read(a, remoteMsgStream, "S1")
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	target := info.PlatformData.(remoteDisplayTarget)
+	if err := target.PresentStatus(ctx, clishare.Status{Snapshot: runtimestatus.Snapshot{SessionID: "S1"}}); err != nil {
 		t.Fatal(err)
 	}
-	ca, _ := server.originalClient(ctxA)
-	target := remoteDisplayTarget{server: server, client: ca}
-	if err := target.PresentStatus(ctxA, clishare.Status{Snapshot: runtimestatus.Snapshot{SessionID: "S1"}}); err != nil {
+	read(a, remoteMsgStatus, "S1")
+	if err := target.SendReply(ctx, []delivery.Output{delivery.Text("done")}); err != nil {
 		t.Fatal(err)
 	}
-	cb, _ := server.originalClient(ctxB)
-	targetB := remoteDisplayTarget{server: server, client: cb}
-	if err := targetB.SendReply(ctxB, []delivery.Output{delivery.Text("B only")}); err != nil {
-		t.Fatal(err)
-	}
-	if err := server.PresentNotice(ctxA, clishare.Notice{Text: "account", Destination: delivery.Target{ChatID: "user"}}); err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range []struct {
-		conn *websocket.Conn
-		want []string
-	}{{a, []string{remoteMsgStream, remoteMsgStatus, remoteMsgNotice}}, {b, []string{remoteMsgChat, remoteMsgNotice}}} {
-		for _, want := range tc.want {
-			if got := readTestRemote(t, tc.conn); got.Type != want {
-				t.Fatalf("got %+v; want %s", got, want)
-			}
-		}
-	}
+	read(a, remoteMsgChat, "S1")
+	send("S1")
+	read(b, remoteMsgError, "S1")
+	send("S2")
+	input("S2")
+	read(b, "user_input", "S2")
 }
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}

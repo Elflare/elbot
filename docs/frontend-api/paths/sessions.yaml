@@ -1,3 +1,22 @@
+  /view/session:
+    put:
+      operationId: selectViewSession
+      summary: Subscribe the authenticated WebSocket to a session without activating it
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/connectionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [session_id]
+              properties:
+                session_id: { type: string, minLength: 1 }
+      responses:
+        '204': { description: Subscription replaced. No response body. }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions/{session_id}/questions:
     parameters:
       - $ref: '../components/transport.yaml#/parameters/sessionID'

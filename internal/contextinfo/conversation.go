@@ -28,7 +28,7 @@ type Identity struct {
 }
 
 type Conversation struct {
-	ViewID            string `json:"-"` // 当前交互视图；不属于持久化聊天地址或用户身份。
+	TargetSessionID   string `json:"-"` // 本次请求明确选择的会话，不是可变的页面订阅。
 	Source            Source
 	Identity          Identity
 	PlatformMessageID string

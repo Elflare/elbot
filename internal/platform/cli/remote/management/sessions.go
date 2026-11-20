@@ -3,7 +3,31 @@ package management
 import (
 	"elbot/internal/control"
 	"net/http"
+	"strings"
 )
+
+func (h *handler) setViewSession(w http.ResponseWriter, req *http.Request) {
+	if !h.requireConnection(w, req) {
+		return
+	}
+	body, ok := decodeAPIJSON[struct {
+		SessionID string `json:"session_id"`
+	}](w, req)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(body.SessionID)
+	if id == "" {
+		writeAPIError(w, http.StatusBadRequest, "invalid_arguments", "session_id 不能为空")
+		return
+	}
+	result, err := h.control.GetSession(req.Context(), control.GetSessionRequest{SessionID: id})
+	if writeControlResultError(w, result, err) {
+		return
+	}
+	h.selectSession(req.Context(), result.Data.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func (h *handler) listSessions(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
