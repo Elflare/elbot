@@ -370,11 +370,6 @@ func (r *Runtime) SendTo(ctx context.Context, target delivery.Target, outputs []
 	return delivery.Receipt{}, r.enqueue(ctx, tuiOutputMsg(text))
 }
 
-func (r *Runtime) SendReply(ctx context.Context, outputs []delivery.Output) error {
-	_, err := r.SendTo(ctx, delivery.Target{}, outputs)
-	return err
-}
-
 func (r *Runtime) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
 	outputs := platformshare.CommandResultOutputs(result, failure)
 	return r.SendTo(ctx, delivery.Target{}, outputs)
