@@ -49,20 +49,10 @@ Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))
 ```
 
-## View Images
+## View Image
 
-`view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results and are not automatically sent to the chat.
+`view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results.
 
-| Parameters | Description |
-| --- | --- |
-| `source` | Media ID, HTTP(S) URL, or local path (including `file://`); local paths are only available to superadmins and comply with workspace, background sandbox, and sensitive file reading rules. |
-| `message_id` | An array of message IDs from the current chat (can include `#`), mutually exclusive with `source`. |
-| `media_index` | An array of media indices corresponding to each message, starting from 1; files also occupy an index, but only images can be selected. Example: if a message contains a file, Image A, and Image B in order, `[[2,3]]` selects the two images. |
-
-- When `media_index` is omitted, the first image of each message is taken.
-- Parameters and indices are checked collectively before retrieving images; if retrieval fails, an explanation is returned per item, while successfully retrieved images can still be viewed.
-- When `view_image` and `get_media` retrieve historical media, a maximum of 5 uncached locations are attempted each time (failures are also counted); cached locations do not count towards this limit, and repeated locations in the same request reuse the result.
-- `get_media` returns the Media ID, defaulting to the first media item of each message.
 
 ## Shell
 

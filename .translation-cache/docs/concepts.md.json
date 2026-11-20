@@ -32,14 +32,6 @@
       "translation": "## Output Layer\n\nOutput Layer defines platform-independent output intents.\n\nAgent, Hook, and Tool do not directly depend on specific platforms to send messages; instead, they return a unified output intent, which is then passed to the corresponding platform adapter by the Output Manager for sending.\n\nThis allows the same Agent logic to be reused across CLI, chat platforms, and future new platforms.\n\n",
       "updated_at": 1783077374
     },
-    "docs/concepts.md:section:37b8dfed51fea07c461469314eb7b96b409b6632496fe0ae0865085ce999c81b": {
-      "kind": "section",
-      "source": "## 查看图片\n\n`view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型，不自动发送到聊天。\n\n| 参数 | 说明 |\n| --- | --- |\n| `source` | 媒体 ID、HTTP(S) URL 或本地路径（含 `file://`）；本地路径仅超级管理员可用，遵守工作区、后台沙箱和敏感文件读取规则。 |\n| `message_id` | 当前聊天的消息 ID 数组（可带 `#`），与 `source` 二选一。 |\n| `media_index` | 与消息逐项对应的媒体序号数组，从 1 开始；文件也占序号，只能选图片。例：一条消息依次含文件、图片 A、图片 B，`[[2,3]]` 选两张图。 |\n\n- 省略 `media_index` 时，每条消息取首张图片。\n- 参数和序号在获取图片前统一检查；获取失败按项返回说明，成功的图片仍可查看。\n- `view_image` 与 `get_media` 获取历史媒体时，每次最多尝试 5 个未缓存位置（失败也计数）；缓存不占次数，同次重复位置复用结果。\n- `get_media` 返回媒体 ID，默认取每条消息的首个媒体。\n\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "79393a176ab303c3d2dbb6497bd880ec18a1143dcc97d0b0d257e91c34c83d67",
-      "translation": "## View Images\n\n`view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results and are not automatically sent to the chat.\n\n| Parameters | Description |\n| --- | --- |\n| `source` | Media ID, HTTP(S) URL, or local path (including `file://`); local paths are only available to superadmins and comply with workspace, background sandbox, and sensitive file reading rules. |\n| `message_id` | An array of message IDs from the current chat (can include `#`), mutually exclusive with `source`. |\n| `media_index` | An array of media indices corresponding to each message, starting from 1; files also occupy an index, but only images can be selected. Example: if a message contains a file, Image A, and Image B in order, `[[2,3]]` selects the two images. |\n\n- When `media_index` is omitted, the first image of each message is taken.\n- Parameters and indices are checked collectively before retrieving images; if retrieval fails, an explanation is returned per item, while successfully retrieved images can still be viewed.\n- When `view_image` and `get_media` retrieve historical media, a maximum of 5 uncached locations are attempted each time (failures are also counted); cached locations do not count towards this limit, and repeated locations in the same request reuse the result.\n- `get_media` returns the Media ID, defaulting to the first media item of each message.\n\n",
-      "updated_at": 1793353326
-    },
     "docs/concepts.md:section:391e753e8218345ee941c7c7d403020c9e41cc8d69438ddf7d8ee039bd68c897": {
       "kind": "section",
       "source": "## Fork\n\nFork 从某条 assistant 回复处分出新分支：继承 fork 点之前的上下文，不修改原 Session。适合在同一问题上尝试另一思路、重做方案，或保留原对话同时继续探索。\n\n",
@@ -176,6 +168,14 @@
       "translation": "## Tool Discovery\n\nElBot does not inject the full schema of all tools into every round of work conversation. The default process is:\n\n1. The Agent only provides `discover_tool` and the names of currently available tools.\n2. The LLM determines which tool is needed and calls `discover_tool` to get the details.\n3. The Agent injects the discovered tool schema into subsequent requests, and the LLM then calls the specific tool.\n\nThe discovery process is independent of the model protocol: Chat Completions send the current tools in the top-level `tools` of the request; Responses append the first appearance of a definition as `additional_tools` to the native input, without repeating it later, while preserving the original position during full playback. Text returned by tool discovery is preserved independently; queries for the current time of cron, Skill descriptions, etc., will not be lost due to schema deduplication.\n\nResponses limit the currently callable tools via `tool_choice` in each round; retaining a definition in the history does not mean it is currently authorized for calling. If the definition of a tool with the same name changes, a new Session must be created.\n\nTools can restrict the applicable API types: discovery, completion, preloading, and execution are all filtered by the current conversation model, while background tasks are determined by the model they have selected.\n\n",
       "updated_at": 1793353326
     },
+    "docs/concepts.md:section:e2264e6545e791fdbe16a0fcc22825509c2d7b4fcd2b6c0e5d54a99feccc3680": {
+      "kind": "section",
+      "source": "## 查看图片\n\n`view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型。\n\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "92bcfed9914886c5c2018e252d3e4b40b31aef8ce2c63817407a6791a45a86cc",
+      "translation": "## View Image\n\n`view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results.\n\n\n",
+      "updated_at": 1795174554
+    },
     "docs/concepts.md:section:f3a7715e22bd70489005795994b278c9fe582eee7c96546298bc5d59c4842894": {
       "kind": "section",
       "source": "### Skill 使用媒体\n\n媒体使用稳定标识 `media:<64 位小写 SHA-256>`。普通文档型 Skill 可以指导 Agent 将标识传给支持媒体的工具。\n\nbash 脚本通过 `shell` 显式声明输入，例如：\n\n```json\n{\n  \"cmd\": \"python generate.py --input \\\"$ELBOT_MEDIA_1\\\" --output result.png\",\n  \"media_inputs\": [{\"media\": \"media:<sha256>\"}]\n}\n```\n\n`media_inputs` 每项仅接受 `media`。宿主在 sandbox 的 `media-inputs/` 目录导出或复用文件，并为本次进程注入 `ELBOT_MEDIA_1`、`ELBOT_MEDIA_2` 等环境变量。PowerShell 使用 `$env:ELBOT_MEDIA_1`。脚本将输入视为只读，修改前先复制；缓存命中也刷新文件使用时间，闲置副本由既有 sandbox 保留期清理。原始命令和调用参数保持不变。\n\n工具化 AgentSkill 在 `ELBOT_SKILL.toml` 的 `parameters.properties` 中使用 `{\"type\":\"media\"}` 声明媒体参数，并在 `[args]` 中映射命令行 flag。LLM 传入媒体 ID，实际进程收到相对工作目录的调用期文件路径；默认工作目录为 Skill 根目录，`use_workspace = true` 时为当前 workspace。\n\n调用工具时，若json字段使用到了媒体id，也会视为该session的引用。纯文本的调用不算。\n\nGo Skill 在 `go_skill_run` 的 `payload.media_inputs` 中使用同样的输入列表。宿主在 stdin 的执行副本中为各项补充 `path`、`name`、`mime_type`、`size`，不超过 1 MiB 的文件还提供 `base64`。`payload.media_workspace` 是相对 Skill 根目录的调用专属目录；可以传空输入列表申请仅用于输出的目录。临时路径和 base64 不写回原始调用参数。\n\nGo/TOML Skill 的 stdout 可以返回媒体结果：\n\n```json\n{\"content\":\"处理完成\",\"segments\":[{\"type\":\"image\",\"path\":\"result.png\"}]}\n```\n\n`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media` 或 `path`。路径相对工作目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。Go Skill 的工作目录是 Skill 根目录；工具化 AgentSkill TOML 默认也使用 Skill 根目录，配置 `use_workspace = true` 后使用当前 workspace。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。Go Skill 建议把临时输出写入 `media_workspace`，TOML 脚本可写入收到的媒体输入所在目录。\n\n",
@@ -194,8 +194,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "8b52d5f8a39fdf903a3bf3d3c18296c7f8242d560af50a15d9f3eedd5ee130cc",
+  "source_hash": "7a71f79dcf087cdc7c411ab3335b776b51b5fdb52fb21129274f7c25464346e4",
   "target": "docs.en/concepts.md",
-  "updated_at": 1795092480,
+  "updated_at": 1795174554,
   "version": 3
 }
