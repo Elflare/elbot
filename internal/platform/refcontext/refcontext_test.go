@@ -29,14 +29,50 @@ func encodeReferenceSegments(segments []share.MessageSegment) string {
 	return storage.MarshalChatSegments(stored)
 }
 
+func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
+	for _, tc := range []struct {
+		platform, sender, name, username, want string
+		stored, useBotUsername                 bool
+	}{
+		{"qqofficial", "self", "昨日昵称", "Atri", "[引用 h1：Atri（助手）：正文]", true, true},
+		{"qqofficial", "self", "昨日昵称", "", "[引用 h1：助手：正文]", true, true},
+		{"qqofficial", "other", "bot", "Atri", "[引用 h1：bot(id:other)：正文]", true, true},
+		{"qqonebot", "self", "亚托莉", "", "[引用：亚托莉（助手）：正文]", false, false},
+		{"telegram", "other", "Atri", "Atri", "[引用 h1：Atri(id:other)：正文]", true, false},
+	} {
+		ctx := share.WithMessageContext(t.Context(), share.MessageContext{Bot: share.Identity{UserID: "self", Username: tc.username}})
+		history := newRefTestHistory(t)
+		chat := "target"
+		if !tc.stored {
+			chat = "other-chat"
+		}
+		row := &storage.ChatMessage{Platform: tc.platform, ChatType: "group", ChatID: chat, PlatformMessageID: "987", SenderID: tc.sender, SenderName: tc.name, Text: "正文"}
+		if err := history.Append(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+		opts := share.ReferenceOptions{UseBotUsername: tc.useBotUsername, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			return share.ReferencedMessage{SenderID: tc.sender, SenderName: tc.name, Text: "正文"}, true, nil
+		}}
+		got, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history), opts)
+		if err != nil || got.Text != tc.want || got.Reply.MessageID != opts.ReplyID {
+			t.Fatalf("%s: got %q (%+v), err %v; want %q", tc.platform, got.Text, got.Reply, err, tc.want)
+		}
+		if tc.stored {
+			target, err := history.GetBySeq(ctx, opts.Platform, opts.ChatType, opts.ChatID, got.Reply.HistorySeq, false)
+			if err != nil || target.PlatformMessageID != opts.ReplyID {
+				t.Fatalf("short ID lookup: %+v, %v", target, err)
+			}
+		}
+	}
+}
 func TestApplyFallsBackToReferencedText(t *testing.T) {
 	result, err := Apply(context.Background(), newRefTestOptions(newRefTestStore(t), newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice-1", Text: "说：收到", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
-		return share.ReferencedMessage{SenderID: "123456", SenderName: "通知", Label: "引用：通知", Text: "已保存附件：attachment-1", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "已保存附件：attachment-1"}}}, true, nil
+		return share.ReferencedMessage{SenderID: "123456", SenderName: "通知", Text: "已保存附件：attachment-1", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "已保存附件：attachment-1"}}}, true, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用#notice-1：通知(id:123456):已保存附件：attachment-1]\n\n说：收到"
+	want := "[引用：通知(id:123456)：已保存附件：attachment-1]\n\n说：收到"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -127,7 +163,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用#p-bg-user：bot:report]\n\n继续"
+	want := "[引用：助手：report]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -147,7 +183,7 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用#p-other：bot:old]\n\n继续"
+	want := "[引用：助手：old]\n\n继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -169,7 +205,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用#p-other-scope：bot:old]\n\n继续"
+	want := "[引用：助手：old]\n\n继续"
 	if result.Text != want || result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want fallback %q", result, want)
 	}

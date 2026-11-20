@@ -102,13 +102,11 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 			return share.ReferencedMessage{}, false, nil
 		}
 		ref := normalizeMessage(*normalized.ReplyMessage)
-		label := "引用"
 		senderName := ""
 		if normalized.ReplyMessage.From != nil {
 			senderName = displayName(*normalized.ReplyMessage.From)
-			label = "引用：" + senderName
 		}
-		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: share.AppendNonTextSegments(nil, ref.Segments)}, true, nil
+		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Text: ref.Text, Segments: share.AppendNonTextSegments(nil, ref.Segments)}, true, nil
 	}
 }
 

@@ -212,6 +212,9 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 		if err := json.Unmarshal(p.Data, &ready); err != nil {
 			return err
 		}
+		a.mu.Lock()
+		a.username = strings.TrimSpace(ready.User.Username)
+		a.mu.Unlock()
 		state.sessionID = ready.SessionID
 		state.resume = true
 		{

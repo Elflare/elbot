@@ -53,11 +53,18 @@ func TestInboundReferenceIndexes(t *testing.T) {
 
 func TestReferenceAliasKeepsScope(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil)
-	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+	if err := a.handleDispatch(t.Context(), nil, payload{Type: eventReady, Data: []byte(`{"user":{"username":"Atri"}}`)}, &gatewayState{}); err != nil {
+		t.Fatal(err)
+	}
+	a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		msg, _ := share.MessageContextFrom(ctx)
+		if msg.Bot.Username != "Atri" || !opts.UseBotUsername {
+			t.Fatalf("missing READY identity: %+v", msg.Bot)
+		}
 		if opts.ChatType != "group" || opts.ChatID != "group" || opts.ReplyID != "original" {
 			t.Fatalf("options = %+v", opts)
 		}
-		return share.ReferenceResult{Reply: share.ReplyContext{MessageID: "original", Text: "meeting at three"}, Text: "[引用:meeting at three]\n\nremember"}, nil
+		return share.ReferenceResult{Reply: share.ReplyContext{MessageID: "original", Text: "meeting at three"}, Text: "[引用：meeting at three]\n\nremember"}, nil
 	}
 	h := &captureHandler{}
 	a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
@@ -117,9 +124,9 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 			attachments          []messageAttachment
 			want                 string
 		}{
-			{name: "text", content: "remember", quote: "meeting", messageType: 103, want: "[引用:meeting]\n\nremember"},
-			{name: "image", content: "describe", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/image.png", ContentType: "image/png"}}, want: "[引用:[媒体消息]]\n\ndescribe"},
-			{name: "file", content: "read", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/file.txt", Filename: "file.txt", ContentType: "text/plain"}}, want: "[引用:[媒体消息]]\n\nread"},
+			{name: "text", content: "remember", quote: "meeting", messageType: 103, want: "[引用：meeting]\n\nremember"},
+			{name: "image", content: "describe", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/image.png", ContentType: "image/png"}}, want: "[引用：[媒体消息]]\n\ndescribe"},
+			{name: "file", content: "read", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/file.txt", Filename: "file.txt", ContentType: "text/plain"}}, want: "[引用：[媒体消息]]\n\nread"},
 			{name: "command", content: "/help", quote: "meeting", messageType: 103},
 			{name: "missing", content: "remember", messageType: 103},
 			{name: "ordinary", content: "remember", quote: "not a quote"},
@@ -186,7 +193,7 @@ func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing
 					if text == "/help" {
 						return share.ReferenceResult{Text: text}, nil
 					}
-					return share.ReferenceResult{Text: "[引用:original text]\n\ndescribe", Reply: share.ReplyContext{MessageID: "original", Text: "original text"}, ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, URL: image.URL}}}, nil
+					return share.ReferenceResult{Text: "[引用：original text]\n\ndescribe", Reply: share.ReplyContext{MessageID: "original", Text: "original text"}, ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, URL: image.URL}}}, nil
 				}
 				msg := inboundMessage{ID: "reply", Author: inboundAuthor{UserOpenID: "user"}, Content: text,
 					MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},

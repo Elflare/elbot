@@ -80,33 +80,38 @@ func referencedMessage(ctx context.Context, deps Options, opts share.ReferenceOp
 }
 
 func fallbackReferenceText(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, stored *storage.Message, hasStored bool) (string, []share.MessageSegment, share.ReplyContext, []share.MessageSegment, error) {
-	label := "引用"
 	content := ""
 	var segments []share.MessageSegment
 	reply := share.ReplyContext{MessageID: replyID}
-	ref, ok, err := referenceSource(ctx, deps, opts, replyID)
+	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return "", nil, share.ReplyContext{}, nil, err
+	}
+	if row != nil {
+		reply.HistorySeq = row.Seq
+		reply.SenderID, reply.SenderName = row.SenderID, row.SenderName
+	}
+	ref, ok, err := referenceSource(ctx, deps, opts, replyID, row)
 	if err != nil {
 		return "", nil, share.ReplyContext{}, nil, err
 	}
 	if ok {
-		if strings.TrimSpace(ref.Label) != "" {
-			label = strings.TrimSpace(ref.Label)
+		if ref.SenderID != "" {
+			reply.SenderID = ref.SenderID
 		}
-		reply.SenderID = strings.TrimSpace(ref.SenderID)
-		reply.SenderName = strings.TrimSpace(ref.SenderName)
+		if ref.SenderName != "" {
+			reply.SenderName = ref.SenderName
+		}
 		content = ref.Text
 		segments = ref.Segments
 	}
-	if hasStored {
-		if stored.Role == storage.RoleAssistant && label == "引用" {
-			label = "引用：bot"
-		}
-		if strings.TrimSpace(stored.Content) != "" {
-			content = stored.Content
-		}
+	if hasStored && strings.TrimSpace(stored.Content) != "" {
+		content = stored.Content
 	}
-	if reply.SenderName == "" {
-		reply.SenderName = referenceSenderName(label)
+	msg, _ := share.MessageContextFrom(ctx)
+	reply.IsAssistant = ref.IsAssistant || (hasStored && stored.Role == storage.RoleAssistant) || (reply.SenderID != "" && reply.SenderID == msg.Bot.UserID)
+	if reply.IsAssistant && (opts.UseBotUsername || reply.SenderName == "") {
+		reply.SenderName = msg.Bot.Username
 	}
 	content = strings.TrimSpace(content)
 	reply.Text = content
@@ -122,7 +127,7 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 	// enriching it must not duplicate the text of an automatic resume or fork.
 	if opts.Enrich != nil {
 		display, err := opts.Enrich(ctx, replyID, share.ReferencedMessage{
-			SenderID: reply.SenderID, SenderName: reply.SenderName, Label: label,
+			SenderID: reply.SenderID, SenderName: reply.SenderName, IsAssistant: reply.IsAssistant,
 			Text: content, Segments: reply.Segments,
 			CanonicalContent: hasStored && stored.Role == storage.RoleAssistant && strings.TrimSpace(stored.Content) != "",
 		})
@@ -130,6 +135,9 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 			return "", nil, share.ReplyContext{}, nil, err
 		}
 		if len(display) > 0 {
+			header := reply
+			header.Text = "" // 正文已在展开片段中，只补引用来源。
+			display = append([]share.MessageSegment{{Type: share.SegmentText, Text: share.FormatReferenceText(header, "") + "\n"}}, display...)
 			var text strings.Builder
 			for _, segment := range display {
 				if segment.Type == share.SegmentText {
@@ -146,14 +154,6 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 		return opts.Text, segments, reply, nil, nil
 	}
 	return share.FormatReferenceText(reply, opts.Text), segments, reply, nil, nil
-}
-
-func referenceSenderName(label string) string {
-	label = strings.TrimSpace(label)
-	if label == "引用" {
-		return ""
-	}
-	return strings.TrimSpace(strings.TrimPrefix(label, "引用："))
 }
 
 func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) ([]share.MessageSegment, error) {
@@ -194,13 +194,13 @@ func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMess
 	return out, nil
 }
 
-func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string) (share.ReferencedMessage, bool, error) {
+func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, row *storage.ChatMessage) (share.ReferencedMessage, bool, error) {
 	outputs, err := deps.FindOutputs(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID, time.Now())
 	if err != nil {
 		return share.ReferencedMessage{}, false, err
 	}
 	if len(outputs) > 0 {
-		ref := share.ReferencedMessage{Label: "引用：bot"}
+		ref := share.ReferencedMessage{IsAssistant: true}
 		for _, output := range outputs {
 			kind := share.SegmentFile
 			if output.Kind == "image" {
@@ -210,11 +210,7 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		}
 		return ref, true, nil
 	}
-	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return share.ReferencedMessage{}, false, err
-	}
-	if err == nil {
+	if row != nil {
 		storedSegments := storage.UnmarshalChatSegments(row.Segments)
 		sourceSegments := make([]share.MessageSegment, len(storedSegments))
 		for i, segment := range storedSegments {
@@ -225,11 +221,7 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 			return share.ReferencedMessage{}, false, err
 		}
 		if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
-			label := "引用"
-			if row.SenderName != "" {
-				label += "：" + row.SenderName
-			}
-			return share.ReferencedMessage{SenderID: row.SenderID, SenderName: row.SenderName, Label: label, Text: row.Text, Segments: segments}, true, nil
+			return share.ReferencedMessage{Text: row.Text, Segments: segments}, true, nil
 		}
 	}
 	if opts.Fetch != nil {

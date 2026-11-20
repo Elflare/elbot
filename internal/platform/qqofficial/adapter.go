@@ -40,6 +40,7 @@ type Adapter struct {
 	wsWriteMu sync.Mutex
 
 	mu               sync.Mutex
+	username         string          // 最近一次 READY 下发的机器人昵称，由 mu 保护。
 	started          bool            // 已尝试启动，重复启动返回同一结果。
 	closing          bool            // 已停止接纳入站及重连。
 	closingResources bool            // 已停止发送准入并开始最终清理。

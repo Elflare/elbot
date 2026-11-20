@@ -37,11 +37,13 @@ type MessageSegment struct {
 }
 
 type ReplyContext struct {
-	MessageID  string           // 被引用的平台消息 ID。
-	SenderID   string           // 被引用消息的发送者 ID。
-	SenderName string           // 发送者展示名。
-	Text       string           // 引用正文。
-	Segments   []MessageSegment // 引用消息片段。
+	MessageID   string           // 被引用的平台消息 ID。
+	HistorySeq  int64            // 当前聊天中被引用记录的短号；未入库时为零。
+	IsAssistant bool             // 被引用消息由当前机器人发出。
+	SenderID    string           // 被引用消息的发送者 ID。
+	SenderName  string           // 发送者展示名。
+	Text        string           // 引用正文。
+	Segments    []MessageSegment // 引用消息片段。
 }
 
 // FinalMessageSegments 保留非空白正文，再按当前消息、引用消息的顺序追加非文本片段；不修改输入切片。

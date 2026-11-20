@@ -4,6 +4,7 @@ package share
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"strconv"
 	"strings"
 )
 
@@ -11,7 +12,7 @@ import (
 type ReferencedMessage struct {
 	SenderID         string           // 引用消息发送者 ID。
 	SenderName       string           // 引用消息发送者展示名。
-	Label            string           // 引用展示标签。
+	IsAssistant      bool             // 已知来自助手输出。
 	Text             string           // 引用正文。
 	Segments         []MessageSegment // 原始有序片段，用于历史媒体关联。
 	CanonicalContent bool             // 已是持久化助手正文，不再抓取并重复注入。
@@ -19,14 +20,15 @@ type ReferencedMessage struct {
 
 // ReferenceOptions 是单次引用恢复输入；存储依赖由根部固定注入。
 type ReferenceOptions struct {
-	Platform string                                                                     // 平台名称。
-	ChatType contextinfo.ChatType                                                       // 会话类型，与原生 ID 共同标识会话。
-	ChatID   string                                                                     // 聊天范围。
-	Owner    contextinfo.ActorIdentity                                                  // 当前行为者。
-	ReplyID  string                                                                     // 被引用的消息 ID。
-	Text     string                                                                     // 当前输入正文。
-	Fetch    func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
-	Enrich   func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
+	Platform       string                                                                     // 平台名称。
+	ChatType       contextinfo.ChatType                                                       // 会话类型，与原生 ID 共同标识会话。
+	ChatID         string                                                                     // 聊天范围。
+	Owner          contextinfo.ActorIdentity                                                  // 当前行为者。
+	UseBotUsername bool                                                                       // 助手引用使用当前机器人身份中的昵称，而非被引用记录的发送者名。
+	ReplyID        string                                                                     // 被引用的消息 ID。
+	Text           string                                                                     // 当前输入正文。
+	Fetch          func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
+	Enrich         func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
 }
 
 type ReferenceResult struct {
@@ -40,12 +42,18 @@ type ReferenceResult struct {
 
 func FormatReferenceText(reply ReplyContext, currentText string) string {
 	header := "引用"
-	if id := strings.TrimSpace(reply.MessageID); id != "" {
-		header += "#" + id
+	if reply.HistorySeq > 0 {
+		header += " h" + strconv.FormatInt(reply.HistorySeq, 10)
 	}
 	name := strings.TrimSpace(reply.SenderName)
 	id := strings.TrimSpace(reply.SenderID)
-	if id != "" {
+	if reply.IsAssistant {
+		if name == "" {
+			name = "助手"
+		} else {
+			name += "（助手）"
+		}
+	} else if id != "" {
 		if name != "" {
 			name += "(id:" + id + ")"
 		} else {
@@ -56,7 +64,7 @@ func FormatReferenceText(reply ReplyContext, currentText string) string {
 		header += "：" + name
 	}
 	if content := strings.TrimSpace(reply.Text); content != "" {
-		header += ":" + content
+		header += "：" + content
 	}
 	formatted := "[" + header + "]"
 	if currentText = strings.TrimSpace(currentText); currentText != "" {

@@ -100,7 +100,9 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	referenced := inboundReferencedMessage(msg, refIndex)
 	replyID, err := a.resolveInboundReplyID(ctx, conversation, scopeID, refIndex)
 	actorID := contextinfo.ActorIdentity{Platform: a.Name(), ID: senderID}
-	bot := share.Identity{}
+	a.mu.Lock()
+	bot := share.Identity{Username: a.username}
+	a.mu.Unlock()
 	var mentions []share.Mention
 	if conversation == contextinfo.ChatGroup {
 		bot.UserID = strings.TrimSpace(a.cfg.AppID)
@@ -152,12 +154,13 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	var ref share.ReferenceResult
 	if err == nil && replyID != "" {
 		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform: a.Name(),
-			ChatID:   messageCtx.Conversation.Source.ChatID,
-			ChatType: conversation,
-			Owner:    actorID,
-			ReplyID:  replyID,
-			Text:     text,
+			Platform:       a.Name(),
+			ChatID:         messageCtx.Conversation.Source.ChatID,
+			ChatType:       conversation,
+			Owner:          actorID,
+			UseBotUsername: true,
+			ReplyID:        replyID,
+			Text:           text,
 			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return referenced, len(referenced.Segments) > 0, nil
 			},

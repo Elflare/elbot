@@ -356,11 +356,7 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (s
 			return share.ReferencedMessage{}, false, err
 		}
 		ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
-		label := "引用"
-		if data.UserID != 0 {
-			label = "引用：" + senderName(data.Sender)
-		}
-		return share.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: senderName(data.Sender), Label: label, Text: ref.Text, Segments: ref.Segments}, true, nil
+		return share.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: senderName(data.Sender), Text: ref.Text, Segments: ref.Segments}, true, nil
 	}
 }
 

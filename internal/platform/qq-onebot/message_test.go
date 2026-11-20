@@ -519,7 +519,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	wantText := `[引用#42：被引用者(id:1001):被引用内容]
+	wantText := `[引用：被引用者(id:1001)：被引用内容]
 
 本次发送的内容`
 	if msgCtx.ContextText != wantText {
@@ -592,9 +592,6 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	}
 	if !ok {
 		t.Fatal("missing reference")
-	}
-	if ref.Label != "引用：用户" {
-		t.Fatalf("reference label = %q", ref.Label)
 	}
 	if ref.SenderID != "2" || ref.SenderName != "用户" {
 		t.Fatalf("reference sender = %#v", ref)

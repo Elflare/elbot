@@ -289,7 +289,7 @@ func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id s
 	text := b.String()
 	a.appendChatMessage(ctx, &storage.ChatMessage{
 		Platform: a.Name(), ChatType: contextinfo.ChatGroup, ChatID: target.OpenID,
-		PlatformMessageID: id, SenderID: a.cfg.AppID, SenderName: "bot",
+		PlatformMessageID: id, SenderID: a.cfg.AppID,
 		Text: text, Raw: text, Segments: storage.MarshalChatSegments(segments), CreatedAt: storage.Now(),
 	})
 }

@@ -44,10 +44,10 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || !reflect.DeepEqual(result.DisplaySegments, display) {
+	if calls != 1 || len(result.DisplaySegments) != len(display)+1 || !reflect.DeepEqual(result.DisplaySegments[1:], display) {
 		t.Fatalf("display=%#v calls=%d", result.DisplaySegments, calls)
 	}
-	if result.Text != "<forward_message>\nAB\n</forward_message>\n\n问题" {
+	if result.Text != "[引用 h1：小明(id:1)]\n<forward_message>\nAB\n</forward_message>\n\n问题" {
 		t.Fatalf("text=%q", result.Text)
 	}
 	if result.Reply.MessageID != "123" || result.Reply.Text != "[forward]" || !reflect.DeepEqual(result.Reply.Segments, original) || !reflect.DeepEqual(result.ReferenceSegments, original) {
@@ -104,7 +104,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 					t.Fatalf("command=%#v", result)
 				}
 			case "other actor":
-				if result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "<forward_message>\nold\n</forward_message>\n\n问题" {
+				if result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "[引用：助手]\n<forward_message>\nold\n</forward_message>\n\n问题" {
 					t.Fatalf("ordinary reference=%#v", result)
 				}
 			}
