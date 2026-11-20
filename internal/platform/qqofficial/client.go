@@ -6,14 +6,21 @@ package qqofficial
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
+
+	"elbot/internal/delivery"
+	"elbot/internal/events"
 )
 
 type apiClient struct {
@@ -146,6 +153,79 @@ func (c *apiClient) doJSONWithRetry(ctx context.Context, method, path string, in
 		return fmt.Errorf("decode qqofficial api %s %s: %w", method, path, err)
 	}
 	return nil
+}
+
+// markdownImage 上传本地图片，返回 Markdown 引用和待释放的素材 ID。
+func (c *apiClient) markdownImage(ctx context.Context, src delivery.Source) (string, string, error) {
+	const limit = 10 << 20
+	data := src.Data
+	if src.Path != "" {
+		f, err := os.Open(src.Path)
+		if err != nil {
+			return "", "", err
+		}
+		defer f.Close()
+		data, err = io.ReadAll(io.LimitReader(f, limit+1))
+		if err != nil {
+			return "", "", err
+		}
+	}
+	if len(data) > limit {
+		return "", "", fmt.Errorf("qqofficial Markdown image exceeds 10 MiB")
+	}
+	mime := http.DetectContentType(data)
+	ext := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}[mime]
+	if ext == "" {
+		return "", "", fmt.Errorf("unsupported qqofficial Markdown image type %s", mime)
+	}
+	var task struct {
+		ID  string `json:"upload_id"`
+		URL string `json:"presigned_url"`
+	}
+	err := c.doJSON(ctx, http.MethodPost, "/v2/media-images/prepare", map[string]any{"file_name": "image." + ext, "file_size": len(data), "content_type": mime, "md5": fmt.Sprintf("%x", md5.Sum(data)), "sha1": fmt.Sprintf("%x", sha1.Sum(data))}, &task)
+	if err != nil {
+		return "", "", err
+	}
+	if task.ID == "" || task.URL == "" {
+		return "", "", fmt.Errorf("incomplete qqofficial image upload task")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, task.URL, bytes.NewReader(data))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", mime)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return "", "", fmt.Errorf("qqofficial image PUT: HTTP %d", res.StatusCode)
+	}
+	etag := strings.Trim(res.Header.Get("ETag"), "\"")
+	if etag == "" {
+		return "", "", fmt.Errorf("qqofficial image PUT returned no ETag")
+	}
+	var image struct {
+		ID  string `json:"image_id"`
+		URL string `json:"url"`
+	}
+	err = c.doJSON(ctx, http.MethodPost, "/v2/media-images/complete", map[string]string{"upload_id": task.ID, "md5": etag}, &image)
+	if err != nil {
+		return "", "", err
+	}
+	if image.ID == "" || image.URL == "" {
+		return "", "", fmt.Errorf("incomplete qqofficial image material")
+	}
+	return image.URL, image.ID, nil
+}
+
+func (c *apiClient) releaseMarkdownImage(ctx context.Context, id string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err := c.doJSON(ctx, http.MethodDelete, "/v2/media-images/"+url.PathEscape(id)+"/delete", nil, nil); err != nil {
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "qqofficial_release_image_failed", Module: "platform", Content: err.Error(), ResultStatus: events.ResultFailed})
+	}
 }
 
 type preparedSource struct {

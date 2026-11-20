@@ -16,6 +16,7 @@
 
 ### Changed
 
+- 优化 QQ 官方适配器md发送逻辑
 - `/usage` 改为只汇总区间内已有的调用，空结果显示 `nil`，取消记录不足提示。用量 API 移除 `available_calls` 和 `range_truncated`。
 - `/sessions`、`/resume` 列表和 `/archives` 超管可用 `-a/--all` 查看全部平台。
 - 文件预检改用 `go-udiff`，文件前后均不超过 8 MiB 时提供完整 diff，不再限制行数乘积或 diff 输出长度。

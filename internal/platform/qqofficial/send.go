@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
@@ -28,14 +29,6 @@ const (
 	fileTypeFile  = 4
 )
 
-func receiptWithMessageID(id string) delivery.Receipt {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return delivery.Receipt{}
-	}
-	return delivery.Receipt{PlatformMessageIDs: []string{id}}
-}
-
 func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output, commandReply bool) (delivery.Receipt, error) {
 	ctx, finish, err := a.beginSend(ctx)
 	if err != nil {
@@ -50,31 +43,132 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	return a.sendOutputs(ctx, t, outputs)
 }
 
+// sendOutputs 将一次投递编码成一条平台消息；上传素材不产生消息。
 func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, error) {
-	var receipt delivery.Receipt
+	if len(outputs) == 0 {
+		return delivery.Receipt{}, nil
+	}
+	if t.Proactive && !a.cfg.allowProactive() {
+		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
+	}
+	var indexes []int
+	nativeType := 0
 	for i, out := range outputs {
-		sent, err := a.sendOutput(ctx, t, out)
-		var mediaIndexes []int
-		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
-			mediaIndexes = []int{i}
+		if out.Delivery.HookPoint != "" {
+			t.recordHistory = true
 		}
-		sent = a.qqOfficialReceipt(sent, t, mediaIndexes...)
-		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
-		if err != nil {
-			return receipt, err
+		switch out.Kind {
+		case delivery.KindImage, delivery.KindRecord, delivery.KindFile:
+			if len(outputs) == 1 && out.Text == "" {
+				nativeType = map[delivery.Kind]int{delivery.KindImage: fileTypeImage, delivery.KindRecord: 3, delivery.KindFile: fileTypeFile}[out.Kind]
+			} else if out.Kind != delivery.KindImage {
+				return delivery.Receipt{}, fmt.Errorf("qqofficial cannot combine %s with other content in one message", out.Kind)
+			}
+			indexes = append(indexes, i)
 		}
 	}
-	return receipt, nil
+	var msg messageToCreate
+	text := make([]string, len(outputs))
+	switch {
+	case nativeType != 0:
+		src := outputs[0].Source
+		source, err := prepareSource(src.URL, src.Path, src.Data)
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		uploaded, err := a.client.uploadFile(ctx, t, nativeType, source)
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		msg.MsgType = msgTypeMedia
+		msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
+	default:
+		mixed := len(indexes) > 0
+		first := outputs[0]
+		// 暂无图+按钮，先简化处理：仅单段文本携带操作按钮。
+		keyboard := len(outputs) == 1 && first.Kind == delivery.KindText && len(first.Actions) > 0 && a.cfg.markdownByDefault() && a.cfg.enableKeyboard()
+		if keyboard {
+			msg.Keyboard = commandKeyboard(a.cfg.AppID, first.Actions)
+		}
+		parts := make([]string, len(outputs))
+		imagePart := func(i int, ref string) string {
+			return escapeMarkdownText(text[i]) + "\n![](" + strings.NewReplacer("(", "%28", ")", "%29", " ", "%20").Replace(ref) + ")\n"
+		}
+		var localImages []int
+		for i, out := range outputs {
+			switch out.Kind {
+			case delivery.KindImage:
+				text[i] = out.Text
+				parts[i] = imagePart(i, out.Source.URL)
+				if out.Source.URL == "" {
+					localImages = append(localImages, i)
+				}
+				continue
+			case delivery.KindText:
+				out.ShowActionHints = false
+				text[i] = delivery.OutputBody(out, keyboard)
+			default:
+				text[i] = delivery.FallbackText(out)
+			}
+			parts[i] = text[i]
+			if mixed {
+				parts[i] = escapeMarkdownText(text[i])
+			}
+		}
+		// 本地引用暂为空：已知部分超限时，无需上传。
+		body := strings.TrimSpace(strings.Join(parts, ""))
+		const limit = 2000
+		tooLong := fmt.Errorf("qqofficial message exceeds %d characters", limit)
+		if utf8.RuneCountInString(body) > limit {
+			return delivery.Receipt{}, tooLong
+		}
+		if body == "" {
+			return delivery.Receipt{}, nil
+		}
+		for _, i := range localImages {
+			ref, id, err := a.client.markdownImage(ctx, outputs[i].Source)
+			if err != nil {
+				return delivery.Receipt{}, err
+			}
+			defer a.client.releaseMarkdownImage(ctx, id)
+			parts[i] = imagePart(i, ref)
+		}
+		if len(localImages) > 0 {
+			body = strings.TrimSpace(strings.Join(parts, ""))
+			if utf8.RuneCountInString(body) > limit {
+				return delivery.Receipt{}, tooLong
+			}
+		}
+		if mixed || a.cfg.markdownByDefault() {
+			msg.MsgType = msgTypeMarkdown
+			msg.Markdown = &messageMarkdown{Content: body, ForceVerifyImageResource: mixed}
+		} else {
+			msg.Content = body
+		}
+	}
+	if msg.MsgID = strings.TrimSpace(t.MsgID); msg.MsgID != "" {
+		msg.MsgSeq = a.nextMsgSeq(msg.MsgID)
+	} else {
+		msg.EventID = strings.TrimSpace(t.EventID)
+	}
+	resp, err := a.client.sendMessage(ctx, t, msg)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	id := strings.TrimSpace(resp.ID)
+	if id == "" {
+		return delivery.Receipt{}, nil
+	}
+	if t.Kind == targetGroup && t.recordHistory {
+		a.recordGroupOutput(ctx, t, id, text, outputs)
+	}
+	chatType := qqOfficialChatType(t)
+	a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id)
+	return delivery.Receipt{PlatformMessageIDs: []string{id}, SentMessages: []delivery.SentMessage{{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, OutputIndexes: indexes}}}, nil
 }
 
-func (a *Adapter) qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
-	for _, id := range receipt.PlatformMessageIDs {
-		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ChatType: qqOfficialChatType(target), ChatID: target.OpenID, OutputIndexes: append([]int(nil), mediaIndexes...)})
-		}
-	}
-	return receipt
+func escapeMarkdownText(text string) string {
+	return strings.NewReplacer("\\", "\\\\", "*", "\\*", "_", "\\_", "[", "\\[", "]", "\\]", "`", "\\`", "#", "\\#", "<", "\\<", ">", "\\>", "~", "\\~").Replace(text)
 }
 
 func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
@@ -82,26 +176,6 @@ func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
 		return contextinfo.ChatGroup
 	}
 	return contextinfo.ChatPrivate
-}
-
-func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
-	t.recordHistory = t.Kind == targetGroup && (t.recordHistory || out.Delivery.HookPoint != "")
-	switch out.Kind {
-	case delivery.KindText:
-		out.ShowActionHints = false
-		return a.sendText(ctx, t, delivery.OutputBody(out, a.cfg.markdownByDefault() && a.cfg.enableKeyboard()), out.Actions...)
-	case delivery.KindReply:
-		text := delivery.FallbackText(out)
-		return a.sendText(ctx, t, text, out.Actions...)
-	case delivery.KindEmoticon:
-		return a.sendText(ctx, t, delivery.FallbackText(out))
-	case delivery.KindImage:
-		return a.sendMedia(ctx, t, out, fileTypeImage)
-	case delivery.KindFile:
-		return a.sendMedia(ctx, t, out, fileTypeFile)
-	default:
-		return a.sendText(ctx, t, delivery.FallbackText(out))
-	}
 }
 
 func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
@@ -122,99 +196,27 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, actions ...delivery.Action) (delivery.Receipt, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return delivery.Receipt{}, nil
-	}
-	if target.Proactive && !a.cfg.allowProactive() {
-		err := fmt.Errorf("qqofficial proactive messages are disabled")
-		return delivery.Receipt{}, err
-	}
-	const pageSize = 2000
-	var receipt delivery.Receipt
-	chars := []rune(text)
-	for start := 0; start < len(chars); start += pageSize {
-		page := string(chars[start:min(start+pageSize, len(chars))])
-		part, err := a.sendTextPage(ctx, target, page, actions)
-		if err != nil {
-			return receipt, err
+func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id string, parts []string, outputs []delivery.Output) {
+	segments := make([]storage.ChatSegment, len(outputs))
+	for i, out := range outputs {
+		seg := storage.ChatSegment{Type: "text", Text: parts[i]}
+		switch out.Kind {
+		case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
+			seg.Type, seg.Name, seg.MIMEType = string(out.Kind), out.Name, out.Source.MIMEType
+			// 不持久化媒体中心的签名地址。
+			if out.Source.MediaID == "" {
+				seg.URL = out.Source.URL
+			}
 		}
-		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, part.PlatformMessageIDs...)
-		actions = nil
+		segments[i] = seg
 	}
-	return receipt, nil
-}
-func (a *Adapter) sendTextPage(ctx context.Context, target sendTarget, text string, actions []delivery.Action) (delivery.Receipt, error) {
-	msg := a.baseMessage(target)
-	if a.cfg.markdownByDefault() {
-		msg.MsgType = msgTypeMarkdown
-		msg.Markdown = &messageMarkdown{Content: text}
-		if a.cfg.enableKeyboard() && len(actions) > 0 {
-			msg.Keyboard = commandKeyboard(a.cfg.AppID, actions)
-		}
-	} else {
-		msg.MsgType = msgTypeText
-		msg.Content = text
-	}
-	resp, err := a.client.sendMessage(ctx, target, msg)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	if target.recordHistory && resp.ID != "" {
-		a.recordGroupOutput(ctx, target, resp.ID, text, storage.ChatSegment{Type: "text", Text: text})
-	}
-	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
-	return receiptWithMessageID(resp.ID), nil
-}
-
-func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, error) {
-	if target.Proactive && !a.cfg.allowProactive() {
-		{
-			err := fmt.Errorf("qqofficial proactive messages are disabled")
-			return delivery.Receipt{}, err
-		}
-	}
-	source, err := prepareSource(out.Source.URL, out.Source.Path, out.Source.Data)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	uploaded, err := a.client.uploadFile(ctx, target, fileType, source)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	msg := a.baseMessage(target)
-	msg.MsgType = msgTypeMedia
-	msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
-	resp, err := a.client.sendMessage(ctx, target, msg)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	if target.recordHistory && resp.ID != "" {
-		a.recordGroupOutput(ctx, target, resp.ID, "", storage.ChatSegment{Type: string(out.Kind), URL: out.Source.URL, Name: out.Name, MIMEType: out.Source.MIMEType})
-	}
-	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
-	return receiptWithMessageID(resp.ID), nil
-}
-
-func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id, text string, segment storage.ChatSegment) {
+	text := strings.Join(parts, "")
 	a.appendChatMessage(ctx, &storage.ChatMessage{
 		Platform: a.Name(), ChatType: contextinfo.ChatGroup, ChatID: target.OpenID,
 		PlatformMessageID: id, SenderID: a.cfg.AppID, SenderName: "bot",
-		Text: text, Raw: text, Segments: storage.MarshalChatSegments([]storage.ChatSegment{segment}), CreatedAt: storage.Now(),
+		Text: text, Raw: text, Segments: storage.MarshalChatSegments(segments), CreatedAt: storage.Now(),
 	})
 }
-func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
-	msg := messageToCreate{}
-	if strings.TrimSpace(target.MsgID) != "" {
-		msg.MsgID = strings.TrimSpace(target.MsgID)
-		msg.MsgSeq = a.nextMsgSeq(msg.MsgID)
-	} else if strings.TrimSpace(target.EventID) != "" {
-		msg.EventID = strings.TrimSpace(target.EventID)
-	}
-	return msg
-}
-
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if target.Empty() {
 		return a.sendContextOutput(ctx, outputs, false)

@@ -19,12 +19,12 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	a := newQQOfficialSendTestAdapter(t, server)
 	for _, target := range []delivery.Target{{ChatType: "private", ChatID: "user"}, {ChatType: "group", ChatID: "group"}} {
 		want := target.ChatID
-		for _, output := range []delivery.Output{delivery.Text("report"), delivery.Reply("old", "reply"), {Kind: delivery.KindRecord, Text: "voice fallback", Source: delivery.Source{URL: "https://example.com/voice.mp3"}}} {
+		for _, output := range []delivery.Output{delivery.Text("report"), delivery.Reply("old", "reply")} {
 			receipt, err := a.SendTo(context.Background(), target, []delivery.Output{output})
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformQQOfficial || sent.ChatType != target.ChatType || sent.ChatID != want || sent.PlatformMessageID != "sent" || (output.Kind == delivery.KindRecord && len(sent.OutputIndexes) != 0) {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformQQOfficial || sent.ChatType != target.ChatType || sent.ChatID != want || sent.PlatformMessageID != "sent" || len(sent.OutputIndexes) != 0 {
 				t.Fatalf("source=%#v", sent)
 			}
 		}

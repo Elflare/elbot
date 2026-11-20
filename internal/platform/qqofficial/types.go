@@ -138,9 +138,10 @@ type messageToCreate struct {
 }
 
 type messageMarkdown struct {
-	Content    string                 `json:"content,omitempty"`
-	TemplateID int                    `json:"template_id,omitempty"`
-	Params     []messageMarkdownParam `json:"params,omitempty"`
+	ForceVerifyImageResource bool                   `json:"force_verify_image_resource,omitempty"` // 转存失败时不发送缺图的 Markdown。
+	Content                  string                 `json:"content,omitempty"`
+	TemplateID               int                    `json:"template_id,omitempty"`
+	Params                   []messageMarkdownParam `json:"params,omitempty"`
 }
 
 type messageMarkdownParam struct {
