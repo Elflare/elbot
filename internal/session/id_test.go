@@ -110,6 +110,48 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	}
 }
 
+func TestAddressedBindingFollowsCompaction(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := t.Context()
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}
+	first, err := svc.GetOrCreateCurrent(ctx, scope, "first")
+	if err != nil || first.Status != operationresult.Success {
+		t.Fatal(first, err)
+	}
+	scope.TargetSessionID = first.Data.ID
+	initial, err := svc.GetOrCreateCurrent(ctx, scope, "addressed input")
+	if err != nil || initial.Status != operationresult.Success || initial.Data.ID != first.Data.ID {
+		t.Fatal(initial, err)
+	}
+	id, err := svc.AllocateID(ctx, first.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := svc.CreateCompacted(ctx, scope, first.Data.ID, CompactedRequest{ID: id})
+	if err != nil || next.Status != operationresult.Success {
+		t.Fatal(next, err)
+	}
+	locked, leave, err := svc.EnterActivation(ctx, scope, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leave()
+	var committed *Binding
+	for range 2 {
+		r, err := svc.CurrentBound(locked, scope)
+		if err != nil || r.Status != operationresult.Success || r.Data.Session.ID != id || r.Data.Binding.SessionID() != id || !r.Data.Binding.Valid() {
+			t.Fatalf("compacted session %s lost: %+v %v", id, r, err)
+		}
+		if committed != nil && committed != r.Data.Binding {
+			t.Fatal("reading replaced the binding")
+		}
+		committed = r.Data.Binding
+	}
+	r, err := svc.GetOrCreateCurrent(locked, scope, "continue")
+	if err != nil || r.Status != operationresult.Success || r.Data.ID != id {
+		t.Fatalf("continued in wrong session: %+v %v", r, err)
+	}
+}
 func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	svc, store := newTestService(t)
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "owner"}, Platform: "qqonebot", ChatID: "private", ChatType: contextinfo.ChatPrivate}

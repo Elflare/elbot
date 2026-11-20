@@ -46,7 +46,9 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 管理 API 使用配置的 client token 和 `X-Client-ID` 鉴权。要按会话收发，在 `hello_ok` 之后携带 `X-CLI-Connection: <api_token>`，向 `PUT /api/v1/view/session` 提交 `{"session_id":"cl93"}`。成功返回 204（无正文）；目标不存在或无权访问时保留原订阅。每条连接最多订阅一个会话，切换不恢复、停止或迁移任务。重连后需重新订阅；历史消息通过消息列表接口读取，不重放断线期间的增量。
 
-带同一连接头的状态、停止当前会话、确认和问答请求使用该请求开始时的会话。普通 CLI 可不订阅，继续使用平台当前会话；`/resume` 和 HTTP 执行恢复接口不等价于订阅。
+新建对话先 `POST /api/v1/sessions`（无请求体），从 `201` 响应的会话对象读取 `id`，再 `PUT /api/v1/view/session`。创建本身不切换已有订阅，也不重置平台 current。
+
+带同一连接头的状态、停止当前会话、确认和问答请求使用该请求开始时的会话。异步续接失败的 `error` 帧携带发起请求时的 `session_id`（未订阅时省略）。普通 CLI 可不订阅，继续使用平台当前会话；`/resume` 和 HTTP 执行恢复接口不等价于订阅。
 
 ## 消息格式
 

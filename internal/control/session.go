@@ -79,6 +79,19 @@ func (m *Supervisor) GetSession(ctx context.Context, req GetSessionRequest) (ope
 	return operationresult.Result[GetSessionResult]{Status: operationresult.Success, Data: *sessionData(row.Data)}, nil
 }
 
+// CreateSession 创建独立会话，不改变任何入口的 current 或连接订阅。
+func (m *Supervisor) CreateSession(ctx context.Context) (operationresult.Result[SessionData], error) {
+	auth, err := share.Authorize(ctx, false)
+	if err != nil || auth.Status != operationresult.Success {
+		return operationresult.Result[SessionData]{Status: auth.Status, Message: auth.Message}, err
+	}
+	result, err := m.deps.Sessions.CreateUnbound(ctx, m.deps.Scope(ctx))
+	if err != nil || result.Status != operationresult.Success {
+		return operationresult.Result[SessionData]{Status: result.Status, Message: result.Message}, err
+	}
+	return operationresult.Result[SessionData]{Status: operationresult.Success, Data: *sessionData(result.Data)}, nil
+}
+
 func (m *Supervisor) NewSession(ctx context.Context) (operationresult.Result[NewSessionResult], error) {
 	ready, err := m.beforeSession(ctx)
 	if err != nil {

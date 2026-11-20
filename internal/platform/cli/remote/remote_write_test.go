@@ -142,7 +142,7 @@ func TestRemoteOutputWriteFailureDoesNotReturnToAgent(t *testing.T) {
 		name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{},
 		mediaClients: map[string]*remoteClientConn{}, apiClients: map[string]*remoteClientConn{},
 	}
-	client := &remoteClientConn{id: "disconnected", conn: conn, server: s}
+	client := &remoteClientConn{id: "disconnected", conn: conn}
 	s.addClient(client)
 	if err := conn.CloseNow(); err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestRemoteFanoutPreservesCancellationCause(t *testing.T) {
 	}
 	defer writer.Close()
 	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
-	client := &remoteClientConn{id: "canceled-client", server: s, conn: conn}
+	client := &remoteClientConn{id: "canceled-client", conn: conn}
 	s.addClient(client)
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {

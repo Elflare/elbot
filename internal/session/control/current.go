@@ -33,28 +33,37 @@ func (s *Service) GetOrCreateCurrent(ctx context.Context, scope share.Scope, fir
 }
 
 func (s *Service) Create(ctx context.Context, scope share.Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
+	return s.create(ctx, scope, req, true)
+}
+
+// createCurrent 接收入口已确定并校验的模式，负责创建及绑定提交。
+func (s *Service) CreateUnbound(ctx context.Context, scope share.Scope) (operationresult.Result[*storage.Session], error) {
+	return s.create(ctx, scope, CreateRequest{}, false)
+}
+
+func (s *Service) create(ctx context.Context, scope share.Scope, req CreateRequest, activate bool) (operationresult.Result[*storage.Session], error) {
 	if req.Mode == "" {
 		req.Mode = s.cfg.DefaultMode
 	}
 	if err := validateMode(req.Mode); err != nil {
 		return operationresult.Result[*storage.Session]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	return s.createCurrent(ctx, scope, req)
-}
-
-// createCurrent 接收入口已确定并校验的模式，负责创建及绑定提交。
-func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
 	origin := share.ForegroundIDOrigin(scope)
 	id, err := s.deps.AllocateID(ctx, origin)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	ctx, release, err := s.EnterActivation(ctx, scope, id)
+	var release func()
+	if activate {
+		ctx, release, err = s.EnterActivation(ctx, scope, id)
+	} else {
+		ctx, release, err = s.EnterSessions(ctx, id)
+	}
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	if s.currentBusy(scope, "") {
+	if activate && s.currentBusy(scope, "") {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	if strings.TrimSpace(req.Title) == "" {
@@ -77,7 +86,9 @@ func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req Crea
 	if err := s.deps.Sessions.Create(ctx, row); err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	s.SetCurrent(ctx, scope, row.ID)
+	if activate {
+		s.SetCurrent(ctx, scope, row.ID)
+	}
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
@@ -98,19 +109,24 @@ type CurrentBoundData struct {
 }
 
 func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (operationresult.Result[CurrentBoundData], error) {
-	ctx, release, err := s.EnterActivation(ctx, scope, scope.TargetSessionID)
+	ctx, leaveScope, err := s.deps.Bindings.EnterScope(ctx, scope)
 	if err != nil {
 		return operationresult.Result[CurrentBoundData]{}, err
 	}
-	defer release()
+	defer leaveScope()
 	binding := s.CurrentBinding(scope)
+	// 显式目标只用于首次绑定；压缩等操作提交的新绑定才是执行的当前会话。
 	id := scope.TargetSessionID
-	if id == "" {
-		if binding == nil {
-			return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
-		}
+	if binding != nil {
 		id = binding.SessionID()
+	} else if id == "" {
+		return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 	}
+	ctx, leaveSession, err := s.EnterSessions(ctx, id)
+	if err != nil {
+		return operationresult.Result[CurrentBoundData]{}, err
+	}
+	defer leaveSession()
 	row, err := s.deps.Sessions.Get(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		if scope.TargetSessionID != "" {
@@ -129,7 +145,7 @@ func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (operatio
 		if row.Platform != scope.Platform || share.IsBackground(row) {
 			return operationresult.Result[CurrentBoundData]{Status: operationresult.Incompatible, Message: "此会话不能直接接受前台输入"}, nil
 		}
-		if binding == nil || binding.SessionID() != id {
+		if binding == nil {
 			s.SetCurrent(ctx, scope, id)
 			binding = s.CurrentBinding(scope)
 		}

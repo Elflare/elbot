@@ -89,6 +89,27 @@ func (f *fixture) releaseCounts() (int, int) {
 	return len(f.releasedSessions), len(f.releasedBindings)
 }
 
+func TestCreateUnboundWhileCurrentBusy(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	scope := privateScope()
+	old := f.create(t, scope, "running")
+	binding := f.s.CurrentBinding(scope)
+	f.setBusy(old.ID)
+	r, err := f.s.CreateUnbound(t.Context(), scope)
+	if err != nil || r.Status != operationresult.Success || r.Data.ID == old.ID {
+		t.Fatal(r, err)
+	}
+	row, err := f.store.Sessions().Get(t.Context(), r.Data.ID)
+	if err != nil || !share.CanAccess(scope, row) {
+		t.Fatal(row, err)
+	}
+	address := scope
+	address.TargetSessionID = row.ID
+	if f.s.CurrentBinding(scope) != binding || !binding.Valid() || f.s.CurrentBinding(address) != nil {
+		t.Fatal("creation changed a binding")
+	}
+}
+
 func TestAddressedInputDoesNotSwitchBusyPlatformCurrent(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	scope := privateScope()

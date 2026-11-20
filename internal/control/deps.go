@@ -44,6 +44,7 @@ type SupervisorDeps struct {
 }
 
 type SessionCapabilities interface {
+	CreateUnbound(context.Context, session.Scope) (operationresult.Result[*storage.Session], error)
 	ResetCurrent(context.Context, session.Scope) (operationresult.Result[struct{}], error)
 	Current(context.Context, session.Scope) (operationresult.Result[*storage.Session], error)
 	CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)

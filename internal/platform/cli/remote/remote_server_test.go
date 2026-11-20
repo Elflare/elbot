@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -115,7 +116,7 @@ func TestRemoteServerSendsStatusAndNoticeToOriginalClient(t *testing.T) {
 
 func TestRemoteServerEmptyTargetUsesContextClient(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
-	client := &remoteClientConn{id: "client", server: s}
+	client := &remoteClientConn{id: "client"}
 	s.addClient(client)
 
 	ctx := s.messageContext(t.Context(), client)
@@ -133,6 +134,62 @@ func (*subscriptionProbe) GetSession(ctx context.Context, req control.GetSession
 	}
 	return operationresult.Result[control.GetSessionResult]{Status: operationresult.Success, Data: control.GetSessionResult{ID: req.SessionID}}, nil
 }
+func (*subscriptionProbe) CreateSession(context.Context) (operationresult.Result[control.SessionData], error) {
+	return operationresult.Result[control.SessionData]{Status: operationresult.Success, Data: control.SessionData{ID: "S3"}}, nil
+}
+func (*subscriptionProbe) ResumeSession(ctx context.Context, req control.ResumeSessionRequest) (operationresult.Result[control.ResumeSessionResult], error) {
+	return operationresult.Result[control.ResumeSessionResult]{Status: operationresult.Success, Data: control.ResumeSessionResult{Continuation: &control.Continuation{SessionID: req.SessionID}}}, nil
+}
+
+func TestCreateAndLateContinuationKeepView(t *testing.T) {
+	server := testRemoteServer(t)
+	server.control = &subscriptionProbe{}
+	entered, release := make(chan struct{}), make(chan struct{})
+	server.SetControlContinuation(func(ctx context.Context, c control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "late failure"}, nil
+	})
+	if err := server.Start(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	conn, hello := dialTestConnection(t, server)
+	request := func(method, path, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, "/api/v1"+path, strings.NewReader(body))
+		req.Header.Set("X-Client-ID", "user")
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("X-CLI-Connection", hello.APIToken)
+		w := httptest.NewRecorder()
+		server.managementHandler().ServeHTTP(w, req)
+		if w.Code != want {
+			t.Fatalf("%s %s: %d %s", method, path, w.Code, w.Body)
+		}
+		return w
+	}
+	request("PUT", "/view/session", `{"session_id":"S1"}`, 204)
+	w := request("POST", "/sessions", "", 201)
+	var row control.SessionData
+	if err := json.Unmarshal(w.Body.Bytes(), &row); err != nil || row.ID != "S3" {
+		t.Fatal(row, err)
+	}
+	request("POST", "/sessions/S1/resume", `{}`, 200)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("continuation not started")
+	}
+	request("PUT", "/view/session", `{"session_id":"S2"}`, 204)
+	close(release)
+	got := readTestRemote(t, conn)
+	if got.Type != remoteMsgError || got.SessionID != "S1" || got.Text != "late failure" {
+		t.Fatalf("late error: %+v", got)
+	}
+}
+
 func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	server := testRemoteServer(t)
 	server.control = &subscriptionProbe{}
@@ -217,8 +274,8 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 }
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
-	local := &remoteClientConn{id: "local", server: s}
-	guest := &remoteClientConn{id: "guest", server: s}
+	local := &remoteClientConn{id: "local"}
+	guest := &remoteClientConn{id: "guest"}
 	s.addClient(local)
 	s.addClient(guest)
 

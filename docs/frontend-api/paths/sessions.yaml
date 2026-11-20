@@ -98,13 +98,13 @@
         default: { $ref: '../components/transport.yaml#/responses/Error' }
     post:
       operationId: newSession
-      summary: Create and bind a new session
+      summary: Create a session without changing current bindings or subscriptions
       responses:
-        '200':
-          description: Created session and current binding.
+        '201':
+          description: Created session. Use its id to subscribe with PUT /view/session.
           content:
             application/json:
-              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+              schema: { $ref: '../components/schemas.yaml#/schemas/Session' }
         default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions/{session_id}:
     parameters:

@@ -58,11 +58,11 @@ func (h *handler) listSessions(w http.ResponseWriter, req *http.Request) {
 	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) newSession(w http.ResponseWriter, req *http.Request) {
-	result, err := h.control.NewSession(req.Context())
+	result, err := h.control.CreateSession(req.Context())
 	if writeControlResultError(w, result, err) {
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeAPIJSON(w, http.StatusCreated, result.Data)
 }
 func (h *handler) getSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.GetSession(req.Context(), control.GetSessionRequest{SessionID: req.PathValue("session_id")})

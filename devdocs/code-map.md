@@ -177,8 +177,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `registration.go`、各适配器 `definition.go`：根部登记与构造入口、各平台静态声明。
 - `share/`：平台内部契约；`definition.go` 静态声明类型，`notification.go` 通知接入与目标转换。
 - `refcontext/refcontext.go`：引用恢复。
-- `cli/`：`cli.go` 本地入口；`lifecycle.go` 本地启停；`remote_lifecycle.go` 远程启停；`remote_server.go` 远程服务。
-- `cli/`：`client.go` 连接选择；`remote_client.go`、`remote_protocol.go` 远程通信与消息流事件；`tui.go` 终端交互及正文／思考展示；`ui.go` 订阅；`status.go` 状态。
+- `cli/`：`client.go` 连接选择；`local/` 本地终端交互；`ui.go` 订阅；`status.go` 状态。
+- `cli/remote/`：`server_lifecycle.go` 服务启停；`server.go` 握手、连接登记与输入分派；`server_output.go` 接收者选择与输出；`client.go` 远程客户端；`protocol.go` 帧协议。
 - `qq-onebot/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`transport.go` WebSocket；`capability_api.go` 原生 API；`forward.go` 合并转发。
 - `qqofficial/`：`adapter.go` 入口；`lifecycle.go` 启停；`gateway.go` 网关；`message.go` 入站；`send.go` 发送；`client.go` HTTP；`token.go` 鉴权；`reference.go` 引用。
 - `telegram/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`stream.go` 流；`commands.go` 命令同步；`capability_api.go` 原生 API。

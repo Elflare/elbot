@@ -125,7 +125,8 @@ func (s *RemoteServer) runControlContinuation(source context.Context, continuati
 	if err != nil {
 		message = err.Error()
 	}
-	_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, Text: message})
+	info, _ := contextinfo.ConversationFromContext(source)
+	_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, SessionID: info.TargetSessionID, Text: message})
 }
 
 func writeManagementStopping(w http.ResponseWriter) {

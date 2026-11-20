@@ -17,7 +17,7 @@ type ControlCapabilities interface {
 	Status(context.Context) (operationresult.Result[control.StatusResult], error)
 	ListSessions(context.Context, control.ListSessionsRequest) (operationresult.Result[control.ListSessionsResult], error)
 	GetSession(context.Context, control.GetSessionRequest) (operationresult.Result[control.GetSessionResult], error)
-	NewSession(context.Context) (operationresult.Result[control.NewSessionResult], error)
+	CreateSession(context.Context) (operationresult.Result[control.SessionData], error)
 	RenameSession(context.Context, control.RenameSessionRequest) (operationresult.Result[control.RenameSessionResult], error)
 	SetSessionArchived(context.Context, control.SetSessionArchivedRequest) (operationresult.Result[control.SetSessionArchivedResult], error)
 	SetSessionPinned(context.Context, control.SetSessionPinnedRequest) (operationresult.Result[control.SetSessionPinnedResult], error)

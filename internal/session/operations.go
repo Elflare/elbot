@@ -16,6 +16,10 @@ func (s *Supervisor) GetOrCreateCurrent(ctx context.Context, scope Scope, firstM
 	return s.control.GetOrCreateCurrent(ctx, share.Scope(scope), firstMessage)
 }
 
+func (s *Supervisor) CreateUnbound(ctx context.Context, scope Scope) (operationresult.Result[*storage.Session], error) {
+	return s.control.CreateUnbound(ctx, share.Scope(scope))
+}
+
 func (s *Supervisor) Create(ctx context.Context, scope Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
 	return s.control.Create(ctx, share.Scope(scope), control.CreateRequest{
 		Title: req.Title, Mode: req.Mode, Metadata: req.Metadata,
