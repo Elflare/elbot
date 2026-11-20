@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/session/share"
 	"elbot/internal/signal"
 )
@@ -112,7 +113,14 @@ func (s *Service) expireBinding(binding *share.Binding, version uint64) {
 	}
 	s.mu.Unlock()
 	s.SetCurrent(ctx, binding.Scope(), "")
-	slog.InfoContext(ctx, "session idle expired", "session_id", binding.SessionID(), "binding_version", binding.Version())
+	events.Log(ctx, events.LogRecord{
+		Category:  events.LogCategoryLog,
+		Level:     slog.LevelInfo,
+		EventName: "session_idle_expired",
+		Module:    "session",
+		Identity:  events.LogIdentity{SessionID: binding.SessionID()},
+		Content:   fmt.Sprintf("session idle expired binding_version=%d", binding.Version()),
+	})
 }
 
 // RecordActivity 只接受原激活句柄；调用者先判断输入确实属于有效活动。
