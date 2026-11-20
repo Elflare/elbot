@@ -173,6 +173,9 @@ func migrateChatHistory(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_alias_message ON platform_message_aliases(platform,chat_type,chat_id,platform_message_id)`); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -248,12 +251,24 @@ WHERE platform = ? AND chat_type = ? AND chat_id = ? AND alias = ?`, platform, c
 	return messageID, nil
 }
 
+const chatMessageColumns = `SELECT seq, id, platform, chat_id, chat_type, platform_message_id,
+ sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at,
+ COALESCE((SELECT parent.seq FROM chat_messages parent WHERE parent.platform=m.platform AND parent.chat_type=m.chat_type AND parent.chat_id=m.chat_id AND parent.platform_message_id=m.reply_to_platform_message_id),0)`
+const chatMessageSelect = chatMessageColumns + `, '' FROM chat_messages m `
+const replyMessageSelect = chatMessageColumns + `, COALESCE((SELECT alias FROM platform_message_aliases a WHERE a.platform=m.platform AND a.chat_type=m.chat_type AND a.chat_id=m.chat_id AND a.platform_message_id=m.platform_message_id ORDER BY a.rowid DESC LIMIT 1),'') FROM chat_messages m `
+
 func (r *ChatHistoryRepository) GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*storage.ChatMessage, error) {
-	row := r.db.QueryRowContext(ctx, `
-SELECT seq, id, platform, chat_id, chat_type, platform_message_id,
-       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
-FROM chat_messages
-WHERE platform = ? AND chat_type = ? AND chat_id = ? AND platform_message_id = ?`, platform, conversationKind, scopeID, platformMessageID)
+	return r.getMessage(ctx, platform, conversationKind, scopeID, chatMessageSelect, "platform_message_id", platformMessageID)
+}
+func (r *ChatHistoryRepository) GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*storage.ChatMessage, error) {
+	selection := chatMessageSelect
+	if reply && platform == "qqofficial" && conversationKind == "group" {
+		selection = replyMessageSelect
+	}
+	return r.getMessage(ctx, platform, conversationKind, scopeID, selection, "seq", seq)
+}
+func (r *ChatHistoryRepository) getMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID, selection, column string, value any) (*storage.ChatMessage, error) {
+	row := r.db.QueryRowContext(ctx, selection+` WHERE platform=? AND chat_type=? AND chat_id=? AND `+column+`=?`, platform, conversationKind, scopeID, value)
 	message, err := scanChatMessage(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
@@ -303,10 +318,7 @@ func (r *ChatHistoryRepository) Search(ctx context.Context, req storage.ChatHist
 		params = append(params, storage.FormatTime(*req.Until))
 	}
 	params = append(params, limit)
-	rows, err := r.db.QueryContext(ctx, `
-SELECT seq, id, platform, chat_id, chat_type, platform_message_id,
-       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
-FROM chat_messages
+	rows, err := r.db.QueryContext(ctx, chatMessageSelect+`
 WHERE `+strings.Join(conditions, " AND ")+`
 ORDER BY seq DESC
 LIMIT ?`, params...)
@@ -325,7 +337,7 @@ LIMIT ?`, params...)
 }
 
 func (r *ChatHistoryRepository) Around(ctx context.Context, req storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
-	target, err := r.GetByPlatformMessage(ctx, req.Platform, req.ChatType, req.ChatID, req.PlatformMessageID)
+	target, err := r.GetBySeq(ctx, req.Platform, req.ChatType, req.ChatID, req.Seq, false)
 	if err != nil {
 		return nil, err
 	}
@@ -423,10 +435,7 @@ func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, platform str
 		operator = "<"
 		order = "DESC"
 	}
-	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(`
-SELECT seq, id, platform, chat_id, chat_type, platform_message_id,
-       sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at
-FROM chat_messages
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(chatMessageSelect+`
 WHERE platform = ? AND chat_type = ? AND chat_id = ? AND (text != '' OR COALESCE(segments, '') != '') AND seq %s ?
 ORDER BY seq %s
 LIMIT ?`, operator, order), platform, conversationKind, scopeID, seq, limit)
@@ -477,7 +486,7 @@ func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMes
 		&segments,
 		&replyToPlatformMessageID,
 		&metadata,
-		&createdAt,
+		&createdAt, &message.ReplySeq, &message.ReferenceIndex,
 	); err != nil {
 		return nil, err
 	}

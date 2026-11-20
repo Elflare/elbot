@@ -17,7 +17,7 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/chat_history"
+	"elbot/internal/tool/builtin/chat_history"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
 	toolmedia "elbot/internal/tool/media"
@@ -56,7 +56,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root, deps.Media.PublishUsageFinished)
 	skillRoot := filepath.Join(configDir, "skills")
 	skillManager := skill.NewManager(skillRoot, registry, mediaRuntime, environment)
-	chatHistory := chat_history.NewManager(&chatHistoryBridge{history: deps.ChatHistory, platform: deps.Platform, media: mediaRuntime}, time.Now, resolveHistoryChat)
 	m.catalog = &runtime{
 		registry:            registry,
 		resolver:            resolver,
@@ -65,12 +64,16 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		fileRollback:        fileops.NewService(nil),
 	}
 	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
+	history := chat_history.Deps{Repository: deps.ChatHistory, Media: mediaRuntime}
+	if deps.Platform != nil {
+		history.ResolveMedia = deps.Platform.ResolveMedia
+	}
 	definitions := builtin.NewTools(builtin.Deps{
 		CreateQuestions:  deps.CreateQuestions,
 		QuestionCommands: func() (string, string) { prefix := cfg.Commands.Prefixes[0]; return prefix + "a", prefix + "ac" },
 		Media:            mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
 		ResidentMemoryPath: residentStore.Path, ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
-		SkillRoot: skillRoot, ChatHistory: chatHistory, LongMemoryDir: filepath.Join(configDir, "long_memory"),
+		SkillRoot: skillRoot, ChatHistory: history, LongMemoryDir: filepath.Join(configDir, "long_memory"),
 		FileRollback: m.catalog.fileRollback, ProcessEnv: environment,
 		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,
 		ViewImageAvailable: func(ctx context.Context) bool {

@@ -100,6 +100,19 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 			case delivery.KindText:
 				out.ShowActionHints = false
 				text = delivery.OutputBody(out, keyboard)
+			case delivery.KindReply:
+				if t.Kind != targetGroup {
+					text = delivery.FallbackText(out)
+					break
+				}
+				if out.ReplyReferenceIndex == "" {
+					return delivery.Receipt{}, fmt.Errorf("qqofficial group reply missing reference index")
+				}
+				if msg.MessageReference != nil && msg.MessageReference.MessageID != out.ReplyReferenceIndex {
+					return delivery.Receipt{}, fmt.Errorf("qqofficial cannot combine different reply targets")
+				}
+				msg.MessageReference = &messageReference{MessageID: out.ReplyReferenceIndex}
+				text = delivery.OutputBody(out, false)
 			case delivery.KindImage:
 				text = out.Text
 			default:

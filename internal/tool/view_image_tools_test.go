@@ -56,29 +56,29 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	if err := get.history.Append(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
-	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.deps})
 	call := func(raw string) (operationresult.Result[*toolshare.Result], error) {
 		result, _, err := callTool(ctx, viewer, toolshare.CallRequest{Arguments: json.RawMessage(raw)})
 		return result, err
 	}
-	for _, raw := range []string{`{}`, `{"message_id":[]}`, `{"message_id":["mixed"],"media_index":[[]]}`, `{"message_id":["mixed"],"media_index":[[0]]}`, `{"message_id":["mixed"],"media_index":[[1]]}`, `{"message_id":["mixed"],"media_index":[[4]]}`, `{"message_id":["mixed"],"media_index":[]}`, `{"source":"media:x","message_id":["mixed"]}`} {
+	for _, raw := range []string{`{}`, `{"message_id":[]}`, `{"message_id":["h3"],"media_index":[[]]}`, `{"message_id":["h3"],"media_index":[[0]]}`, `{"message_id":["h3"],"media_index":[[1]]}`, `{"message_id":["h3"],"media_index":[[4]]}`, `{"message_id":["h3"],"media_index":[]}`, `{"source":"media:x","message_id":["h3"]}`} {
 		if result, err := call(raw); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
-	if result, err := call(`{"message_id":["mixed","missing"]}`); err != nil || result.Status == operationresult.Success || resolver.calls != 0 {
+	if result, err := call(`{"message_id":["h3","h999"]}`); err != nil || result.Status == operationresult.Success || resolver.calls != 0 {
 		t.Fatalf("prevalidation downloaded: calls=%d err=%v", resolver.calls, err)
 	}
-	result, err := call(`{"message_id":["#mixed"]}`)
+	result, err := call(`{"message_id":["h3"]}`)
 	if err != nil || result.Status != operationresult.Success || imageCount(result.Data) != 1 || resolver.calls != 1 || !strings.Contains(llm.SegmentsTextOnly(result.Data.Segments), "2.") || len(result.Data.Outputs) != 0 {
 		t.Fatalf("default=%+v err=%v", result, err)
 	}
-	result, err = call(`{"message_id":["mixed"],"media_index":[[3,2]]}`)
-	if err != nil || result.Status != operationresult.Success || imageCount(result.Data) != 2 || resolver.calls != 2 || !strings.HasPrefix(llm.SegmentsTextOnly(result.Data.Segments), "[#mixed] 3.") {
+	result, err = call(`{"message_id":["h3"],"media_index":[[3,2]]}`)
+	if err != nil || result.Status != operationresult.Success || imageCount(result.Data) != 2 || resolver.calls != 2 || !strings.HasPrefix(llm.SegmentsTextOnly(result.Data.Segments), "[h3] 3.") {
 		t.Fatalf("selection=%+v err=%v calls=%d", result, err, resolver.calls)
 	}
 	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "other"}})
-	if result, _, err := callTool(other, viewer, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err != nil || result.Status == operationresult.Success {
+	if result, _, err := callTool(other, viewer, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["h3"]}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("cross-chat lookup allowed")
 	}
 	result, err = call(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6]]}`)
@@ -89,7 +89,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 
 func TestViewImageSourcesAndPermissions(t *testing.T) {
 	ctx, get, _ := newHistoryMediaToolTest(t)
-	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.deps})
 	data := viewImagePNG(t)
 	item, err := get.mediaCenter.ImportBytes(ctx, data, media.Input{Name: "image.png"}, media.ImportLimits{})
 	if err != nil {
@@ -166,7 +166,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 func TestViewImagePartialFailuresKeepCachedImages(t *testing.T) {
 	ctx, get, resolver := newHistoryMediaToolTest(t)
 	resolver.data = viewImagePNG(t)
-	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.deps})
 	if result, _, err := callTool(ctx, viewer, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}

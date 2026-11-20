@@ -253,7 +253,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	if row.Raw != "普通消息" || row.ReplyToPlatformMessageID != "reply-1" {
 		t.Fatalf("chat history raw/reply = %q/%q", row.Raw, row.ReplyToPlatformMessageID)
 	}
-	rows, err := history.Around(ctx, storage.ChatHistoryAroundRequest{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1", PlatformMessageID: "msg-1", IncludeAvatar: true})
+	rows, err := history.Around(ctx, storage.ChatHistoryAroundRequest{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1", Seq: row.Seq, IncludeAvatar: true})
 	if err != nil || len(rows) != 1 || rows[0].SenderAvatarURL != "https://example.com/avatar" {
 		t.Fatalf("stored avatar: %v, %v", rows, err)
 	}

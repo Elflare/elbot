@@ -246,6 +246,8 @@ type PlatformMessageAlias struct {
 }
 
 type ChatMessage struct {
+	ReplySeq                 int64  // 被引用的本会话消息序号；未入库时为零。
+	ReferenceIndex           string // QQ 官方群聊发送原生引用时使用的目标索引。
 	SenderAvatarURL          string // 写入时为事件头像；历史查询开启头像时为会话内最新值。
 	Seq                      int64
 	ID                       string
@@ -323,13 +325,13 @@ type ChatHistorySearchRequest struct {
 }
 
 type ChatHistoryAroundRequest struct {
-	IncludeAvatar     bool // 请求时附带同一会话中发送者最新的非空头像。
-	Platform          string
-	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID            string
-	PlatformMessageID string
-	Before            int
-	After             int
+	Seq           int64 // 当前会话内的目标历史序号。
+	IncludeAvatar bool  // 请求时附带同一会话中发送者最新的非空头像。
+	Platform      string
+	ChatType      contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID        string
+	Before        int
+	After         int
 }
 
 type CronJobRunState struct {
@@ -581,6 +583,7 @@ type ElnisEventRepository interface {
 }
 
 type ChatHistoryRepository interface {
+	GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*ChatMessage, error)
 	Append(ctx context.Context, message *ChatMessage) error
 	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
 	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (string, error)

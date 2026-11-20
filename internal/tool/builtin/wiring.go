@@ -9,6 +9,7 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
+	"elbot/internal/tool/builtin/chat_history"
 	"elbot/internal/tool/builtin/long_memory"
 	"elbot/internal/tool/builtin/weave"
 	"elbot/internal/tool/builtin/web"
@@ -36,13 +37,7 @@ type Deps struct {
 		Metadata(context.Context, string) (operationresult.Result[share.MediaInfo], error)
 		NewCall() share.MediaCall
 	} // 媒体工具实际使用的能力。
-	ChatHistory interface {
-		Search(context.Context, share.SearchRequest) (operationresult.Result[[]share.Message], error)
-		Around(context.Context, share.AroundRequest) (operationresult.Result[[]share.Message], error)
-		GetMessage(context.Context, string) (operationresult.Result[share.Message], error)
-		GetImages(context.Context, share.MediaRequest) (operationresult.Result[[]share.MediaResult], error)
-		GetMedia(context.Context, share.MediaRequest) (operationresult.Result[[]share.MediaResult], error)
-	} // 聊天历史工具实际使用的能力。
+	ChatHistory chat_history.Deps
 }
 
 func NewTools(deps Deps) []share.ToolDefinition {
@@ -52,12 +47,7 @@ func NewTools(deps Deps) []share.ToolDefinition {
 		weave.Definition(deps.ProcessEnv),
 		askUserTool{deps.CreateQuestions, deps.QuestionCommands}.definition(),
 		(WorkspaceTool{}).Definition(),
-		(ViewImageTool{center: deps.Media, history: deps.ChatHistory}).Definition(),
 		(SendFileTool{media: deps.Media}).Definition(),
-		(GetMediaTool{history: deps.ChatHistory}).Definition(),
-		(SearchChatHistoryTool{history: deps.ChatHistory, viewImageAvailable: deps.ViewImageAvailable}).Definition(),
-		(GetChatHistoryAroundTool{history: deps.ChatHistory, viewImageAvailable: deps.ViewImageAvailable}).Definition(),
-		(ReplyToChatHistoryMessageTool{history: deps.ChatHistory}).Definition(),
 		NewReadFileTool(guard).Definition(),
 		(EditFileTool{Rollback: deps.FileRollback}).Definition(),
 		(RollbackFileTool{Service: deps.FileRollback}).Definition(),
@@ -66,6 +56,10 @@ func NewTools(deps Deps) []share.ToolDefinition {
 		web.NewWebSearchTool(deps.ProcessEnv).Definition(),
 		web.NewWebExtractTool(deps.ProcessEnv).Definition(),
 	}
+	deps.ChatHistory.LocalSourcePath = localSourcePath
+	deps.ChatHistory.SensitivePath = isSensitiveReadFile
+	deps.ChatHistory.ViewImageAvailable = deps.ViewImageAvailable
+	definitions = append(definitions, chat_history.Definitions(deps.ChatHistory)...)
 	definitions = append(definitions, NewResidentMemoryTools(deps.ResidentMemory)...)
 	definitions = append(definitions, long_memory.NewLongMemoryTools(deps.LongMemoryDir)...)
 	return append(definitions, NewCronTools(deps.Cron, deps.ValidateModel, deps.Now)...)

@@ -107,10 +107,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `tool/builtin/`：`file_tools_ast.go` Go 单文件结构索引；`file_tools_directory.go` 目录文本搜索。
 - `tool/builtin/long_memory/`：`tools.go` 工具入口；`store.go` 记忆写入；`index.go` 索引同步；`files.go` 文件格式；`search.go` 检索与展示。
 - `tool/builtin/web/`：`extract.go` 网页提取入口；`extract_fetch.go` 提取请求与响应；`extract_html.go` 直抓文本与链接；`extract_cache.go` 提取缓存；`search.go` 网页搜索。
-- `tool/builtin/`：`chat_history.go` 历史；`get_media.go` 媒体获取；`view_image.go` 看图；`send_file.go` 文件发送。
+- `tool/builtin/`：`send_file.go` 文件发送。
 - `tool/builtin/`：`cron.go` 任务；`resident_memory.go` 常驻记忆；`elwisp_creator.go` Elwisp 创建指引。
-- `tool/`：`cron_bridge.go` Cron 适配；`chat_history_bridge.go` 历史适配；`config_bridge.go` 配置适配；`resident_memory_bridge.go` 记忆适配。
-- `tool/chat_history/`：`manager.go` 查询入口；`query.go` 查询；`media.go` 媒体选择。
+- `tool/`：`cron_bridge.go` Cron 适配；`config_bridge.go` 配置适配；`resident_memory_bridge.go` 记忆适配。
+- `tool/builtin/chat_history/`：`tools.go` 注册和依赖；`search.go`、`around.go`、`reply.go` 历史工具；`format.go` 展示；`get_media.go`、`view_image.go`、`media.go` 媒体选择和获取。
 - `tool/discovery/resolve.go`：发现与依赖解析。
 - `tool/state/`：`state.go` 状态更新；`discovered.go` 已发现声明。
 - `tool/preload/`：`preload.go` 预载；`tags.go` 标签；`background.go` 后台预载。

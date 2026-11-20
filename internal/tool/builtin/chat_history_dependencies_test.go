@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/security"
+	"elbot/internal/tool/builtin/chat_history"
 	"elbot/internal/tool/discovery"
 	toolregistry "elbot/internal/tool/registry"
 	"slices"
@@ -23,10 +24,10 @@ func withBuiltinToolAvailability(t *testing.T, ctx context.Context, registry *to
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 	tools := []toolshare.ToolDefinition{
-		(SearchChatHistoryTool{}).Definition(),
-		(GetChatHistoryAroundTool{}).Definition(),
-		(ReplyToChatHistoryMessageTool{}).Definition(),
-		(GetMediaTool{}).Definition(),
+		(chat_history.SearchChatHistoryTool{}).Definition(),
+		(chat_history.GetChatHistoryAroundTool{}).Definition(),
+		(chat_history.ReplyToChatHistoryMessageTool{}).Definition(),
+		(chat_history.GetMediaTool{}).Definition(),
 	}
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, tools); err != nil {

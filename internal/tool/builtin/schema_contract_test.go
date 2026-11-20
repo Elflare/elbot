@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"elbot/internal/tool/builtin/chat_history"
 	"slices"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestReadFileGlobSchema(t *testing.T) {
 }
 
 func TestMediaSelectionSchema(t *testing.T) {
-	for _, schema := range []llm.ToolSchema{(GetMediaTool{}).Definition().Schema(), (ViewImageTool{}).Definition().Schema()} {
+	for _, schema := range []llm.ToolSchema{(chat_history.GetMediaTool{}).Definition().Schema(), (chat_history.ViewImageTool{}).Definition().Schema()} {
 		properties := schema.Parameters["properties"].(map[string]any)
 		messages := properties["message_id"].(map[string]any)
 		outer := properties["media_index"].(map[string]any)

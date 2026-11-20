@@ -126,16 +126,21 @@ type messageElement struct {
 	Attachments []messageAttachment `json:"attachments,omitempty"` // Quoted media; nested quotes are not expanded.
 }
 
+type messageReference struct {
+	MessageID string `json:"message_id"`
+}
+
 type messageToCreate struct {
-	Content  string           `json:"content,omitempty"`
-	MsgType  int              `json:"msg_type"`
-	Markdown *messageMarkdown `json:"markdown,omitempty"`
-	Keyboard *messageKeyboard `json:"keyboard,omitempty"`
-	Media    *messageMedia    `json:"media,omitempty"`
-	MsgID    string           `json:"msg_id,omitempty"`
-	EventID  string           `json:"event_id,omitempty"`
-	MsgSeq   int              `json:"msg_seq,omitempty"`
-	IsWakeup bool             `json:"is_wakeup,omitempty"`
+	MessageReference *messageReference `json:"message_reference,omitempty"`
+	Content          string            `json:"content,omitempty"`
+	MsgType          int               `json:"msg_type"`
+	Markdown         *messageMarkdown  `json:"markdown,omitempty"`
+	Keyboard         *messageKeyboard  `json:"keyboard,omitempty"`
+	Media            *messageMedia     `json:"media,omitempty"`
+	MsgID            string            `json:"msg_id,omitempty"`
+	EventID          string            `json:"event_id,omitempty"`
+	MsgSeq           int               `json:"msg_seq,omitempty"`
+	IsWakeup         bool              `json:"is_wakeup,omitempty"`
 }
 
 type messageMarkdown struct {

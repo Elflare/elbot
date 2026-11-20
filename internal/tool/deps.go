@@ -23,7 +23,7 @@ type SupervisorDeps struct {
 	ChatHistory     interface {
 		Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
 		Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
-		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
+		GetBySeq(context.Context, string, contextinfo.ChatType, string, int64, bool) (*storage.ChatMessage, error)
 	} // 只借用历史查询能力，数据库由 App 持有。
 	Platform interface {
 		ResolveMedia(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)

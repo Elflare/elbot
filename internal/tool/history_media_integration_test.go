@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -24,32 +23,8 @@ import (
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/chat_history"
+	"elbot/internal/tool/builtin/chat_history"
 )
-
-func TestHistoryBridgeProjectsStoredReplyAndOrderedMedia(t *testing.T) {
-	ctx, fixture, resolver := newHistoryMediaToolTest(t)
-	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted"}
-	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
-		{Type: "text", Text: "before"}, {Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "first"}, {Type: "text", Text: "between"}, {Type: "image", PlatformFileID: "second"},
-	})}
-	if err := fixture.history.Append(ctx, &row); err != nil {
-		t.Fatal(err)
-	}
-	bridge := &chatHistoryBridge{history: fixture.history, platform: resolver, media: fixture.center}
-	key := toolshare.MessageKey{Platform: "p", ChatID: "s", MessageID: row.PlatformMessageID}
-	got, err := bridge.GetMessage(ctx, key)
-	if err != nil || got.Status != operationresult.Success || got.Data.Key != key || got.Data.SenderID != row.SenderID || got.Data.SenderName != row.SenderName || got.Data.Text != row.Text || got.Data.Reply != (toolshare.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}) {
-		t.Fatalf("projection=%+v err=%v", got, err)
-	}
-	if len(got.Data.Media) != 3 || got.Data.Media[0].IsImage || !got.Data.Media[1].IsImage || !got.Data.Media[2].IsImage || resolver.calls != 0 {
-		t.Fatal("media order/download changed", got.Data.Media, resolver.calls)
-	}
-	key.ChatID = "other"
-	if result, err := bridge.GetMessage(ctx, key); err != nil || result.Status != operationresult.NotFound {
-		t.Fatal("scope/not-found conversion", err)
-	}
-}
 
 type getMediaResolver struct {
 	data  []byte
@@ -70,7 +45,7 @@ func (r *getMediaResolver) ResolveMedia(_ context.Context, _ string, s media.Pla
 
 type historyMediaToolFixture struct {
 	toolshare.ToolDefinition
-	manager     *chat_history.Manager
+	deps        chat_history.Deps
 	history     storage.ChatHistoryRepository
 	center      *toolmedia.MediaRuntime
 	mediaCenter *media.MediaCenter
@@ -111,8 +86,8 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 	resolver := &getMediaResolver{}
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root, center.PublishUsageFinished)
-	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now, resolveHistoryChat)
-	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: manager}), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
+	deps := chat_history.Deps{Repository: history.Repository(), ResolveMedia: resolver.ResolveMedia, Media: mediaRuntime}
+	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: deps}), deps: deps, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
 
 func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
@@ -121,7 +96,7 @@ func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success || resolver.calls != 5 || len(result.Data.Segments) != 0 || len(result.Data.Outputs) != 0 || !strings.Contains(result.Data.Content, "history media fetch limit reached (5 attempts)") {
 		t.Fatalf("result = %#v err=%v calls=%d", result, err, resolver.calls)
 	}
-	result, _, err = callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["#1","2"]}`)})
+	result, _, err = callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["h1","2"]}`)})
 	if err != nil || result.Status != operationresult.Success || resolver.calls != 6 || strings.Count(result.Data.Content, "[图片 media:") != 2 {
 		t.Fatalf("defaults = %#v %v calls=%d", result, err, resolver.calls)
 	}
@@ -155,8 +130,8 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 
 func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
-	search := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: tools.manager})
-	around := builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: tools.manager})
+	search := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: tools.deps})
+	around := builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: tools.deps})
 	for _, call := range []struct {
 		tool toolshare.ToolDefinition
 		args string
@@ -173,7 +148,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(*row))
+	ids, err := tools.center.HistoryIDs(ctx, media.HistoryMessage{Platform: row.Platform, ChatType: row.ChatType, ChatID: row.ChatID, ID: row.ID, MessageID: row.PlatformMessageID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +174,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := tools.center.HistoryIDs(ctx, historyMediaMessage(*row))
+	ids, err := tools.center.HistoryIDs(ctx, media.HistoryMessage{Platform: row.Platform, ChatType: row.ChatType, ChatID: row.ChatID, ID: row.ID, MessageID: row.PlatformMessageID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +192,6 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	}
 }
 
-func newHistoryTestManager(repository storage.ChatHistoryRepository) *chat_history.Manager {
-	return chat_history.NewManager(&chatHistoryBridge{history: repository}, time.Now, resolveHistoryChat)
+func historyTestDeps(repository storage.ChatHistoryRepository) chat_history.Deps {
+	return chat_history.Deps{Repository: repository}
 }

@@ -1,37 +1,24 @@
-// 实现图片查看工具，组织模型可用的图片结果。
-package builtin
-
-import toolshare "elbot/internal/tool/share"
+package chat_history
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"strings"
-
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
+	toolshare "elbot/internal/tool/share"
 	"elbot/internal/workspace"
+	"encoding/json"
+	"fmt"
+	"strings"
 )
 
-type ViewImageTool struct {
-	center interface {
-		ValidateImage(context.Context, string) (operationresult.Result[toolshare.MediaInfo], error)
-		ImportURL(context.Context, string, toolshare.MediaImportOptions) (operationresult.Result[toolshare.MediaInfo], error)
-		ImportFile(context.Context, string, toolshare.MediaImportOptions) (operationresult.Result[toolshare.MediaInfo], error)
-	}
-	history interface {
-		GetImages(context.Context, toolshare.MediaRequest) (operationresult.Result[[]toolshare.MediaResult], error)
-	}
-}
-
+type ViewImageTool struct{ Deps }
 type viewImageArgs struct {
-	Source     string   `json:"source"`
-	MessageIDs []string `json:"message_id"`
-	MediaIndex [][]int  `json:"media_index"`
+	Source     string      `json:"source"`
+	MessageIDs historySeqs `json:"message_id"`
+	MediaIndex [][]int     `json:"media_index"`
 }
 
 func (t ViewImageTool) Definition() toolshare.ToolDefinition {
@@ -55,7 +42,7 @@ func viewImageBuilder() *toolshare.Builder {
 		Description("看图；source ⊻ message_id；source⇒禁传media_index。当前上下文已可见则无需重复调用。").
 		APITypes(llm.APITypeResponse).Risk(toolshare.RiskLow).Tags("chat", "files").
 		String("source", "media ID / HTTP(S) / 本地路径 / file URI。").
-		StringArray("message_id", "当前聊天的平台消息ID，#可省。")
+		StringArray("message_id", "当前聊天的历史消息短号，如 h8121，h 可省略。")
 }
 
 func parseViewImageArgs(req toolshare.CallRequest) (viewImageArgs, error) {
@@ -73,26 +60,7 @@ func parseViewImageArgs(req toolshare.CallRequest) (viewImageArgs, error) {
 		}
 		return args, nil
 	}
-	if args.MediaIndex != nil && len(args.MediaIndex) != len(args.MessageIDs) {
-		return args, fmt.Errorf("media_index 必须与 message_id 逐项对应")
-	}
-	for i, id := range args.MessageIDs {
-		args.MessageIDs[i] = parseChatHistoryMessageID(id)
-		if args.MessageIDs[i] == "" {
-			return args, fmt.Errorf("message_id 不能为空")
-		}
-		if args.MediaIndex != nil {
-			if len(args.MediaIndex[i]) == 0 {
-				return args, fmt.Errorf("media_index 每项不能为空")
-			}
-			for _, index := range args.MediaIndex[i] {
-				if index < 1 {
-					return args, fmt.Errorf("媒体序号从 1 开始")
-				}
-			}
-		}
-	}
-	return args, nil
+	return args, validateMediaIndex(args.MessageIDs, args.MediaIndex)
 }
 
 // sourcePath checks local access before touching the filesystem. Call repeats
@@ -111,7 +79,7 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (operation
 	if !ok || actor.Role != contextinfo.RoleSuperadmin {
 		return operationresult.Result[workspace.ResolvedPath]{Status: operationresult.Forbidden, Message: "查看本地图片需要超级管理员权限"}, nil
 	}
-	path, err := localSourcePath(source)
+	path, err := t.LocalSourcePath(source)
 	if err != nil {
 		return operationresult.Result[workspace.ResolvedPath]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
@@ -131,7 +99,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		return operationresult.Result[*toolshare.PreparedCall]{Status: path.Status, Message: path.Message}, nil
 	}
 	assessment := toolshare.RiskAssessment{Level: info.Risk}
-	if path.Data.Path != "" && isSensitiveReadFile(path.Data.Path) {
+	if path.Data.Path != "" && t.SensitivePath(path.Data.Path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
 	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
@@ -147,12 +115,12 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		var err error
 		var item operationresult.Result[toolshare.MediaInfo]
 		if strings.HasPrefix(args.Source, media.IDPrefix) {
-			item, err = t.center.ValidateImage(ctx, args.Source)
+			item, err = t.Media.ValidateImage(ctx, args.Source)
 		} else {
 			if delivery.IsHTTPMediaSource(args.Source) {
-				item, err = t.center.ImportURL(ctx, args.Source, toolshare.MediaImportOptions{})
+				item, err = t.Media.ImportURL(ctx, args.Source, toolshare.MediaImportOptions{})
 			} else {
-				item, err = t.center.ImportFile(ctx, path.Data.Path, toolshare.MediaImportOptions{})
+				item, err = t.Media.ImportFile(ctx, path.Data.Path, toolshare.MediaImportOptions{})
 			}
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -160,7 +128,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			if item.Status != operationresult.Success {
 				return operationresult.Result[*toolshare.Result]{Status: item.Status, Message: item.Message}, item.Message, nil
 			}
-			item, err = t.center.ValidateImage(ctx, item.Data.ID)
+			item, err = t.Media.ValidateImage(ctx, item.Data.ID)
 		}
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -178,7 +146,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 }
 
 func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (operationresult.Result[*toolshare.Result], string, error) {
-	results, err := t.history.GetImages(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+	results, err := t.getMedia(ctx, MediaRequest{Seqs: args.MessageIDs, MediaIndex: args.MediaIndex}, true)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
@@ -191,14 +159,14 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (op
 		if err := ctx.Err(); err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
-		label := fmt.Sprintf("[#%s] %d.", result.MessageID, result.Index)
+		label := fmt.Sprintf("[h%d] %d.", result.Seq, result.Index)
 		if result.Err != nil {
 			return operationresult.Result[*toolshare.Result]{}, result.Err.Error(), result.Err
 		}
 		if result.Media.Status != operationresult.Success {
 			label += " " + result.Media.Message
 		} else {
-			item, err := t.center.ValidateImage(ctx, result.Media.Data.ID)
+			item, err := t.Media.ValidateImage(ctx, result.Media.Data.ID)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}

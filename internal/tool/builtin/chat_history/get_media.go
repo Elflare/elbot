@@ -1,26 +1,18 @@
-// 实现媒体获取工具，读取会话中的媒体资料。
-package builtin
-
-import toolshare "elbot/internal/tool/share"
+package chat_history
 
 import (
 	"context"
+	"elbot/internal/operationresult"
+	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"elbot/internal/operationresult"
 )
 
-type GetMediaTool struct {
-	history interface {
-		GetMedia(context.Context, toolshare.MediaRequest) (operationresult.Result[[]toolshare.MediaResult], error)
-	}
-}
-
+type GetMediaTool struct{ Deps }
 type getMediaArgs struct {
-	MessageIDs []string `json:"message_id"`
-	MediaIndex [][]int  `json:"media_index"`
+	MessageIDs historySeqs `json:"message_id"`
+	MediaIndex [][]int     `json:"media_index"`
 }
 
 func (t GetMediaTool) Definition() toolshare.ToolDefinition {
@@ -36,7 +28,7 @@ func (t GetMediaTool) Definition() toolshare.ToolDefinition {
 	return definition
 }
 func getMediaBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("get_media").Weavable().Description("返回历史媒体ID而非内容；未缓存获取≤5次/调用，失败计次，缓存/重复不计。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息ID，#可省。", toolshare.Required())
+	return toolshare.NewBuilder("get_media").Weavable().Description("返回历史媒体ID而非内容；未缓存获取≤5次/调用，失败计次，缓存/重复不计。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的历史消息短号，如 h8121，h 可省略。", toolshare.Required())
 }
 
 func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
@@ -47,30 +39,14 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if len(args.MessageIDs) == 0 {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "message_id must be a nonempty array"}, nil
 	}
-	if args.MediaIndex != nil && len(args.MediaIndex) != len(args.MessageIDs) {
-		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "media_index must match message_id length"}, nil
-	}
-	for i, id := range args.MessageIDs {
-		args.MessageIDs[i] = parseChatHistoryMessageID(id)
-		if args.MessageIDs[i] == "" {
-			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "message_id must not contain empty IDs"}, nil
-		}
-		if args.MediaIndex != nil {
-			if len(args.MediaIndex[i]) == 0 {
-				return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "media_index entries must not be empty"}, nil
-			}
-			for _, index := range args.MediaIndex[i] {
-				if index < 1 {
-					return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "media_index must contain positive integers"}, nil
-				}
-			}
-		}
+	if err := validateMediaIndex(args.MessageIDs, args.MediaIndex); err != nil {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
 		toolshare.ConfirmationField{Key: "message_id", Label: "消息", Value: args.MessageIDs},
 		toolshare.ConfirmationField{Key: "media_index", Label: "媒体编号", Value: args.MediaIndex},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
+		results, err := t.getMedia(ctx, MediaRequest{Seqs: args.MessageIDs, MediaIndex: args.MediaIndex}, false)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
@@ -85,10 +61,10 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 			if result.Media.Status != operationresult.Success {
 				failed++
-				lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, result.Media.Message))
+				lines = append(lines, fmt.Sprintf("[h%d] %d. %s", result.Seq, result.Index, result.Media.Message))
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, historyMediaLabel(result.IsImage, result.Media.Data.ID)))
+			lines = append(lines, fmt.Sprintf("[h%d] %d. %s", result.Seq, result.Index, historyMediaLabel(result.IsImage, result.Media.Data.ID)))
 		}
 		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
 		operation := operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}

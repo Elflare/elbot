@@ -3,28 +3,28 @@ package tool
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/storage"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/chat_history"
+	"elbot/internal/tool/builtin/chat_history"
 	"elbot/internal/tool/share"
 )
 
 type historyScopeBackend struct {
-	chat_history.Backend
+	storage.ChatHistoryRepository
 	calls int
-	query chat_history.SearchQuery
+	query storage.ChatHistorySearchRequest
 }
 
-func (b *historyScopeBackend) Search(_ context.Context, query chat_history.SearchQuery) (operationresult.Result[[]share.Message], error) {
+func (b *historyScopeBackend) Search(_ context.Context, query storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
 	b.calls++
 	b.query = query
-	return operationresult.Result[[]share.Message]{Status: operationresult.Success, Data: []share.Message{{Key: share.MessageKey{Platform: query.Platform, ChatID: query.ChatID, MessageID: "message", ChatType: query.ChatType}, SenderID: "AB12_OPENID", Text: "found"}}}, nil
+	return []storage.ChatMessage{{Seq: 1, Platform: query.Platform, ChatType: query.ChatType, ChatID: query.ChatID, SenderID: "AB12_OPENID", Text: "found"}}, nil
 }
 
 func TestSearchToolScopeParameters(t *testing.T) {
@@ -51,7 +51,7 @@ func TestSearchToolScopeParameters(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			backend := &historyScopeBackend{}
-			tool := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: chat_history.NewManager(backend, time.Now, resolveHistoryChat), ViewImageAvailable: func(context.Context) bool { return true }})
+			tool := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: chat_history.Deps{Repository: backend}, ViewImageAvailable: func(context.Context) bool { return true }})
 			tc.ctx = toolPolicyContext(tc.ctx)
 			call, err := tool.PrepareCall(tc.ctx, share.CallRequest{Arguments: json.RawMessage(tc.args)})
 			if err != nil || call.Status != operationresult.Success {

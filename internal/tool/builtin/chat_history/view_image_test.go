@@ -1,4 +1,4 @@
-package builtin
+package chat_history
 
 import (
 	"context"

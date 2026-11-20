@@ -32,7 +32,7 @@ func TestHistoryQueryFaultPreservesOriginalError(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	callErr := errors.New(strings.Repeat("雪🔥", 700))
 	repository := failingHistoryLogRepository{err: callErr}
-	for _, value := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repository)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repository)})} {
+	for _, value := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: historyTestDeps(repository)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: historyTestDeps(repository)})} {
 		result, logContent, err := callTool(ctx, value, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
 		if result.Data != nil || err != callErr || logContent != callErr.Error() {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Definition.Name, result, logContent, err)
@@ -52,10 +52,10 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 		value         toolshare.ToolDefinition
 		args, summary string
 	}{
-		{"search", builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: mediaTool.manager}), `{}`, "returned=4"},
-		{"around", builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: mediaTool.manager}), `{"message_id":"long"}`, "returned=4"},
-		{"empty", builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: mediaTool.manager}), `{"query":"no-match"}`, "returned=0"},
-		{"empty_around", builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: mediaTool.manager}), `{"message_id":"missing"}`, "message_id=missing returned=0"},
+		{"search", builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: mediaTool.deps}), `{}`, "returned=4"},
+		{"around", builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: mediaTool.deps}), `{"message_id":"h3"}`, "returned=4"},
+		{"empty", builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: mediaTool.deps}), `{"query":"no-match"}`, "returned=0"},
+		{"empty_around", builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: mediaTool.deps}), `{"message_id":"h999"}`, "message_id=missing returned=0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, logContent, err := callTool(ctx, tc.value, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})
@@ -80,12 +80,12 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 }
 
 func TestGetMediaLogSummarizesResults(t *testing.T) {
-	for _, args := range []string{`{"message_id":["1"]}`, `{"message_id":["missing"]}`, `{"message_id":["1","missing"]}`, `{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`} {
+	for _, args := range []string{`{"message_id":["1"]}`, `{"message_id":["h999"]}`, `{"message_id":["1","h999"]}`, `{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`} {
 		t.Run(args, func(t *testing.T) {
 			ctx, value, _ := newHistoryMediaToolTest(t)
 			result, logContent, err := callTool(ctx, (value).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(args)})
 			want := operationresult.Success
-			if args == `{"message_id":["missing"]}` {
+			if args == `{"message_id":["h999"]}` {
 				want = operationresult.Failed
 			}
 			if err != nil || result.Status != want {

@@ -80,7 +80,7 @@ func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 		t.Fatalf("Search messages = %#v", got)
 	}
 
-	got, err = repo.Around(ctx, storage.ChatHistoryAroundRequest{Platform: "qqonebot", ChatType: "group", ChatID: "1", PlatformMessageID: "text", After: 10})
+	got, err = repo.Around(ctx, storage.ChatHistoryAroundRequest{Platform: "qqonebot", ChatType: "group", ChatID: "1", Seq: got[0].Seq, After: 10})
 	if err != nil {
 		t.Fatalf("Around: %v", err)
 	}

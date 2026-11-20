@@ -87,6 +87,7 @@ type Output struct {
 	Name                     string
 	EmoticonID               string
 	ReplyToPlatformMessageID string
+	ReplyReferenceIndex      string // QQ 官方群消息独立于平台消息 ID 的引用索引。
 	Source                   Source
 	Target                   Target       // 输出意图目标，由消费层解析后显式传给 SendTo；发送层不读取此字段。
 	Delivery                 DeliveryInfo // 发送时机与产生该输出的 Hook 来源。
