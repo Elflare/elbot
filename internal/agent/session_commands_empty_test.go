@@ -151,22 +151,20 @@ func TestResumeCommandOnlySwitchesCallingView(t *testing.T) {
 	}
 	info.ViewID = "B"
 	ctx := contextinfo.WithConversation(base, info)
-	for _, tc := range []struct {
-		id     string
-		status operationresult.Status
-	}{{history.Data.ID, operationresult.Success}, {running.Data.ID, operationresult.Conflict}} {
-		if err := m.HandleMessage(ctx, MessageRequest{Text: "/resume " + tc.id}); err != nil {
+	for _, id := range []string{running.Data.ID, history.Data.ID} {
+		prior := len(platform.replies)
+		if err := m.HandleMessage(ctx, MessageRequest{Text: "/resume " + id}); err != nil {
 			t.Fatal(err)
 		}
-		if len(platform.replies) == 0 || platform.replies[len(platform.replies)-1].result.Status != tc.status {
-			t.Fatalf("/resume %s: %+v", tc.id, platform.replies)
+		if len(platform.replies) != prior+1 || platform.replies[prior].result.Status != operationresult.Success {
+			t.Fatalf("/resume %s: %+v", id, platform.replies)
 		}
 		left, err := m.sessions.CurrentBound(base, a)
 		if err != nil || left.Status != operationresult.Success || left.Data.Binding != before.Data.Binding || !left.Data.Binding.Valid() {
 			t.Fatalf("A changed: %+v %v", left, err)
 		}
 		right, err := m.sessions.GetOrCreateCurrent(ctx, b, "next input")
-		if err != nil || right.Status != operationresult.Success || right.Data.ID != history.Data.ID {
+		if err != nil || right.Status != operationresult.Success || right.Data.ID != id {
 			t.Fatalf("B current: %+v %v", right, err)
 		}
 	}

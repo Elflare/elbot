@@ -112,11 +112,9 @@ func TestViewsCompetingToResumeWhileAnotherViewRuns(t *testing.T) {
 		}()
 	}
 	close(start)
-	counts := map[operationresult.Status]int{}
-	counts[<-results]++
-	counts[<-results]++
-	if counts[operationresult.Success] != 1 || counts[operationresult.Conflict] != 1 || f.s.CurrentBinding(a) != binding || !binding.Valid() {
-		t.Fatalf("competing resume: %v; original binding valid=%v", counts, binding.Valid())
+	first, second := <-results, <-results
+	if first != operationresult.Success || second != operationresult.Success || f.s.CurrentBinding(a) != binding || !binding.Valid() {
+		t.Fatalf("concurrent resume: %v, %v; original binding valid=%v", first, second, binding.Valid())
 	}
 }
 func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
