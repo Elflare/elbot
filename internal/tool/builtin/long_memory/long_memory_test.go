@@ -140,6 +140,19 @@ func TestLongMemorySyncFileIdentityChanges(t *testing.T) {
 			if err := store.syncLocked(t.Context(), true); err != nil {
 				t.Fatal(err)
 			}
+			rewrite := func(name string, id int64, content string) {
+				t.Helper()
+				info, err := os.Stat(filepath.Join(store.memoriesDir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := writeSyncMemory(t, store, name, id, content)
+				// Same-size rewrites can share a filesystem timestamp.
+				mtime := info.ModTime().Add(2 * time.Second)
+				if err := os.Chtimes(path, mtime, mtime); err != nil {
+					t.Fatal(err)
+				}
+			}
 			want := map[int64]string{1: "b.md"}
 			invalidCount := 0
 			switch scenario {
@@ -149,11 +162,11 @@ func TestLongMemorySyncFileIdentityChanges(t *testing.T) {
 				}
 				want[1] = "a.md"
 			case "change id":
-				writeSyncMemory(t, store, "b.md", 3, "newtoken")
+				rewrite("b.md", 3, "newtoken")
 				want = map[int64]string{3: "b.md"}
 			case "swap ids":
-				writeSyncMemory(t, store, "b.md", 2, "newtoken")
-				writeSyncMemory(t, store, "c.md", 1, "othertoken")
+				rewrite("b.md", 2, "newtoken")
+				rewrite("c.md", 1, "othertoken")
 				want = map[int64]string{1: "c.md", 2: "b.md"}
 			case "duplicate later":
 				writeSyncMemory(t, store, "c.md", 1, "newtoken")
