@@ -5,7 +5,8 @@
 ### Added
 
 - QQ 官方适配器保存发送者头像。
-- 新增前台工具 `ask_user`.
+- 前台 `shell` 和 `tool_weave` 现在支持异步。
+- 新增前台工具 `ask_user`，默认异步。
 - 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。
 - AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。
 - AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。
@@ -17,6 +18,7 @@
 
 ### Changed
 
+- Responses 默认发送 `store:false` 和完整原生窗口；显式设置 `store:true` 才启用增量续链。
 - 优化 QQ 官方适配器md发送逻辑
 - `/usage` 改为只汇总区间内已有的调用，空结果显示 `nil`，取消记录不足提示。用量 API 移除 `available_calls` 和 `range_truncated`。
 - `/sessions`、`/resume` 列表和 `/archives` 超管可用 `-a/--all` 查看全部平台。

@@ -185,7 +185,7 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
 
-- `store`：Provider 或模型级 `extra_payload` 可用 `store = false` 关闭服务端存储，之后发送完整原生历史。默认用服务端续链；上游返回 `store:false` 时自动切换并后台记 WARN。
+- `store`：Provider 或模型级 `extra_payload` 默认发送 `store:false` 和完整原生窗口。显式配置 `store = true` 使用服务端续链，模型级覆盖 Provider 级；上游返回 `store:false` 时自动切换为完整窗口并后台记 WARN。
 - 工具定义走原生输入的 `additional_tools`，当前调用权限由 `tool_choice.allowed_tools` 限定，无可用工具时发 `none`。上游必须支持这两项，没有顶层 `tools` 回退。`extra_payload.tool_choice` 只能进一步收窄权限，强制调用不可用工具或无工具时设 `required` 会报错。
 - 会话使用带版本的原生输入格式。缺少格式标记的旧会话不能继续对话、Fork 或压缩，需新建。同一原生历史中的工具定义固定，同名 schema 变化也需新建。
 - 压缩：Responses 会话用当前对话模型原生压缩，不使用 `/model --compact` 的选择。命名与 Chat 会话文字摘要则两个客户端都可用。
