@@ -13,8 +13,8 @@
 
 ## 简介
 
-ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在保留可扩展性的同时，降运行成本和上下文成本。
-支持普通聊天、工具调用、事件感知、Hook 扩展、长期任务调度、持久化会话等，适合个人助理、平台机器人和可编排自动化助手等场景。
+ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot/Coding Agent 框架，目标是在保留可扩展性的同时，降运行成本和上下文成本。
+支持普通聊天、工具调用、事件感知、Hook 扩展、长期任务调度、持久化会话等，适合个人助理、平台机器人、Coding和可编排自动化助手等多个场景。
 
 <!-- manual-header:end -->
 
@@ -51,11 +51,13 @@ ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `disco
 
 一次实测中，ElBot 和 Codex 均使用 `gpt-6.2-astra` 修复 ElBot 的同一个 bug。ElBot 少调用模型 12 次，总 Token 用量低 81.3%。
 
-| 工具 | 模型调用次数 | Token 总数 |
-| --- | ---: | ---: |
-| ElBot | 25 | 363,447 |
-| Codex | 37 | 1,945,100 |
-| **ElBot 相比 Codex** | **少 12 次** | **低 81.3%** |
+```mermaid
+xychart-beta horizontal
+    title "修复同一 bug：ElBot 少用 81.3% Token"
+    x-axis ["ElBot（25 次调用）", "Codex（37 次调用）"]
+    y-axis "Token 用量（万）" 0 --> 200
+    bar [36.34, 194.51]
+```
 
 ### 二、强大可扩展
 
