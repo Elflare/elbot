@@ -47,7 +47,7 @@ func (m *Manager) CompleteTurn(sessionID, attempt string) (Input, bool) {
 	pending := mergeInputs(turn.pending)
 	if turn.execution == nil {
 		removeTurn(m.turns, sessionID, turn, false)
-	} else if pending.Text != "" || len(pending.Segments) > 0 || len(pending.Answers) > 0 {
+	} else if pending.Text != "" || len(pending.Segments) > 0 || len(pending.Answers) > 0 || len(pending.Reports) > 0 {
 		finishAttempt(turn)
 		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
 		pending.Segments = append([]llm.MessageSegment(nil), pending.Segments...)
@@ -106,7 +106,7 @@ func (m *Manager) StartAttempt(sessionID string, input Input, e Execution, attem
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var pending []Input
-	if old := m.turns[sessionID]; old == nil && len(input.Answers) > 0 {
+	if old := m.turns[sessionID]; old == nil && (len(input.Answers) > 0 || len(input.Reports) > 0) {
 		return false
 	} else if old != nil {
 		if !old.reserved || old.execution != e || old.phase != PhaseLLM {

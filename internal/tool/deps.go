@@ -15,7 +15,7 @@ import (
 
 // SupervisorDeps 只声明借用能力；配置单独传给构造入口，资源生命周期仍由提供方管理。
 type SupervisorDeps struct {
-	CreateQuestions func([]storage.Question)
+	CreateQuestions func([]storage.Question, bool) *storage.QuestionGroup
 	Store           storage.Store        // 读取和提交工具状态、Cron 任务定义。
 	Models          ModelCapabilities    // 校验 Cron 任务选择的模型。
 	Media           *media.MediaCenter   // 借用媒体管理能力，交付策略由 Media 处理。

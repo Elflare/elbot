@@ -134,10 +134,22 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		s.projection = append(s.projection, projected)
 	}
 	user := p.materials.UserMessage
-	s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
+	for _, m := range p.materials.Input.Reports {
+		projected, err := agentshare.MessageFromStorage(*m)
+		if err != nil {
+			return operationresult.Result[storage.DialogueCommit]{}, err
+		}
+		s.projection = append(s.projection, projected)
+	}
+	if user != nil {
+		s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
+	}
 	s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 	if err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
+	}
+	if user == nil {
+		return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: p.materials.Input.Reports}}, nil
 	}
 	segments, tools, elyphRulesShown, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
@@ -147,7 +159,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
 	s.projection = agentshare.AppendAnswers(s.projection, p.materials.ExtraAnswers)
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append([]*storage.Message{user}, p.materials.ExtraAnswers...), ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: agentshare.OrderedInputMessages(p.materials.Input.Reports, user, p.materials.ExtraAnswers), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -232,7 +244,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 		}
 		pending := agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-		if pending != nil {
+		if pending != nil && pending.Message.Role != "" {
 			pending.MessageIndex = len(s.projection)
 			s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 		}

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 
 	"elbot/internal/operationresult"
@@ -11,6 +12,7 @@ import (
 
 // Question stays with its originating Session until its answer is submitted.
 type Question struct {
+	group     *QuestionGroup // Owning call; not part of the public question representation.
 	ID        int64          `json:"id"` // One-based number within this Session.
 	SessionID string         `json:"session_id"`
 	Question  string         `json:"question"`
@@ -44,7 +46,50 @@ type AnswerBatch struct {
 	done      <-chan struct{} // Execution lifetime; an uncommitted batch becomes editable/retryable on stop.
 }
 
-func (s *QuestionSet) Create(items []Question) {
+// QuestionGroup binds one displayed batch to its caller. A nil done channel means
+// answers use normal deferred session input instead of waking a waiting tool.
+type QuestionGroup struct {
+	set     *QuestionSet
+	session string
+	done    chan struct{}
+	answers map[int64]string
+	ids     []int64
+}
+
+func (g *QuestionGroup) Cancel() {
+	g.set.mu.Lock()
+	defer g.set.mu.Unlock()
+	g.set.sessions[g.session] = slices.DeleteFunc(g.set.sessions[g.session], func(q Question) bool {
+		if q.group != g {
+			return false
+		}
+		delete(g.set.claims, questionKey{g.session, q.ID})
+		return true
+	})
+}
+func (g *QuestionGroup) Result(ctx context.Context, receipt string) (string, error) {
+	if g.done == nil {
+		return receipt, nil
+	}
+	select {
+	case <-ctx.Done():
+		g.Cancel()
+		return "", ctx.Err()
+	case <-g.done:
+	}
+	parts := make([]string, 0, len(g.ids))
+	for _, id := range g.ids {
+		parts = append(parts, g.answers[id])
+	}
+	return strings.Join(parts, "\n\n"), nil
+}
+
+func (s *QuestionSet) Create(items []Question, async bool) *QuestionGroup {
+	group := &QuestionGroup{set: s, session: items[0].SessionID}
+	if !async {
+		group.done = make(chan struct{})
+		group.answers = map[int64]string{}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sessions == nil {
@@ -56,8 +101,11 @@ func (s *QuestionSet) Create(items []Question) {
 		id := items[i].SessionID
 		s.next[id]++
 		items[i].ID = s.next[id]
+		items[i].group = group
+		group.ids = append(group.ids, items[i].ID)
 		s.sessions[id] = append(s.sessions[id], items[i])
 	}
+	return group
 }
 func (s *QuestionSet) List(sid string) []Question {
 	s.mu.Lock()
@@ -100,7 +148,7 @@ func (s *QuestionSet) Claim(sid string) *AnswerBatch {
 	defer s.mu.Unlock()
 	b := &AnswerBatch{set: s, session: sid}
 	for _, q := range s.sessions[sid] {
-		if q.Draft == nil {
+		if q.Draft == nil || q.group.done != nil {
 			continue
 		}
 		if old := s.claims[questionKey{q.SessionID, q.ID}]; old != nil && old.active() {
@@ -132,17 +180,39 @@ func (b *AnswerBatch) Text() string {
 		if s.claims[questionKey{q.SessionID, q.ID}] != b {
 			continue
 		}
-		d := q.Draft
-		ans := "答：" + d.Text
-		if d.Choice != nil {
-			ans = fmt.Sprintf("选：%d. %s", *d.Choice, q.Options[*d.Choice-1])
-			if d.Text != "" {
-				ans += "\n补：" + d.Text
-			}
-		}
-		parts = append(parts, fmt.Sprintf("#%d %s\n%s", q.ID, q.Question, ans))
+		parts = append(parts, questionAnswer(q))
 	}
 	return strings.Join(parts, "\n\n")
+}
+func questionAnswer(q Question) string {
+	d := q.Draft
+	ans := "答：" + d.Text
+	if d.Choice != nil {
+		ans = fmt.Sprintf("选：%d. %s", *d.Choice, q.Options[*d.Choice-1])
+		if d.Text != "" {
+			ans += "\n补：" + d.Text
+		}
+	}
+	return fmt.Sprintf("#%d %s\n%s", q.ID, q.Question, ans)
+}
+
+// SubmitWaiting snapshots only drafts destined for a synchronous tool result.
+func (s *QuestionSet) SubmitWaiting(session string) (ids []int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sessions[session] = slices.DeleteFunc(s.sessions[session], func(q Question) bool {
+		g := q.group
+		if q.Draft == nil || g.done == nil {
+			return false
+		}
+		ids = append(ids, q.ID)
+		g.answers[q.ID] = questionAnswer(q)
+		if len(g.answers) == len(g.ids) {
+			close(g.done)
+		}
+		return true
+	})
+	return
 }
 func (b *AnswerBatch) Finish(sent bool) {
 	s := b.set

@@ -39,7 +39,13 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	userMessage, userSegments, loaded := p.materials.UserMessage, p.materials.Input.Segments, p.materials.Loaded
-	messages := append(append([]storage.Message{}, loaded.Messages...), *userMessage)
+	messages := append([]storage.Message{}, loaded.Messages...)
+	for _, m := range p.materials.Input.Reports {
+		messages = append(messages, *m)
+	}
+	if userMessage != nil {
+		messages = append(messages, *userMessage)
+	}
 	r.Status.Record(s.ctx, runtimestatus.Snapshot{
 		SessionID:      s.session.ID,
 		Phase:          runtimestatus.PhasePreparing,
@@ -64,6 +70,9 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	}
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
+	}
+	if userMessage == nil {
+		return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: p.materials.Input.Reports}}, nil
 	}
 	canonicalUserSegments, tools, elyphRulesShown, err := r.Preparer.PrepareInput(ctx, in, userMessage, p.materials.Input.PlatformText, userSegments, s.messages, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
@@ -90,7 +99,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append([]*storage.Message{userMessage}, p.materials.ExtraAnswers...), ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: agentshare.OrderedInputMessages(p.materials.Input.Reports, userMessage, p.materials.ExtraAnswers), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

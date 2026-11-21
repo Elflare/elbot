@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"elbot/internal/elyph"
@@ -196,6 +197,29 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		}
 	}
 	baseMessages := llm.CloneMessages(messages)
+	if pending != nil && len(pending.Reports) > 0 {
+		reports := make([]llm.LLMMessage, 0, len(pending.Reports))
+		for _, m := range pending.Reports {
+			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
+				return agentshare.CallInput{}, err
+			}
+			projected, err := agentshare.MessageFromStorage(*m)
+			if err != nil {
+				return agentshare.CallInput{}, err
+			}
+			reports = append(reports, projected)
+		}
+		if pending.Message.Role == "" {
+			baseMessages = append(baseMessages, reports...)
+			if err := persistence.Commit(ctx, storage.DialogueCommit{SessionID: sessionID, Messages: pending.Reports}); err != nil {
+				return agentshare.CallInput{}, err
+			}
+			pending = nil
+		} else {
+			baseMessages = slices.Insert(baseMessages, pending.MessageIndex, reports...)
+			pending.MessageIndex += len(reports)
+		}
+	}
 	if pending != nil {
 		baseMessages = agentshare.AppendAnswers(baseMessages, pending.ExtraAnswers)
 	}
@@ -262,7 +286,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
-		commit := storage.DialogueCommit{SessionID: sessionID, Messages: append([]*storage.Message{&pending.Message}, pending.ExtraAnswers...), ElyphRulesShown: ruleCard != ""}
+		commit := storage.DialogueCommit{SessionID: sessionID, Messages: agentshare.OrderedInputMessages(pending.Reports, &pending.Message, pending.ExtraAnswers), ElyphRulesShown: ruleCard != ""}
 		for _, m := range pending.ExtraAnswers {
 			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
 				return agentshare.CallInput{}, err

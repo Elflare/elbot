@@ -4,6 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"elbot/internal/llm"
@@ -15,6 +16,15 @@ type inputCommitter struct{ state *turnState }
 func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
 	inputs := make([]storage.NativeInput, 0, len(commit.Messages))
 	for _, message := range commit.Messages {
+		if message.Role == storage.RoleAssistant && len(message.ToolCalls) == 1 {
+			call := message.ToolCalls[0]
+			raw, err := json.Marshal(map[string]string{"type": "function_call", "name": call.Name, "arguments": call.Arguments, "call_id": call.ID})
+			if err != nil {
+				return err
+			}
+			inputs = append(inputs, storage.NativeInput{ID: storage.NewID(), SessionID: message.SessionID, MessageID: message.ID, CallID: call.ID, ItemJSON: string(raw), MediaJSON: encodeMaterials(nil)})
+			continue
+		}
 		segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
 		if err != nil {
 			return err
@@ -22,7 +32,7 @@ func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommi
 		if len(segments) == 0 {
 			segments = llm.TextSegments(message.Content)
 		}
-		input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
+		input, err := queuedInput(message.SessionID, message.ID, "", message.ToolCallID, segments)
 		if err != nil {
 			return err
 		}

@@ -13,8 +13,8 @@ func drainPendingUserInput(turns interface {
 	DrainMergedInput(string, string) turn.Input
 }, id string, messages []llm.LLMMessage, expected string) ([]llm.LLMMessage, *agentshare.PendingUserMessage) {
 	pending := agentshare.DrainPending(turns, id, expected)
-	if pending == nil {
-		return messages, nil
+	if pending == nil || pending.Message.Role == "" {
+		return messages, pending
 	}
 	pending.MessageIndex = len(messages)
 	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments}), pending

@@ -4,17 +4,13 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
+	"elbot/internal/request"
 
 	agentshare "elbot/internal/agent/share"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
-
-func (c *ExecutionCoordinator) RunAnswers(ctx context.Context, row *storage.Session, input turn.Input, execution *turn.Execution) (context.Context, operationresult.Result[struct{}], error) {
-	ctx = agentshare.WithInboundTurnInput(turn.WithExecution(ctx, execution), input)
-	return c.Run(ctx, row, input.Text, foregroundTurnOutput{ExecutionSender: c.deps.Output})
-}
 
 func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID string) (context.Context, operationresult.Result[struct{}], error) {
 	defer c.sessionIdle(ctx, sessionID)
@@ -47,7 +43,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 			continue
 		}
 		merged, execution, ok := c.deps.Turns.ResumeAppend(row.ID)
-		if !ok || (merged.Text == "" && len(merged.Segments) == 0 && len(merged.Answers) == 0) {
+		if !ok || (merged.Text == "" && len(merged.Segments) == 0 && len(merged.Answers) == 0 && len(merged.Reports) == 0) {
 			release()
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "追加确认已失效"}, nil
 		}
@@ -125,7 +121,12 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 				release()
 				continue
 			}
-			c.deps.Requests.CancelSession(session.ID)
+			// Supersede this turn, not accepted process jobs owned by the session.
+			for _, req := range c.deps.Requests.ListBySession(session.ID) {
+				if req.Kind == request.KindTurn {
+					c.deps.Requests.Cancel(req.ID)
+				}
+			}
 			release()
 			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?", Actions: c.deps.AppendConfirmation.Actions})
 			if err != nil {

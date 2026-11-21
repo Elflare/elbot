@@ -16,6 +16,7 @@ import (
 )
 
 type ToolExecutor struct {
+	Jobs    tool.AsyncJobs // 前台工具受理后交由 Execution 管理。
 	Manager interface {
 		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
@@ -41,7 +42,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		return tool.RunResult{Err: err}
 	}
 	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), tool.RunRequest{
-		Session:          session,
+		Jobs: r.Jobs, Session: session,
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,

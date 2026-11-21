@@ -225,7 +225,11 @@ type ToolCommitter interface {
 	Flush(context.Context) error
 }
 
+type AsyncJobs = share.AsyncJobs
+type AsyncJob = share.AsyncJob
+
 type RunRequest struct {
+	Jobs             AsyncJobs             // 后台执行及回报归属；仅前台工具批次使用。
 	Committer        ToolCommitter         // 同步持久化能力。
 	Session          *storage.Session      // 本轮持有的会话快照，成功提交后同步更新。
 	Calls            []llm.ToolCallRequest // 按模型输出顺序排列的调用。

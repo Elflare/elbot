@@ -24,6 +24,73 @@ import (
 	"time"
 )
 
+func TestResponsesStoreContinuationOnWire(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		provider, model             map[string]any
+		upstream, firstStore, chain bool
+	}{
+		{name: "default stateless"},
+		{name: "provider enables chain", provider: map[string]any{"store": true}, upstream: true, firstStore: true, chain: true},
+		{name: "model disables provider chain", provider: map[string]any{"store": true}, model: map[string]any{"store": false}},
+		{name: "upstream declines storage", provider: map[string]any{"store": true}, firstStore: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls int
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req struct {
+					Store    *bool
+					Previous string `json:"previous_response_id"`
+					Input    json.RawMessage
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Error(err)
+					http.Error(w, "bad request", 400)
+					return
+				}
+				calls++
+				wantStore := tc.firstStore
+				if calls == 2 {
+					wantStore = tc.chain
+					wantPrevious := ""
+					if tc.chain {
+						wantPrevious = "resp_1"
+					}
+					if req.Previous != wantPrevious || strings.Contains(string(req.Input), "first-marker") == tc.chain {
+						t.Errorf("wrong continuation: prev=%q input=%s", req.Previous, req.Input)
+					}
+				}
+				if req.Store == nil || *req.Store != wantStore {
+					t.Errorf("call %d: store=%v, want %t", calls, req.Store, wantStore)
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprintf(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_%d\",\"store\":%t,\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}]}}\n\n", calls, tc.upstream)
+			}))
+			defer server.Close()
+			deps := isolatedModuleDeps(t)
+			provider := config.ProviderConfig{BaseURL: server.URL, APIMode: "response", Models: []string{"m"}, ExtraPayload: tc.provider}
+			if tc.model != nil {
+				provider.ModelConfigs = map[string]config.ModelConfig{"m": {ExtraPayload: tc.model}}
+			}
+			models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": provider}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer models.Close(context.Background())
+			deps.Models = models
+			agent := contractSupervisor(t, deps)
+			ctx := testutil.WithCLIConversation(t.Context())
+			for _, text := range []string{"first-marker", "next"} {
+				if err := agent.HandleMessage(ctx, MessageRequest{Text: text}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if calls != 2 {
+				t.Fatalf("calls=%d", calls)
+			}
+		})
+	}
+}
 func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	for _, tc := range []struct {
 		name           string

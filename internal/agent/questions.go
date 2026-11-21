@@ -10,51 +10,22 @@ import (
 )
 
 func (a controlAdapter) admitAnswers(ctx context.Context, row *storage.Session, batch *storage.AnswerBatch) (operationresult.Result[control.ConfirmAnswersResult], error) {
-	var res operationresult.Result[control.ConfirmAnswersResult]
 	m := a.supervisor
-	if row.ArchivedAt != nil {
-		res.Status = operationresult.Rejected
-		res.Message = "会话已归档"
-		return res, nil
+	input := turn.Input{Answers: []*storage.AnswerBatch{batch}}
+	admitted, err := m.execution.AdmitDeferredInput(ctx, row, input)
+	res := operationresult.Result[control.ConfirmAnswersResult]{Status: admitted.Status, Message: admitted.Message}
+	if err != nil || admitted.Status != operationresult.Success {
+		return res, err
 	}
-	binding, _ := session.BindingFromContext(ctx)
-	for {
-		snapshot := m.turns.Snapshot(row.ID)
-		e := snapshot.Execution
-		idle := snapshot.Phase == turn.PhaseIdle
-		if idle {
-			var err error
-			e, err = m.turns.NewExecution(ctx)
-			if err != nil {
-				return res, err
-			}
-		} else if e == nil || snapshot.Phase == turn.PhaseStopping || snapshot.Phase == turn.PhaseCompact {
-			res.Status = operationresult.Busy
-			res.Message = "会话忙"
-			return res, nil
+	res.Data.QuestionIDs = batch.IDs
+	if e := admitted.Data; e != nil {
+		binding, _ := session.BindingFromContext(ctx)
+		cancel := func() { m.turns.ReleaseReservation(row.ID, e) }
+		run := func(next context.Context) (context.Context, operationresult.Result[struct{}], error) {
+			defer cancel()
+			return m.execution.RunDeferredInput(session.WithBinding(next, binding), row, input, e)
 		}
-		batch.Bind(e.Done())
-		input := turn.Input{Answers: []*storage.AnswerBatch{batch}}
-		if idle {
-			if !m.turns.ReserveExecution(row.ID, input, e) {
-				continue
-			}
-			cancel := func() { m.turns.ReleaseReservation(row.ID, e) }
-			run := func(next context.Context) (context.Context, operationresult.Result[struct{}], error) {
-				defer cancel()
-				select {
-				case <-e.Done():
-					return next, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "提交已取消"}, nil
-				default:
-				}
-				return m.execution.RunAnswers(session.WithBinding(next, binding), row, input, e)
-			}
-			res.Data.Continuation = &control.Continuation{Kind: "answers", SessionID: row.ID, Answers: &control.AnswerSubmission{Run: run, Cancel: cancel}}
-		} else if !m.turns.AppendPendingInput(row.ID, input) {
-			continue
-		}
-		res.Status = operationresult.Success
-		res.Data.QuestionIDs = batch.IDs
-		return res, nil
+		res.Data.Continuation = &control.Continuation{Kind: "answers", SessionID: row.ID, Answers: &control.AnswerSubmission{Run: run, Cancel: cancel}}
 	}
+	return res, nil
 }

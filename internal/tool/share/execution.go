@@ -29,6 +29,21 @@ type Context struct {
 	Actor contextinfo.Actor
 }
 
+// CallMode is assigned by the runner after approval, never by a tool's argument decoder.
+type CallMode struct {
+	Async bool
+	Send  func(context.Context, []delivery.Output) (operationresult.Result[struct{}], error)
+}
+type callModeKey struct{}
+
+func WithCallMode(ctx context.Context, mode CallMode) context.Context {
+	return context.WithValue(ctx, callModeKey{}, mode)
+}
+func ModeForCall(ctx context.Context) (CallMode, bool) {
+	v, ok := ctx.Value(callModeKey{}).(CallMode)
+	return v, ok
+}
+
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	// Hook sources publish their own records; Runner consumes only the business return.
@@ -64,7 +79,20 @@ type ToolCommitter interface {
 	Flush(context.Context) error
 }
 
+// AsyncJobs transfers ownership from the tool batch to the foreground session.
+type AsyncJobs interface {
+	StartAsyncTool(context.Context, string, string) (AsyncJob, error)
+}
+
+type AsyncJob struct {
+	ID      string // Request ID accepted by /stop.
+	Context context.Context
+	Done    func()
+	Record  func(context.Context, *storage.ToolCallRecord) error
+	Deliver func(llm.ToolCallRequest, llm.LLMMessage) error
+}
 type RunRequest struct {
+	Jobs             AsyncJobs
 	Committer        ToolCommitter
 	Session          *storage.Session
 	Calls            []llm.ToolCallRequest

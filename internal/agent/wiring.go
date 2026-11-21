@@ -167,6 +167,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
+		RecordToolCall:     deps.Store.ToolCalls().Create,
 		AppendConfirmation: delivery.Confirmation{Actions: agentconfirmation.AppendConfirmationActions(commandText)},
 		AppendWait:         policy,
 		Sessions:           m.sessions,
@@ -183,6 +184,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		ResponseTimeout:    time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 	})
 	m.execution = execution
+	runner.Preparer.Tools.Jobs = execution
 	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
 		NewWorkspaceStore: newWorkspaceStore,
 		Service:           deps.Tools,

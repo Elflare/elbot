@@ -51,6 +51,74 @@ func (p *questionsPlatform) SendTo(ctx context.Context, target delivery.Target, 
 
 const questionArgs = `{"questions":[{"question":"哪些测试？","options":["相关包","全量"]},{"question":"如何提交？","options":["先审阅"]},{"question":"分支？","options":["本地"]},{"question":"部署？","options":["稍后"]}]}`
 
+func TestSynchronousQuestionResult(t *testing.T) {
+	deps := isolatedModuleDeps(t)
+	connectTestNotifications(t, deps.Platform.(isolatedPlatformCapabilities).Router)
+	chat := &contractChat{call: llm.ToolCallRequest{Name: "ask_user", Arguments: `{"questions":[{"question":"One?","options":["Yes"]},{"question":"Two?","options":["No"]}],"async":false}`}}
+	contractModels(t, &deps, chat)
+	platform := &questionsPlatform{PlatformCapabilities: deps.Platform, posted: make(chan delivery.Output, 1), release: make(chan struct{})}
+	close(platform.release)
+	deps.Platform = platform
+	m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close(context.Background()) })
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(testutil.WithCLIConversation(t.Context()), 5*time.Second)
+	defer cancel()
+	ctx = contextinfo.WithActor(ctx, m.identity.Actor(ctx))
+	send := func(text string) error { return m.HandleMessage(ctx, MessageRequest{Text: text}) }
+	done := make(chan error, 1)
+	go func() { done <- send("@tool:ask_user ask me") }()
+	select {
+	case <-platform.posted:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	qs, err := deps.Control.ListQuestions(ctx, "")
+	if err != nil || len(qs.Data) != 2 {
+		t.Fatal(qs, err)
+	}
+	sid := qs.Data[0].SessionID
+	for i, q := range qs.Data {
+		if err := send(fmt.Sprintf("/a %d o sync-answer-%d", q.ID, i)); err != nil {
+			t.Fatal(err)
+		}
+		if err := send("/ac"); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			select {
+			case e := <-done:
+				t.Fatalf("partial answer finished tool: %v", e)
+			default:
+			}
+		}
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	rows, err := deps.Store.Messages().ListBySession(ctx, sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, row := range rows {
+		if !strings.Contains(row.Content, "sync-answer-") {
+			continue
+		}
+		if row.Role != storage.RoleTool || !strings.Contains(row.Content, "sync-answer-0") || !strings.Contains(row.Content, "sync-answer-1") {
+			t.Fatalf("misrouted answer: %+v", row)
+		}
+		count++
+	}
+	if count != 1 {
+		t.Fatalf("got %d answer messages", count)
+	}
+}
 func TestQuestionSubmission(t *testing.T) {
 	for _, route := range []string{"chat", "response"} {
 		t.Run(route, func(t *testing.T) {

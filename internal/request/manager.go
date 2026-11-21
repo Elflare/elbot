@@ -26,7 +26,8 @@ type Request struct {
 	Label     string
 	StartedAt time.Time
 	// Stopping means cancellation was requested but execution has not acknowledged completion.
-	Stopping bool
+	Stopping       bool
+	SessionStopped bool // Session stop also withdraws delivery from an already stopping request.
 }
 
 type StartRequest struct {
@@ -157,7 +158,11 @@ func (m *Manager) CancelSession(sessionID string) int {
 	m.mu.Lock()
 	active := make([]*activeRequest, 0, len(m.active))
 	for _, req := range m.active {
-		if req.request.SessionID == sessionID && !req.snapshot().Stopping {
+		if req.request.SessionID != sessionID {
+			continue
+		}
+		req.request.SessionStopped = true
+		if !req.snapshot().Stopping {
 			req.request.Stopping = true
 			active = append(active, req)
 		}

@@ -87,7 +87,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 			return requestCtx, operationresult.Result[struct{}]{Status: pending.Status, Message: pending.Message}, nil
 		}
 		input := pending.Data
-		if input.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 {
+		if input.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 && len(input.Reports) == 0 {
 			if c.deps.Turns.Snapshot(next.ID).Execution != execution {
 				execution.Finish(nil)
 			}

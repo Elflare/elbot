@@ -14,7 +14,7 @@ import (
 )
 
 type askUserTool struct {
-	create   func([]storage.Question)
+	create   func([]storage.Question, bool) *storage.QuestionGroup
 	commands func() (string, string)
 }
 
@@ -23,8 +23,8 @@ func (t askUserTool) definition() share.ToolDefinition {
 		"question": map[string]any{"type": "string"},
 		"options":  map[string]any{"type": "array", "minItems": 1, "maxItems": 3, "items": map[string]any{"type": "string"}},
 	}
-	return share.NewBuilder("ask_user").ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
-		Description("批量提问，推荐项在前。立即返回；勿复述或轮询。答案以 user 消息送达。").
+	return share.NewBuilder("ask_user").Async(true).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
+		Description("批量提问。默认异步：展示后返回，用户作答以 user 消息送达；async=false 等本组答齐后返回工具结果。勿复述或轮询。").
 		ObjectArray("questions", "题目", fields, []string{"question", "options"}, share.Required()).Tags("agent").Build(t.prepare)
 }
 
@@ -63,11 +63,24 @@ func (t askUserTool) prepare(_ context.Context, req share.CallRequest, info shar
 		for i := range questions {
 			questions[i].SessionID = facts.SessionID
 		}
-		t.create(questions)
+		mode, ok := share.ModeForCall(ctx)
+		if !ok {
+			return operationresult.Result[*share.Result]{Status: operationresult.Rejected, Message: "交互工具需要前台执行器"}, "", nil
+		}
+		group := t.create(questions, mode.Async)
 		status := fmt.Sprintf("已发%d题", len(questions))
 		answer, confirm := t.commands()
 		out := delivery.QuestionsOutput(questions, answer, confirm)
-		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: status + ".可等也可继续任务。用户作答以user消息显示。", Outputs: []delivery.Output{out}}}, status, nil
+		sent, err := mode.Send(ctx, []delivery.Output{out})
+		if err != nil || sent.Status != operationresult.Success {
+			group.Cancel()
+			return operationresult.Result[*share.Result]{Status: sent.Status, Message: sent.Message}, status, err
+		}
+		text, err := group.Result(ctx, status+".可等也可继续任务。用户作答以user消息显示。")
+		if err != nil {
+			return operationresult.Result[*share.Result]{Status: operationresult.Canceled, Message: err.Error()}, status, nil
+		}
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: text}}, text, nil
 	})
 	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: prepared}, nil
 }

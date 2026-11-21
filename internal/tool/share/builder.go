@@ -9,20 +9,21 @@ import (
 )
 
 type Builder struct {
-	weavable        bool
-	needsElyphRules bool
-	apiTypes        []llm.APIType
-	name            string
-	description     string
-	risk            RiskLevel
-	superadminOnly  bool
-	hidden          bool
-	ownerScoped     bool
-	foregroundOnly  bool
-	tags            []string
-	dependsOn       []string
-	properties      map[string]any
-	required        []string
+	supportsAsync, defaultAsync bool
+	weavable                    bool
+	needsElyphRules             bool
+	apiTypes                    []llm.APIType
+	name                        string
+	description                 string
+	risk                        RiskLevel
+	superadminOnly              bool
+	hidden                      bool
+	ownerScoped                 bool
+	foregroundOnly              bool
+	tags                        []string
+	dependsOn                   []string
+	properties                  map[string]any
+	required                    []string
 }
 
 type ParamOption func(*paramConfig)
@@ -42,6 +43,12 @@ func (b *Builder) Description(description string) *Builder {
 	return b
 }
 
+func (b *Builder) Async(defaultValue bool) *Builder {
+	b.supportsAsync, b.defaultAsync = true, defaultValue
+	b.Boolean("async", "异步执行，长耗时可开")
+	b.properties["async"].(map[string]any)["default"] = defaultValue
+	return b
+}
 func (b *Builder) Weavable() *Builder {
 	b.weavable = true
 	return b
@@ -132,7 +139,7 @@ func (b *Builder) ObjectArray(name, description string, properties map[string]an
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Weavable: b.weavable, Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Risk: b.risk, SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: append([]string(nil), b.tags...), DependsOn: append([]string(nil), b.dependsOn...)}
+	return Info{SupportsAsync: b.supportsAsync, DefaultAsync: b.defaultAsync, Weavable: b.weavable, Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Risk: b.risk, SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: append([]string(nil), b.tags...), DependsOn: append([]string(nil), b.dependsOn...)}
 }
 
 func (b *Builder) Build(prepare func(context.Context, CallRequest, Info) (operationresult.Result[*PreparedCall], error)) ToolDefinition {

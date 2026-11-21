@@ -39,6 +39,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	tasks := make([]struct {
+		accepted   bool
 		risk       string
 		actor      contextinfo.Actor
 		startedAt  time.Time
@@ -101,11 +102,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 
 		metadata := storage.SessionMetadata{}
 		deliverOutputs(ctx, deps, &result)
-		rawRecord := &storage.ToolCallRecord{SessionID: sessionID, ToolCallID: call.ID, ToolName: call.Name, Actor: actor.ActorIdentity, RiskLevel: task.risk, StartedAt: task.startedAt, FinishedAt: task.finishedAt, Success: result.Error == nil && result.Result.Status == operationresult.Success}
-		if result.Error != nil {
-			rawRecord.Error = result.Error.Error()
-		} else if result.Result.Status != operationresult.Success {
-			rawRecord.Error = result.Result.Message
+		var rawRecord *storage.ToolCallRecord
+		if !task.accepted {
+			rawRecord = result.record(sessionID, call, actor, task.risk, task.startedAt, task.finishedAt)
 		}
 		if result.ExecutionStarted {
 			completed := operationresult.Result[[]llm.MessageSegment]{Status: result.Result.Status, Message: result.Result.Message}
@@ -280,6 +279,17 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			ready <- index
 			continue
 		}
+		async := false
+		if resolvedTool.Native != nil {
+			var reason string
+			async, reason = asyncMode(resolvedTool.Native.Definition, json.RawMessage(call.Arguments), snapshot.Mode == storage.SessionModeWork)
+			if reason != "" {
+				task.result = executionResult{Message: toolMessage(call.Name, call.ID, reason), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: reason}, Summary: reason}
+				task.finishedAt = storage.Now()
+				ready <- index
+				continue
+			}
+		}
 		preparedCall := prepared.Data
 		assessment := preparedCall.RiskAssessment()
 		riskText := string(assessment.Level)
@@ -309,12 +319,23 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			ready <- index
 			continue
 		}
-		runToolCtx, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
+		var job toolshare.AsyncJob
+		var runToolCtx context.Context
+		var done func()
+		// ask_user registers an external answer destination; only process tools transfer a worker.
+		detached := async && call.Name != "ask_user"
+		if detached {
+			job, err = req.Jobs.StartAsyncTool(toolCtx, sessionID, call.Name)
+			runToolCtx, done = job.Context, job.Done
+		} else {
+			runToolCtx, done, err = deps.StartToolRequest(toolCtx, sessionID, call.Name)
+		}
 
 		if err != nil {
 			return toolshare.RunResult{Err: err}
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
+		runToolCtx = toolshare.WithCallMode(runToolCtx, toolshare.CallMode{Async: async, Send: deps.SendOutputs})
 		if call.Name == "tool_weave" {
 			runToolCtx, err = m.bindWeave(runToolCtx, deps, snapshot, req.DiscoveredTools, call.ID, actor)
 			if err != nil {
@@ -327,6 +348,19 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			task.result = *rejected
 			task.finishedAt = storage.Now()
 			ready <- index
+			continue
+		}
+		if detached {
+			// Save acceptance before starting the process. A failed commit cannot leak a job.
+			task.accepted = true
+			receipt := "已受理异步任务 " + job.ID + "；完成后自动回报。"
+			task.finishedAt = storage.Now()
+			task.result = executionResult{Message: toolMessage(call.Name, call.ID, receipt), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.Success}, Summary: receipt}
+			if err := complete(index); err != nil {
+				done()
+				return toolshare.RunResult{Err: err}
+			}
+			go m.runAsync(runToolCtx, deps, job, &snapshot, call, resolvedTool, preparedCall, actor, riskText, runSource)
 			continue
 		}
 		workers.Go(func() {

@@ -17,7 +17,9 @@ type ConfirmAnswersResult struct {
 
 type AdmitAnswersFunc func(context.Context, *storage.Session, *storage.AnswerBatch) (operationresult.Result[ConfirmAnswersResult], error)
 
-func (m *Supervisor) CreateQuestions(items []storage.Question) { m.questions.Create(items) }
+func (m *Supervisor) CreateQuestions(items []storage.Question, async bool) *storage.QuestionGroup {
+	return m.questions.Create(items, async)
+}
 
 // Slash and HTTP operations resolve the same activation and serialize edits with submission.
 func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, do func(context.Context, *storage.Session) (operationresult.Result[T], error)) (operationresult.Result[T], error) {
@@ -61,13 +63,20 @@ func (m *Supervisor) SaveQuestionDraft(ctx context.Context, id string, number in
 func (m *Supervisor) ConfirmAnswers(ctx context.Context, id string) (operationresult.Result[ConfirmAnswersResult], error) {
 	return withQuestionSession(ctx, m, id, func(ctx context.Context, row *storage.Session) (operationresult.Result[ConfirmAnswersResult], error) {
 		batch := m.questions.Claim(row.ID)
-		if len(batch.IDs) == 0 {
-			return operationresult.Result[ConfirmAnswersResult]{Status: operationresult.Rejected, Message: "无新草稿"}, nil
+		r := operationresult.Result[ConfirmAnswersResult]{Status: operationresult.Success}
+		if len(batch.IDs) > 0 {
+			var err error
+			r, err = m.deps.AdmitAnswers(ctx, row, batch)
+			if err != nil || r.Status != operationresult.Success {
+				batch.Finish(false)
+				return r, err
+			}
 		}
-		r, err := m.deps.AdmitAnswers(ctx, row, batch)
-		if err != nil || r.Status != operationresult.Success {
-			batch.Finish(false)
+		r.Data.QuestionIDs = append(r.Data.QuestionIDs, m.questions.SubmitWaiting(row.ID)...)
+		if len(r.Data.QuestionIDs) == 0 {
+			r.Status = operationresult.Rejected
+			r.Message = "无新草稿"
 		}
-		return r, err
+		return r, nil
 	})
 }

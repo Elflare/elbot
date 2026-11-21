@@ -119,6 +119,10 @@ func decodeQueuedInput(input storage.NativeInput) (api.Item, []llm.MessageSegmen
 		if _, err := api.AdditionalToolDefinitions(item); err != nil {
 			return api.Item{}, nil, err
 		}
+	case "function_call":
+		if input.CallID == "" || item.CallID != input.CallID || item.Name == "" {
+			return api.Item{}, nil, fmt.Errorf("原生异步回报调用关联不匹配")
+		}
 	case "message":
 		if input.CallID != "" || item.Role != "user" {
 			return api.Item{}, nil, fmt.Errorf("原生用户输入关联不匹配")
@@ -144,7 +148,7 @@ func (w *nativeWindow) appendInput(input storage.NativeInput) (api.Item, error) 
 	if err != nil {
 		return api.Item{}, err
 	}
-	if item.Type != "additional_tools" {
+	if item.Type != "additional_tools" && item.Type != "function_call" {
 		w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 	}
 	w.Items = append(w.Items, item)

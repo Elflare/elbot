@@ -187,7 +187,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 				return operationresult.Result[*nativeWindow]{}, err
 			}
 			w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
-			if item.Type == "additional_tools" {
+			if item.Type == "additional_tools" || item.Type == "function_call" {
 				w.Items = append(w.Items, item)
 				continue
 			}

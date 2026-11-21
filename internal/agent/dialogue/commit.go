@@ -60,7 +60,8 @@ func commitInput(ctx context.Context, session *storage.Session, commit storage.D
 	if !commit.ElyphRulesShown {
 		return persistence.Commit(ctx, commit)
 	}
-	message := commit.Messages[0]
+	i := slices.IndexFunc(commit.Messages, func(m *storage.Message) bool { return m.Role == storage.RoleUser })
+	message := commit.Messages[i]
 	fields, err := storage.DecodeSessionMetadata(message.Metadata)
 	if err != nil {
 		return err

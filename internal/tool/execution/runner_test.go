@@ -321,6 +321,56 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 	}
 }
 
+func TestAsyncAdmission(t *testing.T) {
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	def := (runnerHighRiskTool{name: "shell"}).Definition()
+	def.Definition.SupportsAsync = true
+	def.Parameters["properties"].(map[string]any)["async"] = map[string]any{"type": "boolean", "default": false}
+	if err := registerTestTools(registry, def); err != nil {
+		t.Fatal(err)
+	}
+	m := newTestManager(registry, security.NewPermission("high", "high", nil))
+	discovered := []toolshare.DiscoveredTool{{Name: "shell", Schema: def.Schema()}}
+	schemas, err := m.Schemas(t.Context(), toolshare.Context{Mode: storage.SessionModeBackground}, discovered)
+	if err != nil || len(schemas) != 1 {
+		t.Fatal(schemas, err)
+	}
+	if schemas[0].Parameters["properties"].(map[string]any)["async"] != nil || discovered[0].Schema.Parameters["properties"].(map[string]any)["async"] == nil {
+		t.Fatal("background schema leaked async or mutated the foreground schema")
+	}
+	for _, tc := range []struct {
+		args    string
+		bg      bool
+		confirm operationresult.Status
+		want    string
+		stopped bool
+	}{
+		{args: `{}`, confirm: operationresult.Success, want: "called"},
+		{args: `{"async":false}`, confirm: operationresult.Success, want: "called"},
+		{args: `{"async":null}`, want: "布尔值"}, {args: `{"async":"true"}`, want: "布尔值"},
+		{args: `{"async":true}`, bg: true, want: "仅限前台"},
+		{args: `{"async":true}`, confirm: operationresult.Rejected, want: "confirmation ended"},
+		{args: `{"async":true}`, confirm: operationresult.Timeout, stopped: true},
+		{args: `{"async":true}`, confirm: operationresult.Canceled, stopped: true},
+	} {
+		t.Run(fmt.Sprint(tc), func(t *testing.T) {
+			mode := storage.SessionModeWork
+			if tc.bg {
+				mode = storage.SessionModeBackground
+			}
+			deps := &runnerTestDeps{confirmStatus: tc.confirm}
+			committer := &testToolCommitter{}
+			// No job registrar: any attempt to accept before approval or from Background would fail this test.
+			r := m.Run(t.Context(), deps, toolshare.RunRequest{Session: &storage.Session{ID: "s", Mode: mode}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, DiscoveredTools: discovered, Calls: []llm.ToolCallRequest{{ID: "A", Name: "shell", Arguments: tc.args}}, Committer: committer})
+			if r.Err != nil || r.Stopped != tc.stopped || deps.confirmed != (tc.confirm != "") {
+				t.Fatalf("run=%+v confirmation=%t", r, deps.confirmed)
+			}
+			if !tc.stopped && !strings.Contains(llm.SegmentsTextOnly(committer.messages[0].Segments), tc.want) {
+				t.Fatalf("expected %q on A, got %+v", tc.want, committer.messages)
+			}
+		})
+	}
+}
 func TestRunPublishesTerminalResultWhenConfirmationIsCanceled(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	toolName := "high_risk_canceled"

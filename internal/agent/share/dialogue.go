@@ -111,6 +111,17 @@ func ResolveAnswers(sid string, in *turn.Input) (extra []*storage.Message) {
 	}
 	return extra
 }
+
+// OrderedInputMessages keeps tool report pairs contiguous, before ordinary input and answer batches.
+func OrderedInputMessages(reports []*storage.Message, user *storage.Message, answers []*storage.Message) []*storage.Message {
+	if user == nil {
+		return reports
+	}
+	messages := make([]*storage.Message, 0, len(reports)+1+len(answers))
+	messages = append(messages, reports...)
+	return append(append(messages, user), answers...)
+}
+
 func AppendAnswers(messages []llm.LLMMessage, extra []*storage.Message) []llm.LLMMessage {
 	for _, m := range extra {
 		messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(m.Content)})
@@ -119,6 +130,7 @@ func AppendAnswers(messages []llm.LLMMessage, extra []*storage.Message) []llm.LL
 }
 
 type PendingUserMessage struct {
+	Reports      []*storage.Message // 已完成工具对，不占用户输入槽。
 	ExtraAnswers []*storage.Message
 	Answers      []*storage.AnswerBatch
 	// NeedsElyphRules is resolved after input hooks and before persistence.
@@ -135,6 +147,9 @@ func DrainPending(turns interface {
 	pending := turns.DrainMergedInput(sessionID, expected)
 	extra := ResolveAnswers(sessionID, &pending)
 	if pending.Text == "" && len(pending.Segments) == 0 {
+		if len(pending.Reports) > 0 {
+			return &PendingUserMessage{Reports: pending.Reports}
+		}
 		return nil
 	}
 	segments := append([]llm.MessageSegment(nil), pending.Segments...)
@@ -147,7 +162,7 @@ func DrainPending(turns interface {
 		Content:  MessageContent(segments),
 		Segments: StoredMessageSegments(segments),
 	}
-	return &PendingUserMessage{ExtraAnswers: extra, Answers: pending.Answers, Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
+	return &PendingUserMessage{Reports: pending.Reports, ExtraAnswers: extra, Answers: pending.Answers, Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }
 
 // ForegroundNotice is appended to the request tail as a synthetic user message;

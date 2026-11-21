@@ -225,7 +225,7 @@ func toPublicTagPrompts(items []share.TagPrompt) []TagPrompt {
 }
 
 func toInternalRunRequest(req RunRequest) share.RunRequest {
-	return share.RunRequest{Committer: req.Committer, Session: req.Session, Calls: req.Calls, AssistantText: req.AssistantText, AssistantRawText: req.AssistantRawText, DiscoveredTools: toInternalDiscoveredTools(req.DiscoveredTools), Actor: req.Actor}
+	return share.RunRequest{Jobs: req.Jobs, Committer: req.Committer, Session: req.Session, Calls: req.Calls, AssistantText: req.AssistantText, AssistantRawText: req.AssistantRawText, DiscoveredTools: toInternalDiscoveredTools(req.DiscoveredTools), Actor: req.Actor}
 }
 
 func toPublicRunResult(result share.RunResult) RunResult { return RunResult(result) }

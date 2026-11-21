@@ -36,10 +36,14 @@ type Preparer struct {
 func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (agentshare.TurnMaterials, error) {
 	input := in.Input
 	extra := agentshare.ResolveAnswers(in.Session.ID, &input)
-	for _, m := range extra {
+	for _, m := range input.Reports {
 		if err := storage.PrepareMessageID(ctx, p.NewMessageID, m); err != nil {
 			return agentshare.TurnMaterials{}, err
 		}
+	}
+	if len(input.Reports) > 0 && in.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 {
+		loaded, err := p.Contexts.Load(ctx, in.Session.ID)
+		return agentshare.TurnMaterials{Session: in.Session, Input: input, Loaded: loaded}, err
 	}
 	if len(input.Segments) == 0 {
 		input.Segments = llm.TextSegments(in.Text)
@@ -54,6 +58,11 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	input.Segments = segments
 	if err := storage.PrepareMessageID(ctx, p.NewMessageID, message); err != nil {
 		return agentshare.TurnMaterials{}, err
+	}
+	for _, m := range extra {
+		if err := storage.PrepareMessageID(ctx, p.NewMessageID, m); err != nil {
+			return agentshare.TurnMaterials{}, err
+		}
 	}
 	record := events.LogRecord{
 		Category:     events.LogCategoryLog,

@@ -35,6 +35,7 @@ type ExecutionSender interface {
 }
 
 type ExecutionSessions interface {
+	EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 	AllocateID(context.Context, *storage.Session) (string, error)
 	CreateCompacted(context.Context, session.Scope, string, session.CompactedRequest) (operationresult.Result[*storage.Session], error)
 	Current(context.Context, session.Scope) (operationresult.Result[*storage.Session], error)
@@ -52,6 +53,7 @@ type ExecutionSessions interface {
 }
 
 type ExecutionTurns interface {
+	ReleaseReservation(string, *turn.Execution)
 	NewExecution(context.Context) (*turn.Execution, error)
 	AllocateAttempt(context.Context) (string, error)
 	AppendPendingInput(string, turn.Input) bool
@@ -73,6 +75,8 @@ type ExecutionTurns interface {
 }
 
 type ExecutionRequests interface {
+	Get(string) (request.Request, bool)
+	Cancel(string) bool
 	CancelSession(string) int
 	List() []request.Request
 	ListBySession(string) []request.Request
@@ -98,6 +102,7 @@ type ExecutionView interface {
 
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
+	RecordToolCall     func(context.Context, *storage.ToolCallRecord) error
 	AppendConfirmation delivery.Confirmation // 根部提供追加确认操作，Actions[1].Command 用于提示丢弃并停止。
 	AppendWait         agentshare.ConfirmationWaitPolicy
 	Sessions           ExecutionSessions

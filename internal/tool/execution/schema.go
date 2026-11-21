@@ -26,7 +26,12 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 			return
 		}
 		seen[schema.Name] = true
-		out = append(out, share.CloneSchema(schema))
+		copy := share.CloneSchema(schema)
+		if view.Mode == storage.SessionModeBackground && schema.Name == "shell" {
+			props, _ := copy.Parameters["properties"].(map[string]any)
+			delete(props, "async")
+		}
+		out = append(out, copy)
 	}
 	if view.Mode == storage.SessionModeWork {
 		tools, err := m.Registry.Query(ctx, share.ToolQuery{Names: []string{"discover_tool"}, IncludeDiscover: true})

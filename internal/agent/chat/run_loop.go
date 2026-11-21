@@ -177,8 +177,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				return failedLoop(err)
 			}
 			s.messages = append(s.messages, committer.Committed()...)
-			var summaryPending *agentshare.PendingUserMessage
-			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 			summaryInput := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "工具调用次数已达上限，可请求继续或者总结当前进度。"}
 			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, summaryInput); err != nil {
 				return failedLoop(err)
@@ -191,6 +189,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				return failedLoop(err)
 			}
 			s.messages = append(s.messages, projected)
+			var summaryPending *agentshare.PendingUserMessage
+			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 			s.tools = nil
 			stream = s.output.StartStream(s.requestCtx)
 			summarized, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)

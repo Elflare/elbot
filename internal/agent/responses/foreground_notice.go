@@ -40,7 +40,8 @@ func (s *turnState) queueForegroundNotice(ctx context.Context, inputs []storage.
 }
 
 func inputOrder(input storage.NativeInput) int {
-	if input.CallID != "" {
+	// Only results owed to a real exchange go first. Synthetic report pairs keep their commit order with user messages.
+	if input.CallID != "" && input.ExchangeID != "" {
 		return 0
 	}
 	var header struct{ Type string }

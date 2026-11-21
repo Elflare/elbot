@@ -102,6 +102,9 @@ func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (oper
 	if !ok {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.NotFound, Message: fmt.Sprintf("tool %q not found", req.Name)}, "", nil
 	}
+	if _, reason := asyncMode(candidate.Definition, req.Arguments, false); reason != "" {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: reason}, reason, nil
+	}
 	prepared, err := candidate.PrepareCall(ctx, req)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, "Tool execution not entered: " + err.Error(), err

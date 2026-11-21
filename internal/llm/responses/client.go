@@ -157,7 +157,7 @@ func (c *Client) StoreForModel(model string) bool {
 	if value, exists := c.extraPayload["store"]; exists {
 		return value.(bool)
 	}
-	return true
+	return false
 }
 
 func withoutStore(fields map[string]any) map[string]any {
