@@ -42,11 +42,10 @@ type TurnInput struct {
 	Prepared                 PreparedTurn
 }
 type TurnMaterials struct {
-	Session      *storage.Session
-	Input        turn.Input
-	UserMessage  *storage.Message
-	ExtraAnswers []*storage.Message
-	Loaded       *contextmgr.LoadedContext
+	Session     *storage.Session
+	Input       turn.Input
+	UserMessage *storage.Message
+	Loaded      *contextmgr.LoadedContext
 }
 type LoopInput struct {
 	Session   *storage.Session
@@ -93,46 +92,8 @@ type Output interface {
 	SendPreview(ctx context.Context, text ...string)
 }
 
-// ResolveAnswers turns each confirmed batch into one user message at handoff.
-// When there is no ordinary input the first answer uses the normal input path.
-func ResolveAnswers(sid string, in *turn.Input) (extra []*storage.Message) {
-	for _, batch := range in.Answers {
-		text := batch.Text()
-		if text == "" {
-			continue
-		}
-		if in.Text == "" && len(in.Segments) == 0 {
-			in.Text = text
-			in.PlatformText = text
-			in.Segments = llm.TextSegments(text)
-		} else {
-			extra = append(extra, &storage.Message{SessionID: sid, Role: storage.RoleUser, Content: text})
-		}
-	}
-	return extra
-}
-
-// OrderedInputMessages keeps tool report pairs contiguous, before ordinary input and answer batches.
-func OrderedInputMessages(reports []*storage.Message, user *storage.Message, answers []*storage.Message) []*storage.Message {
-	if user == nil {
-		return reports
-	}
-	messages := make([]*storage.Message, 0, len(reports)+1+len(answers))
-	messages = append(messages, reports...)
-	return append(append(messages, user), answers...)
-}
-
-func AppendAnswers(messages []llm.LLMMessage, extra []*storage.Message) []llm.LLMMessage {
-	for _, m := range extra {
-		messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments(m.Content)})
-	}
-	return messages
-}
-
-type PendingUserMessage struct {
-	Reports      []*storage.Message // 已完成工具对，不占用户输入槽。
-	ExtraAnswers []*storage.Message
-	Answers      []*storage.AnswerBatch
+type PendingInput struct {
+	Reports []*storage.Message // 已完成工具对，不占用户输入槽。
 	// NeedsElyphRules is resolved after input hooks and before persistence.
 	NeedsElyphRules bool
 	Message         *storage.Message
@@ -142,12 +103,11 @@ type PendingUserMessage struct {
 
 func DrainPending(turns interface {
 	DrainMergedInput(string, string) turn.Input
-}, sessionID string, expected string) *PendingUserMessage {
+}, sessionID string, expected string) *PendingInput {
 	pending := turns.DrainMergedInput(sessionID, expected)
-	extra := ResolveAnswers(sessionID, &pending)
 	if pending.Text == "" && len(pending.Segments) == 0 {
 		if len(pending.Reports) > 0 {
-			return &PendingUserMessage{Reports: pending.Reports}
+			return &PendingInput{Reports: pending.Reports}
 		}
 		return nil
 	}
@@ -161,7 +121,7 @@ func DrainPending(turns interface {
 		Content:  MessageContent(segments),
 		Segments: StoredMessageSegments(segments),
 	}
-	return &PendingUserMessage{Reports: pending.Reports, ExtraAnswers: extra, Answers: pending.Answers, Message: &message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
+	return &PendingInput{Reports: pending.Reports, Message: &message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }
 
 // ForegroundNotice is appended to the request tail as a synthetic user message;

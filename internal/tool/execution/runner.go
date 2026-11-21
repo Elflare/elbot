@@ -308,12 +308,33 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			ready <- index
 			continue
 		}
+		if rejected := m.checkMediaArguments(toolCtx, call); rejected != nil {
+			task.result = *rejected
+			task.finishedAt = storage.Now()
+			ready <- index
+			continue
+		}
+		var withdraw func()
+		if prompt := preparedCall.Prompt; prompt != nil {
+			output, publish, cancelPrompt := prompt(sessionID)
+			sent, err := deps.SendOutputs(toolCtx, []delivery.Output{output})
+			if err != nil || sent.Status != operationresult.Success {
+				if err != nil {
+					task.result = executionError(call, err)
+				} else {
+					task.result = executionResult{Message: toolMessage(call.Name, call.ID, sent.Message), Result: operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message}}
+				}
+				task.finishedAt = storage.Now()
+				ready <- index
+				continue
+			}
+			publish()
+			withdraw = cancelPrompt
+		}
 		var job toolshare.AsyncJob
 		var runToolCtx context.Context
 		var done func()
-		// ask_user registers an external answer destination; only process tools transfer a worker.
-		detached := async && resolvedTool.Native.Definition.Async == toolshare.AsyncProcess
-		if detached {
+		if async {
 			job, err = req.Jobs.StartAsyncTool(toolCtx, sessionID, call.Name)
 			runToolCtx, done = job.Context, job.Done
 		} else {
@@ -321,12 +342,16 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 
 		if err != nil {
+			if withdraw != nil {
+				withdraw()
+			}
 			return toolshare.RunResult{Err: err}
 		}
-		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		if resolvedTool.Native != nil && resolvedTool.Native.Definition.Async == toolshare.AsyncAnswers {
-			runToolCtx = toolshare.WithCallMode(runToolCtx, toolshare.CallMode{Async: async, Send: deps.SendOutputs})
+		if withdraw != nil {
+			finish := done
+			done = func() { withdraw(); finish() }
 		}
+		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
 		if call.Name == "tool_weave" {
 			runToolCtx, err = m.bindWeave(runToolCtx, deps, snapshot, req.DiscoveredTools, call.ID, actor)
 			if err != nil {
@@ -334,22 +359,15 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 				return toolshare.RunResult{Err: err}
 			}
 		}
-		if rejected := m.checkMediaArguments(runToolCtx, call); rejected != nil {
-			done()
-			task.result = *rejected
-			task.finishedAt = storage.Now()
-			ready <- index
-			continue
-		}
-		if detached {
-			// Save acceptance before starting the process. A failed commit cannot leak a job.
+		if async {
+			// Save acceptance before starting the worker. A failed commit cannot leak a job.
 			receipt := "已受理异步任务 " + job.ID + "；完成后自动回报。"
 			task.result = executionResult{Message: toolMessage(call.Name, call.ID, receipt), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.Success}}
 			if err := complete(index, true); err != nil {
 				done()
 				return toolshare.RunResult{Err: err}
 			}
-			go m.runAsync(runToolCtx, deps, job, &snapshot, call, resolvedTool, preparedCall, actor, riskText, runSource)
+			go m.runAsync(runToolCtx, deps, job, &snapshot, call, resolvedTool, preparedCall, actor, riskText, runSource, withdraw)
 			continue
 		}
 		workers.Go(func() {

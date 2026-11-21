@@ -29,21 +29,6 @@ type Context struct {
 	Actor contextinfo.Actor
 }
 
-// CallMode is assigned by the runner after approval, never by a tool's argument decoder.
-type CallMode struct {
-	Async bool
-	Send  func(context.Context, []delivery.Output) (operationresult.Result[struct{}], error)
-}
-type callModeKey struct{}
-
-func WithCallMode(ctx context.Context, mode CallMode) context.Context {
-	return context.WithValue(ctx, callModeKey{}, mode)
-}
-func ModeForCall(ctx context.Context) (CallMode, bool) {
-	v, ok := ctx.Value(callModeKey{}).(CallMode)
-	return v, ok
-}
-
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	// Hook sources publish their own records; Runner consumes only the business return.

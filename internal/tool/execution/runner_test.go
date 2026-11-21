@@ -324,7 +324,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 func TestAsyncAdmission(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	def := (runnerHighRiskTool{name: "shell"}).Definition()
-	def.Definition.Async = toolshare.AsyncProcess
+	def.Definition.Async = toolshare.SyncByDefault
 	def.Parameters["properties"].(map[string]any)["async"] = map[string]any{"type": "boolean", "default": false}
 	if err := registerTestTools(registry, def); err != nil {
 		t.Fatal(err)

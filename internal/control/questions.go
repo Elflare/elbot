@@ -11,18 +11,15 @@ import (
 type Question = storage.Question
 type QuestionDraft = storage.QuestionDraft
 type ConfirmAnswersResult struct {
-	QuestionIDs  []int64       `json:"question_ids"` // Questions included in this submission.
-	Continuation *Continuation `json:"-"`
+	QuestionIDs []int64 `json:"question_ids"` // Questions included in this submission.
 }
 
-type AdmitAnswersFunc func(context.Context, *storage.Session, *storage.AnswerBatch) (operationresult.Result[ConfirmAnswersResult], error)
-
-func (m *Supervisor) CreateQuestions(items []storage.Question, async bool) *storage.QuestionGroup {
-	return m.questions.Create(items, async)
+func (m *Supervisor) CreateQuestions(items []storage.Question) *storage.QuestionGroup {
+	return m.questions.Create(items)
 }
 
 // Slash and HTTP operations resolve the same activation and serialize edits with submission.
-func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, do func(context.Context, *storage.Session) (operationresult.Result[T], error)) (operationresult.Result[T], error) {
+func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, do func(string) (operationresult.Result[T], error)) (operationresult.Result[T], error) {
 	auth, err := share.Authorize(ctx, false)
 	if err != nil || auth.Status != operationresult.Success {
 		return operationresult.Result[T]{Status: auth.Status, Message: auth.Message}, err
@@ -36,7 +33,7 @@ func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, d
 	if (id != "" && b.SessionID() != id) || (ok && original != b) {
 		return operationresult.Result[T]{Status: operationresult.Conflict, Message: "当前会话已切换"}, nil
 	}
-	locked, release, err := m.deps.Sessions.EnterBinding(ctx, b)
+	_, release, err := m.deps.Sessions.EnterBinding(ctx, b)
 	if err != nil {
 		if !b.Valid() {
 			return operationresult.Result[T]{Status: operationresult.Conflict, Message: "当前会话已切换"}, nil
@@ -44,39 +41,28 @@ func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, d
 		return operationresult.Result[T]{}, err
 	}
 	defer release()
-	return do(session.WithBinding(locked, b), current.Data.Session)
+	return do(b.SessionID())
 }
 
 func (m *Supervisor) ListQuestions(ctx context.Context, id string) (operationresult.Result[[]Question], error) {
-	return withQuestionSession(ctx, m, id, func(ctx context.Context, row *storage.Session) (operationresult.Result[[]Question], error) {
-		items := m.questions.List(row.ID)
+	return withQuestionSession(ctx, m, id, func(sid string) (operationresult.Result[[]Question], error) {
+		items := m.questions.List(sid)
 		return operationresult.Result[[]Question]{Status: operationresult.Success, Data: items}, nil
 	})
 }
 
 func (m *Supervisor) SaveQuestionDraft(ctx context.Context, id string, number int64, draft QuestionDraft) (operationresult.Result[Question], error) {
-	return withQuestionSession(ctx, m, id, func(ctx context.Context, row *storage.Session) (operationresult.Result[Question], error) {
-		return m.questions.Save(row.ID, number, draft), nil
+	return withQuestionSession(ctx, m, id, func(sid string) (operationresult.Result[Question], error) {
+		return m.questions.Save(sid, number, draft), nil
 	})
 }
 
 func (m *Supervisor) ConfirmAnswers(ctx context.Context, id string) (operationresult.Result[ConfirmAnswersResult], error) {
-	return withQuestionSession(ctx, m, id, func(ctx context.Context, row *storage.Session) (operationresult.Result[ConfirmAnswersResult], error) {
-		batch := m.questions.Claim(row.ID)
-		r := operationresult.Result[ConfirmAnswersResult]{Status: operationresult.Success}
-		if len(batch.IDs) > 0 {
-			var err error
-			r, err = m.deps.AdmitAnswers(ctx, row, batch)
-			if err != nil || r.Status != operationresult.Success {
-				batch.Finish(false)
-				return r, err
-			}
+	return withQuestionSession(ctx, m, id, func(sid string) (operationresult.Result[ConfirmAnswersResult], error) {
+		ids := m.questions.Submit(sid)
+		if len(ids) == 0 {
+			return operationresult.Result[ConfirmAnswersResult]{Status: operationresult.Rejected, Message: "无待答题"}, nil
 		}
-		r.Data.QuestionIDs = append(r.Data.QuestionIDs, m.questions.SubmitWaiting(row.ID)...)
-		if len(r.Data.QuestionIDs) == 0 {
-			r.Status = operationresult.Rejected
-			r.Message = "无新草稿"
-		}
-		return r, nil
+		return operationresult.Result[ConfirmAnswersResult]{Status: operationresult.Success, Data: ConfirmAnswersResult{QuestionIDs: ids}}, nil
 	})
 }

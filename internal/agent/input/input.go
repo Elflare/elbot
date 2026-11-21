@@ -76,9 +76,6 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) (contex
 }
 
 func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
-	if continuation.Answers != nil {
-		return continuation.Answers.Run(ctx)
-	}
 	if continuation.Kind == "append" {
 		return c.deps.Execution.ResumeAppend(ctx, continuation.SessionID)
 	}

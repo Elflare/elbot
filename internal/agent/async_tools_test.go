@@ -9,6 +9,7 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"encoding/json"
@@ -345,8 +346,8 @@ func testAsyncMixedHandoff(t *testing.T, stop bool) {
 				t.Fatalf("stop woke the model: %d requests", len(chat.requests))
 			}
 			qs, err := deps.Control.ListQuestions(ctx, sid)
-			if err != nil || len(qs.Data) != 1 || qs.Data[0].Question != "mode-true" {
-				t.Fatalf("synchronous group survived stop: %+v %v", qs, err)
+			if err != nil || len(qs.Data) != 0 {
+				t.Fatalf("question group survived stop: %+v %v", qs, err)
 			}
 			send("check after stop")
 			for _, msg := range chat.requests[1].Messages {
@@ -380,35 +381,57 @@ func testAsyncMixedHandoff(t *testing.T, stop bool) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
+	// The answer and the synchronous worker can finish on either side of the next model call.
+	for {
+		history, err := deps.Store.Messages().ListBySession(ctx, sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slices.ContainsFunc(history, func(m storage.Message) bool {
+			return m.Role == storage.RoleTool && strings.Contains(m.Content, "answer-mode-true")
+		}) && len(m.requests.ListBySession(sid)) == 0 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(time.Millisecond):
+		}
+	}
 	send("check replay")
-	if len(chat.requests) != 3 {
-		t.Fatalf("got %d calls", len(chat.requests))
-	}
-	// Check adjacency and pairing, not just whether the strings occur somewhere in history.
-	check := func(messages []llm.LLMMessage) {
-		t.Helper()
-		i := slices.IndexFunc(messages, func(m llm.LLMMessage) bool { return m.ToolCallID == "false" })
-		if i < 0 || len(messages) < i+7 {
-			t.Fatalf("missing synchronous result or deferred input: %+v", messages)
-		}
-		if !strings.Contains(llm.SegmentsTextOnly(messages[i].Segments), "answer-mode-false") {
-			t.Fatalf("sync answer not on its original result")
-		}
-		for j, label := range []string{"second", "first"} {
-			head, out := messages[i+1+2*j], messages[i+2+2*j]
-			if len(head.ToolCalls) != 1 || head.ToolCalls[0].ID != out.ToolCallID || out.Role != llm.RoleTool || !strings.Contains(llm.SegmentsTextOnly(out.Segments), label+"-result") {
-				t.Fatalf("bad %s pair: %+v %+v", label, head, out)
+	messages := chat.requests[len(chat.requests)-1].Messages
+	var results []string
+	var ordinary, syncAnswers int
+	for i, m := range messages {
+		text := llm.SegmentsTextOnly(m.Segments)
+		if m.Role == llm.RoleUser {
+			if strings.Contains(text, "answer-mode-") {
+				t.Fatal("answer forged as user", m)
+			}
+			if strings.Contains(text, "ordinary-queued") {
+				ordinary++
 			}
 		}
-		for j, want := range []string{"ordinary-queued", "answer-mode-true"} {
-			m := messages[i+5+j]
-			if m.Role != llm.RoleUser || !strings.Contains(llm.SegmentsTextOnly(m.Segments), want) {
-				t.Fatalf("missing %s after reports: %+v", want, m)
+		if m.Role != llm.RoleTool {
+			continue
+		}
+		if m.ToolCallID == "false" && strings.Contains(text, "answer-mode-false") {
+			syncAnswers++
+		}
+		for _, label := range []string{"second-result", "first-result", "answer-mode-true"} {
+			if !strings.Contains(text, label) {
+				continue
 			}
+			head := messages[i-1]
+			if head.Role != llm.RoleAssistant || len(head.ToolCalls) != 1 || head.ToolCalls[0].ID != m.ToolCallID || head.ToolCalls[0].Name != m.Name || m.ToolCallID == "true" {
+				t.Fatal("bad report pair", head, m)
+			}
+			results = append(results, label)
 		}
 	}
-	check(chat.requests[1].Messages)
-	check(chat.requests[2].Messages)
+	if ordinary != 1 || syncAnswers != 1 || !slices.Equal(results, []string{"second-result", "first-result", "answer-mode-true"}) {
+		t.Fatal(ordinary, syncAnswers, results)
+	}
 }
 func TestAsyncProcessTool(t *testing.T) {
 	for _, name := range []string{"shell", "tool_weave"} {

@@ -39,7 +39,7 @@ func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommi
 		inputs = append(inputs, input)
 	}
 	commit.Native = &storage.NativeCommit{ExpectedCheckpointID: c.state.checkpointID(), Inputs: inputs}
-	return c.state.commit(ctx, commit, "append_user_message")
+	return c.state.commit(ctx, commit, "append_turn_input")
 }
 
 func (s *turnState) checkpointID() string {

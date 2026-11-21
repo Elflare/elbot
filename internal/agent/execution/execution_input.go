@@ -43,7 +43,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 			continue
 		}
 		merged, execution, ok := c.deps.Turns.ResumeAppend(row.ID)
-		if !ok || (merged.Text == "" && len(merged.Segments) == 0 && len(merged.Answers) == 0 && len(merged.Reports) == 0) {
+		if !ok || (merged.Text == "" && len(merged.Segments) == 0 && len(merged.Reports) == 0) {
 			release()
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "追加确认已失效"}, nil
 		}

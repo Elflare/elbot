@@ -15,7 +15,7 @@ func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
 	if !ok {
 		return false
 	}
-	deferred := len(input.Answers) > 0 || len(input.Reports) > 0
+	deferred := len(input.Reports) > 0
 	switch turn.phase {
 	case PhaseLLM:
 		if !deferred && len(turn.originalInput.Reports) == 0 {
@@ -47,7 +47,7 @@ func (m *Manager) DrainMergedInput(sessionID, attempt string) Input {
 }
 func appendPending(turn *state, input Input) bool {
 	input = normalizeInput(input)
-	if input.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 && len(input.Reports) == 0 {
+	if input.Text == "" && len(input.Segments) == 0 && len(input.Reports) == 0 {
 		return false
 	}
 	turn.pending = append(turn.pending, input)
@@ -55,24 +55,17 @@ func appendPending(turn *state, input Input) bool {
 }
 func mergeInputs(inputs []Input) Input {
 	var reports []*storage.Message
-	var answers []*storage.AnswerBatch
 	clean := []Input{}
 	for _, input := range inputs {
 		reports = append(reports, input.Reports...)
-		for _, b := range input.Answers {
-			if b.Pending() {
-				answers = append(answers, b)
-			}
-		}
 		if input.Text != "" || len(input.Segments) > 0 {
 			clean = append(clean, input)
 		}
 	}
 	if len(clean) == 0 {
-		return Input{Answers: answers, Reports: reports}
+		return Input{Reports: reports}
 	}
 	if len(clean) == 1 {
-		clean[0].Answers = answers
 		clean[0].Reports = reports
 		return clean[0]
 	}
@@ -87,7 +80,7 @@ func mergeInputs(inputs []Input) Input {
 		segments = append(segments, input.Segments...)
 		platformTexts = append(platformTexts, input.PlatformText)
 	}
-	return Input{InputIDs: ids, Reports: reports, Answers: answers, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
+	return Input{InputIDs: ids, Reports: reports, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
 }
 func normalizeInput(input Input) Input {
 	input.Text = strings.TrimSpace(input.Text)

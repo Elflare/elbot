@@ -19,7 +19,7 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMateria
 }
 
 func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
-	return p.route.Messages.Committer("append_user_message")
+	return p.route.Messages.Committer("append_turn_input")
 }
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
@@ -93,13 +93,12 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
-	s.messages = agentshare.AppendAnswers(s.messages, p.materials.ExtraAnswers)
 	userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
 	userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: agentshare.OrderedInputMessages(p.materials.Input.Reports, userMessage, p.materials.ExtraAnswers), ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append(p.materials.Input.Reports, userMessage), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

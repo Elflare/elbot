@@ -27,7 +27,7 @@ type Caller struct {
 		FinishMaterials(context.Context, media.UsageID)
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingInput, agentshare.MessageCommitter, delivery.MessageStream,
 			func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 			func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error)) (operationresult.Result[agentshare.CallOutput], error)
 	}
@@ -42,7 +42,7 @@ type llmCallResult struct {
 	Messages         []llm.LLMMessage
 }
 
-func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (operationresult.Result[llmCallResult], error) {
+func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, stream delivery.MessageStream) (operationresult.Result[llmCallResult], error) {
 	client := selection.Client.(chatcompletions.Streamer)
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	var req chatcompletions.Request

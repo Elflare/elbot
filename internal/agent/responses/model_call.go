@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final operationresult.Result[agentshare.CallOutput], err error) {
+func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, stream delivery.MessageStream) (final operationresult.Result[agentshare.CallOutput], err error) {
 	client := s.selection.Client.(api.Streamer)
 	ctx = agentshare.WithReadOnlyCalls(ctx)
 	var request api.Request

@@ -11,7 +11,6 @@ import (
 
 // AgentDeps 由 Agent 根部在构造阶段接入；组件生命周期仍由 Agent 持有。
 type AgentDeps struct {
-	AdmitAnswers       AdmitAnswersFunc
 	Tools              ToolCapabilities                                                             // 工具目录。
 	Skills             SkillCapabilities                                                            // 技能管理。
 	FileRollback       FileRollbackCapabilities                                                     // 文件编辑撤销。
@@ -48,7 +47,6 @@ func (m *Supervisor) ConnectAgent(deps AgentDeps) error {
 	m.deps.Tools, m.deps.Skills, m.deps.FileRollback, m.deps.PrepareFileContext = deps.Tools, deps.Skills, deps.FileRollback, deps.PrepareFileContext
 	m.deps.Sessions, m.deps.History, m.deps.Requests = deps.Sessions, deps.History, deps.Requests
 	m.workspaces = deps.Workspaces
-	m.deps.AdmitAnswers = deps.AdmitAnswers
 	m.deps.Execution, m.deps.Confirmations = deps.Execution, deps.Confirmations
 	m.deps.Scope, m.deps.Status, m.deps.Commands = deps.Scope, deps.Status, deps.Commands
 	return nil

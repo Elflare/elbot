@@ -21,8 +21,10 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli/remote/management"
+	"elbot/internal/request"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
+	"elbot/internal/turn"
 )
 
 type questionsPlatform struct {
@@ -53,8 +55,119 @@ const questionArgs = `{"questions":[{"question":"哪些测试？","options":["�
 
 func TestConfirmBeforeFirstQuestion(t *testing.T) {
 	var questions storage.QuestionSet
-	if ids := questions.SubmitWaiting("s"); len(ids) != 0 {
+	if ids := questions.Submit("s"); len(ids) != 0 {
 		t.Fatalf("unexpected answers: %v", ids)
+	}
+}
+func TestQuestionPresentation(t *testing.T) {
+	for _, action := range []string{"submit", "cancel", "submit-together"} {
+		t.Run(action, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(testutil.WithCLIConversation(t.Context()), 5*time.Second)
+			defer cancel()
+			chat := &mixedAsyncChat{}
+			for _, id := range []string{"first", "second"} {
+				chat.calls = append(chat.calls, chatcompletions.ToolCallDelta{ID: id, Name: "ask_user", Args: questionArgs})
+			}
+			deps := isolatedModuleDeps(t)
+			contractModels(t, &deps, chat)
+			connectTestNotifications(t, deps.Platform.(isolatedPlatformCapabilities).Router)
+			p := &questionsPlatform{deps.Platform, make(chan delivery.Output, 2), make(chan struct{})}
+			deps.Platform = p
+			m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = m.Close(context.Background()) })
+			defer close(p.release)
+			if err := m.Start(); err != nil {
+				t.Fatal(err)
+			}
+			ctx = contextinfo.WithActor(ctx, m.identity.Actor(ctx))
+			done := make(chan error, 1)
+			go func() { done <- m.HandleMessage(ctx, MessageRequest{Text: "@tool:ask_user ask"}) }()
+			posted := func() delivery.QuestionContent {
+				t.Helper()
+				select {
+				case out := <-p.posted:
+					return out.Blocks[0].Content.(delivery.QuestionContent)
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+					return delivery.QuestionContent{}
+				}
+			}
+			first := posted()
+			if action == "cancel" {
+				for _, r := range m.requests.ListBySession(first.SessionID) {
+					if r.Kind == request.KindTurn {
+						m.requests.Cancel(r.ID)
+					}
+				}
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("turn cancellation did not interrupt presentation")
+				}
+				if jobs := m.requests.ListBySession(first.SessionID); len(jobs) != 0 {
+					t.Fatalf("unaccepted jobs: %+v", jobs)
+				}
+				return
+			}
+			p.release <- struct{}{}
+			second := posted()
+			if action == "submit-together" {
+				p.release <- struct{}{}
+				if err := <-done; err != nil {
+					t.Fatal(err)
+				}
+				before := len(chat.requests)
+				if r, err := deps.Control.ConfirmAnswers(ctx, first.SessionID); err != nil || len(r.Data.QuestionIDs) != 8 {
+					t.Fatal(r, err)
+				}
+				for {
+					rows, err := deps.Store.Messages().ListBySession(ctx, first.SessionID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					reports := 0
+					for _, row := range rows {
+						if row.Role == storage.RoleTool && row.ToolName == "ask_user" && strings.Count(row.Content, "未回答") == 4 {
+							reports++
+						}
+					}
+					if reports == 2 && len(m.requests.ListBySession(first.SessionID)) == 0 && m.turns.Snapshot(first.SessionID).Phase == turn.PhaseIdle {
+						break
+					}
+					select {
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					case <-time.After(time.Millisecond):
+					}
+				}
+				audits, err := deps.Store.ToolCalls().ListBySession(ctx, first.SessionID)
+				calls := len(chat.requests) - before
+				if err != nil || len(audits) != 2 || calls < 1 || calls > 2 {
+					t.Fatal(calls, audits, err)
+				}
+				t.Logf("two groups, eight questions: %d model requests after /ac, 2 report pairs, %d audits", calls, len(audits))
+				return
+			}
+			qs, err := deps.Control.ListQuestions(ctx, first.SessionID)
+			if err != nil || len(qs.Data) != 4 || qs.Data[0].ID != first.ID {
+				t.Fatalf("unshown group listed: %+v %v", qs, err)
+			}
+			r, err := deps.Control.ConfirmAnswers(ctx, first.SessionID)
+			if err != nil || !slices.Equal(r.Data.QuestionIDs, []int64{first.ID, first.ID + 1, first.ID + 2, first.ID + 3}) {
+				t.Fatalf("submitted unseen questions: %+v %v", r, err)
+			}
+			p.release <- struct{}{}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			qs, err = deps.Control.ListQuestions(ctx, first.SessionID)
+			if err != nil || len(qs.Data) != 4 || qs.Data[0].ID != second.ID {
+				t.Fatalf("second group lost: %+v %v", qs, err)
+			}
+		})
 	}
 }
 func TestSynchronousQuestionResult(t *testing.T) {
@@ -84,25 +197,31 @@ func TestSynchronousQuestionResult(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	qs, err := deps.Control.ListQuestions(ctx, "")
-	if err != nil || len(qs.Data) != 2 {
-		t.Fatal(qs, err)
-	}
-	sid := qs.Data[0].SessionID
-	for i, q := range qs.Data {
-		if err := send(fmt.Sprintf("/a %d o sync-answer-%d", q.ID, i)); err != nil {
-			t.Fatal(err)
+	// posted signals entry to SendTo, not its successful return.
+	var qs []storage.Question
+	for len(qs) == 0 {
+		r, err := deps.Control.ListQuestions(ctx, "")
+		if err != nil || r.Status != operationresult.Success {
+			t.Fatal(r, err)
 		}
-		if err := send("/ac"); err != nil {
-			t.Fatal(err)
-		}
-		if i == 0 {
+		qs = r.Data
+		if len(qs) == 0 {
 			select {
-			case e := <-done:
-				t.Fatalf("partial answer finished tool: %v", e)
-			default:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			case <-time.After(time.Millisecond):
 			}
 		}
+	}
+	if len(qs) != 2 {
+		t.Fatal(qs)
+	}
+	sid := qs[0].SessionID
+	if err := send(fmt.Sprintf("/a %d o sync-answer-0", qs[0].ID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := send("/ac"); err != nil {
+		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -116,7 +235,7 @@ func TestSynchronousQuestionResult(t *testing.T) {
 		if !strings.Contains(row.Content, "sync-answer-") {
 			continue
 		}
-		if row.Role != storage.RoleTool || !strings.Contains(row.Content, "sync-answer-0") || !strings.Contains(row.Content, "sync-answer-1") {
+		if row.Role != storage.RoleTool || !strings.Contains(row.Content, "sync-answer-0") || !strings.Contains(row.Content, "Two?\n未回答") {
 			t.Fatalf("misrouted answer: %+v", row)
 		}
 		count++
@@ -130,7 +249,7 @@ func TestQuestionSubmission(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			deps := isolatedModuleDeps(t)
 			connectTestNotifications(t, deps.Platform.(isolatedPlatformCapabilities).Router)
-			chat := &contractChat{call: llm.ToolCallRequest{Name: "ask_user", Arguments: questionArgs}}
+			chat := &asyncProbeChat{contractChat: contractChat{call: llm.ToolCallRequest{Name: "ask_user", Arguments: questionArgs}}, sent: make(chan chatcompletions.Request, 3)}
 			responseInputs := make(chan []json.RawMessage, 1)
 			if route == "chat" {
 				contractModels(t, &deps, chat)
@@ -138,7 +257,7 @@ func TestQuestionSubmission(t *testing.T) {
 				call := 0
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					call++
-					if call == 2 {
+					if call == 3 {
 						var body struct{ Input []json.RawMessage }
 						if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 							t.Error(err)
@@ -197,17 +316,17 @@ func TestQuestionSubmission(t *testing.T) {
 			}
 			first := blocks[0].Content.(delivery.QuestionContent)
 			second := out.Blocks[1].Content.(delivery.QuestionContent)
-			queued := out.Blocks[2].Content.(delivery.QuestionContent)
-			third := out.Blocks[3].Content.(delivery.QuestionContent)
 			sid := first.SessionID
+			close(platform.release)
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			} // Receipt returned before /ac.
+			if r, err := deps.Control.NewSession(ctx); err != nil || r.Status != operationresult.Busy {
+				t.Fatalf("outstanding question did not keep session busy: %+v %v", r, err)
+			}
 			// Use real HTTP routes and slash commands against the same supervisor and SQLite database.
 			api := management.NewHandler(management.HandlerOptions{Control: deps.Control, Authenticate: func(context.Context, *http.Request) (context.Context, error) {
 				return ctx, nil
-			}, Continue: func(ctx context.Context, c control.Continuation) {
-				_, res, err := m.ContinueControlInput(ctx, c)
-				if err != nil || res.Status != operationresult.Success {
-					t.Fatalf("continue: %+v %v", res, err)
-				}
 			}})
 			request := func(method, path, body string, code int) string {
 				t.Helper()
@@ -229,110 +348,76 @@ func TestQuestionSubmission(t *testing.T) {
 			request("POST", "wrong-session/questions/confirm", "", 409)
 			response := request("POST", sid+"/questions/confirm", "", 200)
 			var confirmed control.ConfirmAnswersResult
-			if err := json.Unmarshal([]byte(response), &confirmed); err != nil || !slices.Equal(confirmed.QuestionIDs, []int64{first.ID, second.ID}) {
+			if err := json.Unmarshal([]byte(response), &confirmed); err != nil || !slices.Equal(confirmed.QuestionIDs, []int64{first.ID, second.ID, blocks[2].Content.(delivery.QuestionContent).ID, blocks[3].Content.(delivery.QuestionContent).ID}) {
 				t.Fatalf("confirm %s %v", response, err)
 			}
 			request("POST", sid+"/questions/confirm", "", 400)
-			request("PUT", draftPath, `{"choice":2,"text":"队中改选"}`, 200)
-			request("PUT", fmt.Sprintf("%s/questions/%d/draft", sid, queued.ID), `{"text":"独立批次"}`, 200)
-			request("POST", sid+"/questions/confirm", "", 200)
-			close(platform.release)
-			if err := <-done; err != nil {
-				t.Fatal(err)
-			}
-			var texts []string
-			if route == "chat" {
-				if len(chat.requests) != 2 {
-					t.Fatal("model calls", len(chat.requests))
-				}
-				for _, msg := range chat.requests[1].Messages {
-					if msg.Role == llm.RoleUser {
-						texts = append(texts, llm.SegmentsTextOnly(msg.Segments))
-					}
-				}
-			} else {
-				for _, raw := range <-responseInputs {
-					var item struct{ Role string }
-					_ = json.Unmarshal(raw, &item)
-					if item.Role == "user" {
-						texts = append(texts, string(raw))
-					}
-				}
-			}
-			if len(texts) < 2 || !strings.Contains(texts[len(texts)-2], "队中改选") || strings.Contains(texts[len(texts)-2], "独立批次") || !strings.Contains(texts[len(texts)-1], "独立批次") {
-				t.Fatalf("next request: %v", texts)
-			}
 			got := request("GET", sid+"/questions", "", 200)
 			var remaining struct{ Items []storage.Question }
-			if err := json.Unmarshal([]byte(got), &remaining); err != nil || len(remaining.Items) != 1 || remaining.Items[0].ID != third.ID {
+			if err := json.Unmarshal([]byte(got), &remaining); err != nil || len(remaining.Items) != 0 {
 				t.Fatal(got, err)
 			}
-			if err := send(fmt.Sprintf("/a %d o 待商量", third.ID)); err != nil {
-				t.Fatal(err)
-			}
-			if err := send("/new"); err != nil {
-				t.Fatal(err)
-			}
-			if err := send("新会话消息"); err != nil {
-				t.Fatal(err)
-			}
-			request("GET", sid+"/questions", "", 409)
-			if err := send("/resume " + sid); err != nil {
-				t.Fatal(err)
-			}
-			if err := send("先看其他文件"); err != nil {
-				t.Fatal(err)
-			}
-			restored := request("GET", sid+"/questions", "", 200)
-			if !strings.Contains(restored, "待商量") {
-				t.Fatalf("draft lost across session switch: %s", restored)
-			}
-			reserve := func() *control.Continuation {
-				t.Helper()
-				result, err := deps.Control.ConfirmAnswers(ctx, sid)
-				if err != nil || result.Status != operationresult.Success || result.Data.Continuation == nil {
-					t.Fatalf("idle confirm: %+v %v", result, err)
+			var reportID, text string
+			if route == "chat" {
+				var r chatcompletions.Request
+				for range 3 {
+					select {
+					case r = <-chat.sent:
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					}
 				}
-				return result.Data.Continuation
+				msgs := r.Messages
+				head, out := msgs[len(msgs)-2], msgs[len(msgs)-1]
+				if head.Role != llm.RoleAssistant || len(head.ToolCalls) != 1 || head.ToolCalls[0].Name != "ask_user" || head.ToolCalls[0].Arguments != questionArgs || head.ToolCalls[0].ID == "contract-call" || head.ToolCalls[0].ID != out.ToolCallID || out.Role != llm.RoleTool {
+					t.Fatalf("invalid report pair: %+v %+v", head, out)
+				}
+				reportID, text = out.ToolCallID, llm.SegmentsTextOnly(out.Segments)
+			} else {
+				var inputs []json.RawMessage
+				select {
+				case inputs = <-responseInputs:
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				}
+				var head, out struct {
+					Type, Name, Arguments string
+					CallID                string `json:"call_id"`
+					Output                string
+				}
+				if len(inputs) < 2 {
+					t.Fatal(inputs)
+				}
+				if err := json.Unmarshal(inputs[len(inputs)-2], &head); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(inputs[len(inputs)-1], &out); err != nil {
+					t.Fatal(err)
+				}
+				if head.Type != "function_call" || head.Name != "ask_user" || head.Arguments != questionArgs || head.CallID == "ask" || head.CallID != out.CallID || out.Type != "function_call_output" {
+					t.Fatalf("invalid native pair: %+v %+v", head, out)
+				}
+				reportID, text = out.CallID, out.Output
 			}
-			canceled := reserve()
-			duplicate, err := deps.Control.ConfirmAnswers(ctx, sid)
-			if err != nil || duplicate.Status != operationresult.Rejected {
-				t.Fatalf("duplicate reservation: %+v %v", duplicate, err)
-			}
-			canceled.CancelReservation()
-			stale := reserve()
-			if err := send(fmt.Sprintf("/a %d o 明天部署", third.ID)); err != nil {
-				t.Fatal(err)
-			}
-			stale.CancelReservation()
-			stopped := reserve()
-			if err := send("/stop"); err != nil {
-				t.Fatal(err)
-			}
-			_, conflict, err := m.ContinueControlInput(ctx, *stopped)
-			if err != nil || conflict.Status != operationresult.Conflict {
-				t.Fatalf("stopped submission: %+v %v", conflict, err)
-			}
-			if err := send("/ac"); err != nil {
-				t.Fatal(err)
+			if !strings.Contains(text, "选：2. 全量\n补：跑竞态") || !strings.Contains(text, "答：我来审阅") || strings.Count(text, "未回答") != 2 || strings.Contains(text, "\n\n#") {
+				t.Fatal(text)
 			}
 			history, err := deps.Store.Messages().ListBySession(ctx, sid)
 			if err != nil {
 				t.Fatal(err)
 			}
-			toolText := "已发4题"
-			answers := fmt.Sprintf("#%d 哪些测试？\n选：2. 全量\n补：队中改选\n\n#%d 如何提交？\n答：我来审阅", first.ID, second.ID)
-			for _, want := range []struct{ role, text string }{{"tool", toolText}, {"user", "先看其他文件"}, {"user", answers}, {"user", fmt.Sprintf("#%d 分支？\n答：独立批次", queued.ID)}, {"user", fmt.Sprintf("#%d 部署？\n答：明天部署", third.ID)}} {
-				count := 0
-				for _, msg := range history {
-					if string(msg.Role) == want.role && strings.Contains(msg.Content, want.text) {
-						count++
+			count := 0
+			for _, m := range history {
+				if strings.Contains(m.Content, "我来审阅") {
+					if m.Role != storage.RoleTool || m.ToolCallID != reportID {
+						t.Fatalf("misrouted answer: %+v", m)
 					}
+					count++
 				}
-				if count != 1 {
-					t.Fatalf("wanted exactly one %s %q; history=%+v", want.role, want.text, history)
-				}
+			}
+			audits, err := deps.Store.ToolCalls().ListBySession(ctx, sid)
+			if err != nil || len(audits) != 1 || count != 1 {
+				t.Fatalf("reports=%d audits=%+v err=%v", count, audits, err)
 			}
 		})
 	}
@@ -359,8 +444,8 @@ func (c *waitingQuestionChat) Stream(ctx context.Context, r chatcompletions.Requ
 	}
 }
 func TestQuestionSubmissionDuringLLM(t *testing.T) {
-	for _, stop := range []bool{false, true} {
-		t.Run(fmt.Sprintf("stop=%t", stop), func(t *testing.T) {
+	for _, action := range []string{"submit", "session-stop", "single-stop"} {
+		t.Run(action, func(t *testing.T) {
 			deps := isolatedModuleDeps(t)
 
 			chat := &waitingQuestionChat{contractChat: contractChat{call: llm.ToolCallRequest{Name: "ask_user", Arguments: questionArgs}}, calling: make(chan struct{}), release: make(chan struct{})}
@@ -382,21 +467,34 @@ func TestQuestionSubmissionDuringLLM(t *testing.T) {
 				t.Fatal(qs, err)
 			}
 			sid := qs.Data[0].SessionID
-			for i, q := range qs.Data[:2] {
-				if err := send(fmt.Sprintf("/a %d o answer-%d", q.ID, i)); err != nil {
-					t.Fatal(err)
+			command, want := "/ac", "未回答"
+			if action == "single-stop" {
+				for _, job := range m.requests.ListBySession(sid) {
+					if job.Label == "ask_user" {
+						command, want = "/stop "+job.ID, job.ID+" 被用户取消"
+					}
 				}
-				if err := send("/ac"); err != nil {
-					t.Fatal(err)
+				if command == "/ac" {
+					t.Fatal("missing ask_user job")
 				}
 			}
-			if stop {
+			if err := send(command); err != nil {
+				t.Fatal(err)
+			}
+			for m.turns.Snapshot(sid).PendingCount == 0 {
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-time.After(time.Millisecond):
+				}
+			}
+			if action == "session-stop" {
 				if err := send("/stop"); err != nil {
 					t.Fatal(err)
 				}
 			}
 			close(chat.release)
-			if err := <-done; err != nil && !(stop && errors.Is(err, context.Canceled)) {
+			if err := <-done; err != nil && !(action == "session-stop" && errors.Is(err, context.Canceled)) {
 				t.Fatal(err)
 			}
 			messages := func() []string {
@@ -407,30 +505,30 @@ func TestQuestionSubmissionDuringLLM(t *testing.T) {
 				}
 				var found []string
 				for _, msg := range history {
-					if msg.Role == storage.RoleUser && strings.Contains(msg.Content, "answer-") {
+					if msg.Role == storage.RoleTool && msg.ToolName == "ask_user" && msg.ToolCallID != "contract-call" {
 						found = append(found, msg.Content)
 					}
 				}
 				return found
 			}
-			if stop {
+			if action == "session-stop" {
 				if found := messages(); len(found) != 0 {
 					t.Fatalf("stopped answers persisted: %v", found)
 				}
 				if err := send("/ac"); err != nil {
 					t.Fatal(err)
 				}
-				if found := messages(); len(found) != 1 || !strings.Contains(found[0], "answer-0") || !strings.Contains(found[0], "answer-1") {
-					t.Fatal(found)
+				if found := messages(); len(found) != 0 {
+					t.Fatalf("stopped answers replayed: %v", found)
 				}
 			} else {
 				found := messages()
-				if len(chat.requests) != 3 || len(found) != 2 || !strings.Contains(found[0], "answer-0") || !strings.Contains(found[1], "answer-1") {
+				if len(chat.requests) != 3 || len(found) != 1 || !strings.Contains(found[0], want) || (action == "submit" && strings.Count(found[0], want) != len(qs.Data)) {
 					t.Fatal(len(chat.requests), found)
 				}
 			}
 			remaining, err := deps.Control.ListQuestions(ctx, sid)
-			if err != nil || len(remaining.Data) != len(qs.Data)-2 {
+			if err != nil || len(remaining.Data) != 0 {
 				t.Fatal(remaining, err)
 			}
 		})

@@ -50,7 +50,7 @@ type CallObservation struct {
 func (c *CallProcessor) Call(
 	ctx context.Context, session *storage.Session, selection modelmgr.Selection,
 	messages []llm.LLMMessage, tools []llm.ToolSchema,
-	pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter,
+	pending *agentshare.PendingInput, persistence agentshare.MessageCommitter,
 	stream delivery.MessageStream,
 	prepare func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 	attempt func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error),
@@ -177,7 +177,7 @@ func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, respo
 
 // PrepareCall applies common hooks and authorization to canonical business
 // material. PrepareMaterials expands only the material selected for this call.
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter) (agentshare.CallInput, error) {
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, persistence agentshare.MessageCommitter) (agentshare.CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -199,7 +199,10 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	baseMessages := llm.CloneMessages(messages)
 	commit := storage.DialogueCommit{SessionID: sessionID}
 	if pending != nil {
-		commit.Messages = agentshare.OrderedInputMessages(pending.Reports, pending.Message, pending.ExtraAnswers)
+		commit.Messages = pending.Reports
+		if pending.Message != nil {
+			commit.Messages = append(commit.Messages, pending.Message)
+		}
 		for _, m := range commit.Messages {
 			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
 				return agentshare.CallInput{}, err
@@ -217,7 +220,6 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	hookMessage := agentshare.Message{}
 	if pending != nil && pending.Message != nil {
 		baseMessages = append(baseMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
-		baseMessages = agentshare.AppendAnswers(baseMessages, pending.ExtraAnswers)
 		hookMessage = agentshare.Message{
 			ID:           pending.Message.ID,
 			Role:         string(llm.RoleUser),
@@ -281,9 +283,6 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if pending != nil {
 		if err := commitInput(ctx, session, commit, persistence); err != nil {
 			return agentshare.CallInput{}, err
-		}
-		for _, b := range pending.Answers {
-			b.Finish(true)
 		}
 	}
 	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil

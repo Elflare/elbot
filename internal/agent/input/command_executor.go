@@ -35,7 +35,6 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		return sendErr
 	}
 	if sendErr := sendReply(result, err); sendErr != nil {
-		result.Continuation.CancelReservation()
 		return ctx, true, sendErr
 	}
 	if err != nil {

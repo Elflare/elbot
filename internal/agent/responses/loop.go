@@ -158,8 +158,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	s.tools = tools
 	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
-	s.projection = agentshare.AppendAnswers(s.projection, p.materials.ExtraAnswers)
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: agentshare.OrderedInputMessages(p.materials.Input.Reports, user, p.materials.ExtraAnswers), ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append(p.materials.Input.Reports, user), ElyphRulesShown: elyphRulesShown}}, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {

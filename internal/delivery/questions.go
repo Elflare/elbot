@@ -39,7 +39,7 @@ func QuestionsOutput(questions []storage.Question, answerCommand, confirmCommand
 			out.Actions = append(out.Actions, Action{ID: fmt.Sprintf("a-%d-%d", q.ID, i+1), Label: fmt.Sprintf("#%d · %s", q.ID, option), Command: fmt.Sprintf("%s %d %d", answerCommand, q.ID, i+1)})
 		}
 	}
-	out.Blocks = append(out.Blocks, ContentBlock{Kind: ContentText, Content: "选项后可加补充"})
-	out.Actions = append(out.Actions, Action{ID: "ac", Label: "提交草稿", Command: confirmCommand})
+	out.Blocks = append(out.Blocks, ContentBlock{Kind: ContentText, Content: "选项后可加补充；提交全部待答题，空题记为未回答"})
+	out.Actions = append(out.Actions, Action{ID: "ac", Label: "提交全部", Command: confirmCommand})
 	return out
 }

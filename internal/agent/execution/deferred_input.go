@@ -63,7 +63,7 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 	head := agentshare.ToolCallStorageMessage(sid, "", "", []llm.ToolCallRequest{call}, "")
 	result := agentshare.ToolResultStorageMessage(sid, msg)
 	in := turn.Input{Reports: []*storage.Message{&head, &result}}
-	admitted, err := c.AdmitDeferredInput(locked, row, in)
+	admitted, err := c.admitReport(locked, row, in)
 	release()
 	if err != nil {
 		return err
@@ -75,16 +75,17 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 		return nil
 	}
 	defer c.deps.Turns.ReleaseReservation(sid, admitted.Data)
-	_, r, err := c.RunDeferredInput(ctx, row, in, admitted.Data)
+	ctx = agentshare.WithInboundTurnInput(turn.WithExecution(ctx, admitted.Data), in)
+	_, r, err := c.Run(ctx, row, "", foregroundTurnOutput{ExecutionSender: c.deps.Output})
 	if err == nil && r.Status != operationresult.Success {
 		return fmt.Errorf("异步结果续跑: %s", r.Message)
 	}
 	return err
 }
 
-// AdmitDeferredInput runs under the caller's session binding lock. A nil execution
+// admitReport runs under the caller's session binding lock. A nil execution
 // means the active turn owns the pending input; otherwise the caller owns a reservation.
-func (c *ExecutionCoordinator) AdmitDeferredInput(ctx context.Context, row *storage.Session, in turn.Input) (result operationresult.Result[*turn.Execution], err error) {
+func (c *ExecutionCoordinator) admitReport(ctx context.Context, row *storage.Session, in turn.Input) (result operationresult.Result[*turn.Execution], err error) {
 	if row.ArchivedAt != nil {
 		result.Status, result.Message = operationresult.Rejected, "会话已归档"
 		return
@@ -102,9 +103,6 @@ func (c *ExecutionCoordinator) AdmitDeferredInput(ctx context.Context, row *stor
 			result.Status, result.Message = operationresult.Busy, "会话忙"
 			return
 		}
-		for _, batch := range in.Answers {
-			batch.Bind(e.Done())
-		}
 		if idle {
 			if !c.deps.Turns.ReserveExecution(row.ID, in, e) {
 				continue
@@ -116,14 +114,4 @@ func (c *ExecutionCoordinator) AdmitDeferredInput(ctx context.Context, row *stor
 		result.Status = operationresult.Success
 		return
 	}
-}
-
-func (c *ExecutionCoordinator) RunDeferredInput(ctx context.Context, row *storage.Session, input turn.Input, execution *turn.Execution) (context.Context, operationresult.Result[struct{}], error) {
-	select {
-	case <-execution.Done():
-		return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "提交已取消"}, nil
-	default:
-	}
-	ctx = agentshare.WithInboundTurnInput(turn.WithExecution(ctx, execution), input)
-	return c.Run(ctx, row, input.Text, foregroundTurnOutput{ExecutionSender: c.deps.Output})
 }

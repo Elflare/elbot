@@ -67,7 +67,7 @@ type LoopDeps struct {
 		Commit(context.Context, storage.DialogueCommit, string) error
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingInput, agentshare.MessageCommitter, delivery.MessageStream,
 			func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 			func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error)) (operationresult.Result[agentshare.CallOutput], error)
 	}

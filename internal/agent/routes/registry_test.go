@@ -67,7 +67,7 @@ type testPrepared struct {
 }
 
 func (p *testPrepared) InputCommitter() agentshare.MessageCommitter {
-	return p.loop.messages.Committer("append_user_message")
+	return p.loop.messages.Committer("append_turn_input")
 }
 
 func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {

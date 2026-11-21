@@ -35,13 +35,12 @@ type Preparer struct {
 
 func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (agentshare.TurnMaterials, error) {
 	input := in.Input
-	extra := agentshare.ResolveAnswers(in.Session.ID, &input)
 	for _, m := range input.Reports {
 		if err := storage.PrepareMessageID(ctx, p.NewMessageID, m); err != nil {
 			return agentshare.TurnMaterials{}, err
 		}
 	}
-	if len(input.Reports) > 0 && in.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 {
+	if len(input.Reports) > 0 && in.Text == "" && len(input.Segments) == 0 {
 		loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 		return agentshare.TurnMaterials{Session: in.Session, Input: input, Loaded: loaded}, err
 	}
@@ -58,11 +57,6 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	input.Segments = segments
 	if err := storage.PrepareMessageID(ctx, p.NewMessageID, message); err != nil {
 		return agentshare.TurnMaterials{}, err
-	}
-	for _, m := range extra {
-		if err := storage.PrepareMessageID(ctx, p.NewMessageID, m); err != nil {
-			return agentshare.TurnMaterials{}, err
-		}
 	}
 	record := events.LogRecord{
 		Category:     events.LogCategoryLog,
@@ -84,7 +78,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	if err != nil {
 		return agentshare.TurnMaterials{}, fmt.Errorf("读取对话上下文: %w", err)
 	}
-	return agentshare.TurnMaterials{ExtraAnswers: extra, Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
+	return agentshare.TurnMaterials{Session: in.Session, Input: input, UserMessage: message, Loaded: loaded}, nil
 }
 
 func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, user *storage.Message, platformText string, segments []llm.MessageSegment, messages []llm.LLMMessage, tools []llm.ToolSchema, needsElyphRules bool) ([]llm.MessageSegment, []llm.ToolSchema, bool, error) {

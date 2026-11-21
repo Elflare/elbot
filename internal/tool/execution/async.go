@@ -21,7 +21,7 @@ func asyncMode(info toolshare.Info, raw json.RawMessage, foreground bool) (bool,
 	if json.Unmarshal(raw, &args) != nil || args == nil {
 		return false, "工具参数必须为 JSON 对象"
 	}
-	async := info.Async == toolshare.AsyncAnswers
+	async := info.Async == toolshare.AsyncByDefault
 	if value, ok := args["async"]; ok {
 		switch string(value) {
 		case "true":
@@ -49,7 +49,7 @@ func (result executionResult) record(sid string, call llm.ToolCallRequest, actor
 }
 
 // Only the actual invocation executes and fires the completion Hook. The later pair is input.
-func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job toolshare.AsyncJob, session *storage.Session, call llm.ToolCallRequest, target resolvedTool, preparedCall *toolshare.PreparedCall, actor contextinfo.Actor, risk, runSource string) {
+func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job toolshare.AsyncJob, session *storage.Session, call llm.ToolCallRequest, target resolvedTool, preparedCall *toolshare.PreparedCall, actor contextinfo.Actor, risk, runSource string, withdraw func()) {
 	defer job.Done()
 	sessionID := session.ID
 
@@ -57,6 +57,9 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 	result := m.executePrepared(ctx, call, target, preparedCall, func() {
 		m.recordCallStarted(ctx, sessionID, call, target.Source, actor, risk, runSource)
 	})
+	if withdraw != nil {
+		withdraw()
+	} // Retire the prompt before the report can wake another turn.
 	m.recordCallCompleted(ctx, sessionID, call, target.Source, actor, risk, runSource, start, result)
 	if ctx.Err() == nil {
 		if err := result.complete(ctx, deps, session, call, risk); err != nil {

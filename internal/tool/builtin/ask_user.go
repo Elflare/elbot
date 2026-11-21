@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -14,7 +13,7 @@ import (
 )
 
 type askUserTool struct {
-	create   func([]storage.Question, bool) *storage.QuestionGroup
+	create   func([]storage.Question) *storage.QuestionGroup
 	commands func() (string, string)
 }
 
@@ -23,8 +22,8 @@ func (t askUserTool) definition() share.ToolDefinition {
 		"question": map[string]any{"type": "string"},
 		"options":  map[string]any{"type": "array", "minItems": 1, "maxItems": 3, "items": map[string]any{"type": "string"}},
 	}
-	return share.NewBuilder("ask_user").Async(share.AsyncAnswers).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
-		Description("批量提问。默认异步：展示后返回，用户作答以 user 消息送达；async=false 等本组答齐后返回工具结果。勿复述或轮询。").
+	return share.NewBuilder("ask_user").Async(share.AsyncByDefault).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
+		Description("批量提问，默认异步。用户交卷后以工具结果回报，空题标为未回答。async=false 等待交卷。勿复述或轮询。").
 		ObjectArray("questions", "题目", fields, []string{"question", "options"}, share.Required()).Tags("agent").Build(t.prepare)
 }
 
@@ -58,29 +57,48 @@ func (t askUserTool) prepare(_ context.Context, req share.CallRequest, info shar
 		}
 		questions = append(questions, q)
 	}
+	var group *storage.QuestionGroup
 	prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (operationresult.Result[*share.Result], string, error) {
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		for i := range questions {
-			questions[i].SessionID = facts.SessionID
-		}
-		mode, ok := share.ModeForCall(ctx)
-		if !ok {
+		if group == nil {
 			return operationresult.Result[*share.Result]{Status: operationresult.Rejected, Message: "交互工具需要前台执行器"}, "", nil
 		}
-		group := t.create(questions, mode.Async)
-		status := fmt.Sprintf("已发%d题", len(questions))
-		answer, confirm := t.commands()
-		out := delivery.QuestionsOutput(questions, answer, confirm)
-		sent, err := mode.Send(ctx, []delivery.Output{out})
-		if err != nil || sent.Status != operationresult.Success {
-			group.Cancel()
-			return operationresult.Result[*share.Result]{Status: sent.Status, Message: sent.Message}, status, err
-		}
-		text, err := group.Result(ctx, status)
+		items, err := group.Wait(ctx)
 		if err != nil {
-			return operationresult.Result[*share.Result]{Status: operationresult.Canceled, Message: err.Error()}, status, nil
+			return operationresult.Result[*share.Result]{Status: operationresult.Canceled, Message: err.Error()}, "", nil
 		}
+		text := questionAnswers(items)
 		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: text}}, text, nil
 	})
+	prepared.Prompt = func(sid string) (delivery.Output, func(), func()) {
+		for i := range questions {
+			questions[i].SessionID = sid
+		}
+		group = t.create(questions)
+		answer, confirm := t.commands()
+		return delivery.QuestionsOutput(questions, answer, confirm), group.Publish, group.Cancel
+	}
 	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: prepared}, nil
+}
+
+func questionAnswers(items []storage.Question) string {
+	var text strings.Builder
+	for i, q := range items {
+		if i > 0 {
+			text.WriteByte('\n')
+		}
+		fmt.Fprintf(&text, "#%d %s\n", q.ID, q.Question)
+		d := q.Draft
+		switch {
+		case d == nil:
+			text.WriteString("未回答")
+		case d.Choice == nil:
+			fmt.Fprintf(&text, "答：%s", d.Text)
+		default:
+			fmt.Fprintf(&text, "选：%d. %s", *d.Choice, q.Options[*d.Choice-1])
+			if d.Text != "" {
+				fmt.Fprintf(&text, "\n补：%s", d.Text)
+			}
+		}
+	}
+	return text.String()
 }

@@ -34,5 +34,5 @@ func (h *handler) confirmAnswers(w http.ResponseWriter, req *http.Request) {
 	if writeControlResultError(w, result, err) {
 		return
 	}
-	h.writeContinuationResult(w, req, result.Data, result.Data.Continuation)
+	writeAPIJSON(w, http.StatusOK, result.Data)
 }

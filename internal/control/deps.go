@@ -21,7 +21,6 @@ import (
 
 // SupervisorDeps 只借用能力，不取得提供方组件或生命周期。
 type SupervisorDeps struct {
-	AdmitAnswers       AdmitAnswersFunc                                                             // Agent admission under the current Session gate.
 	Tools              ToolCapabilities                                                             // 原始工具目录查询。
 	Skills             SkillCapabilities                                                            // 技能重载与删除。
 	FileRollback       FileRollbackCapabilities                                                     // 原始备份记录与撤销。

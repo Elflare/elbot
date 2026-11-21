@@ -46,7 +46,7 @@ func (b *Builder) Description(description string) *Builder {
 func (b *Builder) Async(mode AsyncMode) *Builder {
 	b.async = mode
 	b.Boolean("async", "异步执行，长耗时调用可true。")
-	b.properties["async"].(map[string]any)["default"] = mode == AsyncAnswers
+	b.properties["async"].(map[string]any)["default"] = mode == AsyncByDefault
 	return b
 }
 func (b *Builder) Weavable() *Builder {

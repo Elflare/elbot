@@ -84,7 +84,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		previousID := row.ID
 		requestCtx, row, operation, err = c.runAttempt(ctx, row, text, out, &input)
 		runErr = cmp.Or(runErr, err)
-		if input.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 && len(input.Reports) == 0 {
+		if input.Text == "" && len(input.Segments) == 0 && len(input.Reports) == 0 {
 			if err == nil && operation.Status == operationresult.Success && c.deps.Turns.Snapshot(row.ID).Execution == execution {
 				return // Another attempt owns this execution.
 			}

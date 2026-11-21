@@ -80,8 +80,6 @@ func (s *RemoteServer) scheduleControlContinuation(source context.Context, conti
 	s.mu.Unlock()
 	if continueInput != nil {
 		go s.runControlContinuation(source, continuation, continueInput)
-	} else {
-		continuation.CancelReservation()
 	}
 }
 

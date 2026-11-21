@@ -22,7 +22,7 @@ type questionCommand struct {
 func (questionsModule) RegisterCommands(r Registrar, deps Deps) error {
 	for _, info := range []command.Info{
 		{Name: "a", Args: "[题号 选项|o [文本]]", Description: "看题 / 填草稿", MinRole: contextinfo.RoleUser},
-		{Name: "ac", Description: "提交草稿", MinRole: contextinfo.RoleUser},
+		{Name: "ac", Description: "提交全部待答题，空题记为未回答", MinRole: contextinfo.RoleUser},
 	} {
 		if err := r.Register(questionCommand{deps, info}); err != nil {
 			return err
@@ -37,9 +37,7 @@ func (c questionCommand) Handle(ctx context.Context, req command.Request) (comma
 			return command.TextResult(operationresult.InvalidArguments, "用法："+c.deps.CommandText("ac")), nil
 		}
 		answer, err := c.deps.Control.ConfirmAnswers(ctx, "")
-		result := command.FromOperationResult(answer, command.ResultKindAnswers, func(d control.ConfirmAnswersResult) string { return fmt.Sprintf("%d 题已发送", len(d.QuestionIDs)) })
-		result.Continuation = answer.Data.Continuation
-		return result, err
+		return command.FromOperationResult(answer, command.ResultKindAnswers, func(d control.ConfirmAnswersResult) string { return fmt.Sprintf("已提交 %d 题", len(d.QuestionIDs)) }), err
 	}
 	if req.Args == "" {
 		items, err := c.deps.Control.ListQuestions(ctx, "")

@@ -97,10 +97,9 @@ type SetModeRequest struct {
 
 // Continuation 必须在业务结果成功交付后进入 Agent 输入链；不序列化成客户端可提交的指令。
 type Continuation struct {
-	Answers   *AnswerSubmission `json:"-"` // Owned idle-turn reservation, present for an answer submission.
-	Kind      string            // input 为普通输入，append 为当前追加等待的续跑。
-	SessionID string            // 已完成模式切换的目标会话。
-	Text      string            // 保留原始输入，不 TrimSpace。
+	Kind      string // input 为普通输入，append 为当前追加等待的续跑。
+	SessionID string // 已完成模式切换的目标会话。
+	Text      string // 保留原始输入，不 TrimSpace。
 }
 type SessionChangeResult struct {
 	Messages         []MessageData `json:"messages"` // 按调用方选择读取的完整原始消息。

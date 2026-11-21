@@ -17,7 +17,7 @@ import (
 )
 
 type Deps struct {
-	CreateQuestions     func([]storage.Question, bool) *storage.QuestionGroup // Assign IDs and save one question group.
+	CreateQuestions     func([]storage.Question) *storage.QuestionGroup       // Assign IDs and save one question group.
 	QuestionCommands    func() (string, string)                               // Configured answer and submit commands.
 	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
 	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。

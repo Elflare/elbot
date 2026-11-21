@@ -34,7 +34,7 @@ func TestRuleCardInputCanRetryAfterFailedCommit(t *testing.T) {
 	row := &storage.Session{ID: "s", Metadata: `{"keep":1}`}
 	user := &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: "rules and input"}
 	input := storage.DialogueCommit{SessionID: row.ID, Messages: []*storage.Message{{SessionID: row.ID, Role: storage.RoleAssistant}, {SessionID: row.ID, Role: storage.RoleTool}, user}, ElyphRulesShown: true}
-	persistence := store.Committer("append_user_message")
+	persistence := store.Committer("append_turn_input")
 	if err := commitInput(t.Context(), row, input, persistence); !errors.Is(err, want) || row.Metadata != `{"keep":1}` {
 		t.Fatalf("failed write advanced session or lost error: metadata=%s err=%v", row.Metadata, err)
 	}

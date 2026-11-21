@@ -94,7 +94,6 @@ func NewHandler(options HandlerOptions) http.Handler {
 
 func (h *handler) writeContinuationResult(w http.ResponseWriter, req *http.Request, result any, continuation *control.Continuation) {
 	if err := writeAPIJSON(w, http.StatusOK, result); err != nil || continuation == nil || h.continueCall == nil {
-		continuation.CancelReservation()
 		return
 	}
 	if flusher, ok := w.(http.Flusher); ok {

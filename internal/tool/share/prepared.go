@@ -6,12 +6,15 @@ import (
 	"context"
 	"slices"
 
+	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
 )
 
 // PreparedCall 保存一次调用的完整准备结果，不持有准备阶段的 context 或锁。
 // 工具的执行回调应使用已固定的业务数据和 Call 传入的执行 context。
 type PreparedCall struct {
+	// Prompt registers an interactive group after approval, before the receipt.
+	Prompt func(sessionID string) (output delivery.Output, publish, withdraw func())
 	// request 保存独立的调用参数，执行前用来检查调用身份与参数是否变化。
 	request CallRequest
 	// assessment 保存本次准备时确定的完整风险结果，不在确认或执行时重新评估。

@@ -40,7 +40,7 @@ type pipes struct {
 }
 
 func Definition(env processenv.Environment) share.ToolDefinition {
-	return share.NewBuilder("tool_weave").Async(share.AsyncProcess).
+	return share.NewBuilder("tool_weave").Async(share.SyncByDefault).
 		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。默认已import asyncio,可直接使用。复杂、多次工具调用尽量使用该工具，简单别用。例：
 from pathlib import Path
 projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}

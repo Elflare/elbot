@@ -55,7 +55,6 @@ type Snapshot struct {
 type Input struct {
 	Reports  []*storage.Message // 已完成的异步调用对，随输入交付，不走用户消息 Hook。
 	InputIDs []string
-	Answers  []*storage.AnswerBatch // Deferred user messages, one per /ac.
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string
