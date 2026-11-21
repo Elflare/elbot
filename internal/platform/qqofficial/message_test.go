@@ -377,6 +377,35 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	}
 }
 
+func TestInboundAttachmentURLPreservedInHistory(t *testing.T) {
+	const imageURL = "https://multimedia.nt.qq.com.cn/download?appid=123&fileid=abc&rkey=a%2Bb%3D&spec=0"
+	ctx := t.Context()
+	db, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	history := db.Repository()
+	a := newTestAdapter(t, Config{}, history)
+	h := &captureHandler{}
+	msg := inboundMessage{
+		ID: "photo", GroupOpenID: "group", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "member"},
+		Attachments: []messageAttachment{{ContentType: "image/jpeg", Filename: "photo.jpg", URL: imageURL}},
+	}
+	a.handleGroupMessage(ctx, h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
+	a.handleC2CMessage(ctx, h.HandleMessage, payload{Type: eventC2CMessageCreate}, msg)
+	for kind, id := range map[contextinfo.ChatType]string{contextinfo.ChatGroup: "group", contextinfo.ChatPrivate: "user"} {
+		row, err := history.GetByPlatformMessage(ctx, a.Name(), kind, id, msg.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		segments := storage.UnmarshalChatSegments(row.Segments)
+		if len(segments) != 1 || segments[0].Type != "image" || segments[0].URL != imageURL {
+			t.Errorf("%s: stored image = %+v, want original URL", kind, segments)
+		}
+	}
+}
+
 func TestHandleC2CMessageImageAttachmentReachesHandler(t *testing.T) {
 	imageURL := "https://example.com/image.png"
 	adapter := newTestAdapter(t, Config{}, nil)

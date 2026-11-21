@@ -136,7 +136,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		{Type: share.SegmentText, Text: "caption"},
 		{Type: share.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
 		{Type: share.SegmentFile, PlatformFileID: "file-id"},
-		{Type: share.SegmentImage, URL: "https://cdn.example.com/image.png?rkey=expired-secret"},
+		{Type: share.SegmentImage, URL: "https://cdn.example.com/image.png?access_token=expired-secret"},
 		{Type: share.SegmentFile, PlatformFileID: "stale-file-id"},
 	}
 	row := &storage.ChatMessage{
@@ -192,7 +192,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	if got.ReferenceSegments[4].MediaID != "" || got.ReferenceSegments[4].PlatformFileID != "stale-file-id" {
 		t.Fatalf("stale association reused = %#v", got.ReferenceSegments[4])
 	}
-	if got.ReferenceSegments[1].URL != "" || got.ReferenceSegments[3].URL != "" {
-		t.Fatalf("expired URL survived history cleaning: %#v", got.ReferenceSegments)
+	if got.ReferenceSegments[1].URL != raw[1].URL || got.ReferenceSegments[3].URL != "" {
+		t.Fatalf("expected rkey URL to survive but token URL to be removed: %#v", got.ReferenceSegments)
 	}
 }

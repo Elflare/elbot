@@ -106,7 +106,7 @@ func chatMediaURL(value string) string {
 	}
 	for key := range u.Query() {
 		key = strings.ToLower(key)
-		if strings.HasPrefix(key, "x-amz-") || strings.HasPrefix(key, "x-goog-") || strings.Contains(key, "token") || strings.Contains(key, "signature") || key == "sig" || key == "rkey" || key == "auth_key" {
+		if strings.HasPrefix(key, "x-amz-") || strings.HasPrefix(key, "x-goog-") || strings.Contains(key, "token") || strings.Contains(key, "signature") || key == "sig" || key == "auth_key" {
 			return ""
 		}
 	}

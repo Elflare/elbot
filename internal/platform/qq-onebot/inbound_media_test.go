@@ -25,7 +25,7 @@ func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 	}
 	defer history.Close()
 	a := newTestAdapter(t, Config{}, nil, history.Repository())
-	raw := `[{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}},{"type":"file","data":{"file_id":"file-id","name":"file.txt"}},{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}}]`
+	raw := `[{"type":"image","data":{"file":"image-id","url":"https://example.com/image?access_token=secret"}},{"type":"file","data":{"file_id":"file-id","name":"file.txt"}},{"type":"image","data":{"file":"image-id","url":"https://example.com/image?access_token=secret"}}]`
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", MessageID: 1, GroupID: 9, UserID: 1, Message: []byte(raw), RawMessage: raw})
 	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group", "9", "1")

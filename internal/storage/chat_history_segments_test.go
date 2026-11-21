@@ -15,7 +15,7 @@ func TestChatSegmentsPreserveOrderAndRemoveTransientSources(t *testing.T) {
 		{Type: "file", URL: "data:image/png;base64,c2VjcmV0", Name: "C:\\media\\secret.txt", MediaID: "media:secret", PlatformFileID: "C:/media/secret.txt"},
 		{Type: "image", URL: "https://api.telegram.org/file/bot123:secret/a.jpg", Name: "base64://secret"},
 		{Type: "image", URL: "https://example.com/a?X-Amz-Signature=secret"},
-		{Type: "image", URL: "https://example.com/a?rkey=secret"},
+		{Type: "image", URL: "https://example.com/a?rkey=attachment-key&access_token=secret"},
 		{Type: "image", URL: "https://example.com/a?token=secret"},
 	}
 	segments = append(segments, segments[1])
