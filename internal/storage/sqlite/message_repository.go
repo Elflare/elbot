@@ -349,6 +349,32 @@ func (r *MessageRepository) conversationRange(ctx context.Context, sessionID, to
 	return where, args, nil
 }
 
+func (r *MessageRepository) ListInputHistory(ctx context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error) {
+	// 与普通私聊会话列表使用相同的归属条件；包含归档，不扩大管理员范围。
+	where, args := sessionListFilter(storage.ListSessionsRequest{
+		Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: account.ID, IncludeArchived: true,
+	})
+	rows, err := r.db.QueryContext(ctx, `SELECT m.content FROM sessions s JOIN messages m ON m.session_id = s.id
+WHERE `+where+` AND m.role = 'user' AND trim(m.content, char(9,10,11,12,13,32)) <> ''
+ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, fmt.Errorf("list input history: %w", err)
+	}
+	defer rows.Close()
+	items := []string{}
+	seen := make(map[string]struct{})
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return nil, err
+		}
+		if _, ok := seen[text]; !ok {
+			seen[text] = struct{}{}
+			items = append(items, text)
+		}
+	}
+	return items, rows.Err()
+}
 func (r *MessageRepository) CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error) {
 	where, args, err := r.conversationRange(ctx, sessionID, toMessageID)
 	if err != nil {

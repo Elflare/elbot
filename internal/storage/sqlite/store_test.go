@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,49 @@ func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {
 	return true
 }
 
+func TestListInputHistory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := t.Context()
+	account := contextinfo.ActorIdentity{Platform: "remote-cli", ID: "alice"}
+	at := storage.Now()
+	for _, s := range []storage.Session{
+		{ID: "s1", Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: account.ID},
+		{ID: "archived", Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: account.ID, ArchivedAt: &at},
+		{ID: "owner", Owner: contextinfo.ActorIdentity{Platform: account.Platform, ID: "bob"}, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: account.ID},
+		{ID: "chat", Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: "bob"},
+		{ID: "platform", Owner: account, Platform: "other", ChatType: contextinfo.ChatPrivate, ChatID: account.ID},
+		{ID: "group", Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatGroup, ChatID: account.ID},
+		{ID: "task", Owner: account, Platform: account.Platform, ChatType: contextinfo.ChatPrivate, ChatID: account.ID, Mode: storage.SessionModeBackground},
+	} {
+		if err := store.Sessions().Create(ctx, &s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(want []string) {
+		t.Helper()
+		got, err := store.Messages().ListInputHistory(ctx, account, 3)
+		if err != nil || got == nil || !slices.Equal(got, want) {
+			t.Fatalf("history = %#v, %v; want %#v", got, err, want)
+		}
+	}
+	check([]string{})
+	add := func(id, session, role, text string) {
+		t.Helper()
+		if err := store.Messages().Append(ctx, &storage.Message{ID: id, SessionID: session, Role: role, Content: text, CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("1", "s1", "user", "outside limit")
+	add("2", "s1", "user", "again")
+	add("3", "archived", "user", " keep\nwhitespace ")
+	add("4", "s1", "user", "again")
+	add("5", "s1", "assistant", "reply")
+	add("6", "s1", "user", " \n\t")
+	for _, id := range []string{"owner", "chat", "platform", "group", "task"} {
+		add(id, id, "user", "not my input")
+	}
+	check([]string{"again", " keep\nwhitespace "})
+}
 func TestNewCreatesCurrentTables(t *testing.T) {
 	store := newTestStore(t)
 

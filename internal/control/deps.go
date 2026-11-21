@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/doctor"
 	"elbot/internal/fileops"
@@ -67,6 +68,7 @@ type SessionCapabilities interface {
 // HistoryCapabilities 由 Agent 根部适配自己的仓库与 Loader，不向 C 交付整个 Store。
 type HistoryCapabilities interface {
 	GetSession(context.Context, string) (*storage.Session, error)
+	ListInputHistory(context.Context, contextinfo.ActorIdentity, int) ([]string, error)
 	LoadMessagePage(context.Context, string, int, int) (contextmgr.MessagePage, error)
 }
 

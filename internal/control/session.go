@@ -436,6 +436,17 @@ func (m *Supervisor) SetMode(ctx context.Context, req SetModeRequest) (operation
 	return operationresult.Result[SetModeResult]{Status: operationresult.Success, Data: result}, nil
 }
 
+func (m *Supervisor) ListInputHistory(ctx context.Context) (operationresult.Result[[]string], error) {
+	authorized, err := share.Authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[[]string]{Status: authorized.Status, Message: authorized.Message}, err
+	}
+	items, err := m.deps.History.ListInputHistory(ctx, authorized.Data.ActorIdentity, 200)
+	if err != nil {
+		return operationresult.Result[[]string]{}, err
+	}
+	return operationresult.Result[[]string]{Status: operationresult.Success, Data: items}, nil
+}
 func (m *Supervisor) SessionMessages(ctx context.Context, req SessionMessagesRequest) (operationresult.Result[SessionMessagesResult], error) {
 	authorized, err := share.Authorize(ctx, false)
 	if err != nil {

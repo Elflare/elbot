@@ -39,6 +39,7 @@ func NewHandler(options HandlerOptions) http.Handler {
 	mux.HandleFunc("POST /sessions/{session_id}/questions/confirm", h.confirmAnswers)
 	mux.HandleFunc("GET /commands", h.getCommands)
 	mux.HandleFunc("GET /status", h.getStatus)
+	mux.HandleFunc("GET /input-history", h.listInputHistory)
 	mux.HandleFunc("GET /sessions", h.listSessions)
 	mux.HandleFunc("POST /sessions", h.newSession)
 	mux.HandleFunc("GET /sessions/{session_id}", h.getSession)

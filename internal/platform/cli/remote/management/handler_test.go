@@ -261,6 +261,25 @@ func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
 	}
 }
 
+func (handlerControlStub) ListInputHistory(context.Context) (operationresult.Result[[]string], error) {
+	return operationresult.Result[[]string]{Status: operationresult.Success, Data: []string{}}, nil
+}
+
+func TestInputHistoryRoute(t *testing.T) {
+	opts := HandlerOptions{Control: handlerControlStub{}}
+	get := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		NewHandler(opts).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/input-history", nil))
+		return w
+	}
+	if w := get(); w.Code != http.StatusUnauthorized {
+		t.Fatalf("without authentication: %d", w.Code)
+	}
+	opts.Authenticate = func(ctx context.Context, _ *http.Request) (context.Context, error) { return ctx, nil }
+	if w := get(); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"items":[]}` {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}
 func TestClearViewSession(t *testing.T) {
 	selected := "old-session"
 	handler := NewHandler(HandlerOptions{

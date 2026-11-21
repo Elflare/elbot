@@ -6,6 +6,7 @@ import (
 
 	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/control"
 	"elbot/internal/modelmgr"
@@ -26,6 +27,9 @@ type controlAdapter struct {
 
 func (a controlAdapter) GetSession(ctx context.Context, id string) (*storage.Session, error) {
 	return a.store.Sessions().Get(ctx, id)
+}
+func (a controlAdapter) ListInputHistory(ctx context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error) {
+	return a.store.Messages().ListInputHistory(ctx, account, limit)
 }
 func (a controlAdapter) LoadMessagePage(ctx context.Context, id string, page, size int) (contextmgr.MessagePage, error) {
 	return (contextmgr.Loader{Store: a.store}).LoadMessagePage(ctx, id, page, size)

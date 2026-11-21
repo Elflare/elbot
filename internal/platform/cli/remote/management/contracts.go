@@ -15,6 +15,7 @@ type ControlCapabilities interface {
 	ConfirmAnswers(context.Context, string) (operationresult.Result[control.ConfirmAnswersResult], error)
 	ListCommands(context.Context, control.ListCommandsRequest) (operationresult.Result[control.ListCommandsResult], error)
 	Status(context.Context) (operationresult.Result[control.StatusResult], error)
+	ListInputHistory(context.Context) (operationresult.Result[[]string], error)
 	ListSessions(context.Context, control.ListSessionsRequest) (operationresult.Result[control.ListSessionsResult], error)
 	GetSession(context.Context, control.GetSessionRequest) (operationresult.Result[control.GetSessionResult], error)
 	CreateSession(context.Context) (operationresult.Result[control.SessionData], error)

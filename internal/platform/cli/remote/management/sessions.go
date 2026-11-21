@@ -26,6 +26,14 @@ func (h *handler) setViewSession(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *handler) listInputHistory(w http.ResponseWriter, req *http.Request) {
+	result, err := h.control.ListInputHistory(req.Context())
+	if writeControlResultError(w, result, err) {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeAPIJSON(w, http.StatusOK, map[string]any{"items": result.Data})
+}
 func (h *handler) listSessions(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	page, err := intQuery(q, "page", 1)

@@ -24,6 +24,8 @@ paths:
     $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1questions~1{id}~1draft'
   /sessions/{session_id}/questions/confirm:
     $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1questions~1confirm'
+  /input-history:
+    $ref: './frontend-api/paths/sessions.yaml#/~1input-history'
   /sessions:
     $ref: './frontend-api/paths/sessions.yaml#/~1sessions'
   /sessions/{session_id}:

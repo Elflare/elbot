@@ -73,6 +73,22 @@
                 properties:
                   question_ids: { type: array, items: { type: integer, format: int64 } }
         default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /input-history:
+    get:
+      operationId: listInputHistory
+      summary: List recent user message texts across the authenticated CLI account's private sessions
+      description: Includes archived sessions, excludes background sessions, and never widens for administrators. Uses stored conversation text, not a log of individual submissions or commands.
+      responses:
+        '200':
+          description: The newest 200 nonblank user messages, deduplicated by exact text after limiting, newest first. Empty history returns an empty array.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { type: string }, maxItems: 200, uniqueItems: true }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
   /sessions:
     get:
       operationId: listSessions

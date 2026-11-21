@@ -17,6 +17,8 @@ import (
 )
 
 type historyStub struct {
+	account  contextinfo.ActorIdentity
+	limit    int
 	row      *storage.Session
 	reads    int
 	messages []storage.Message
@@ -33,6 +35,26 @@ func (s *historyStub) LoadMessagePage(_ context.Context, _ string, page, pageSiz
 	return contextmgr.MessagePage{TotalPages: 1, Messages: s.messages}, nil
 }
 
+func (s *historyStub) ListInputHistory(_ context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error) {
+	s.account, s.limit = account, limit
+	return []string{"hello"}, nil
+}
+
+func TestListInputHistoryUsesAuthenticatedAccount(t *testing.T) {
+	provider := &historyStub{}
+	m, _ := testSupervisor(t, SupervisorDeps{History: provider})
+	denied, err := m.ListInputHistory(context.Background())
+	if err != nil || denied.Status != operationresult.Forbidden || provider.limit != 0 {
+		t.Fatal(denied, err, provider.limit)
+	}
+	for _, admin := range []bool{false, true} {
+		provider.account, provider.limit = contextinfo.ActorIdentity{}, 0
+		result, err := m.ListInputHistory(testContext(admin))
+		if err != nil || result.Status != operationresult.Success || !reflect.DeepEqual(result.Data, []string{"hello"}) || provider.account != (contextinfo.ActorIdentity{Platform: "cli", ID: "test"}) || provider.limit != 200 {
+			t.Fatal(result, err, provider.account, provider.limit)
+		}
+	}
+}
 func TestHistoryProjectsInputIDs(t *testing.T) {
 	rows, err := messageData([]storage.Message{{Role: storage.RoleUser, Metadata: `{"input_ids":["a","b"],"elyph_rules_shown":true}`}, {Role: storage.RoleUser}})
 	if err != nil || !reflect.DeepEqual(rows[0].InputIDs, []string{"a", "b"}) || rows[1].InputIDs != nil {
@@ -102,6 +124,7 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 }
 
 type managedSessionStub struct {
+	historyStub
 	sessionStub
 	target        string
 	title         string
