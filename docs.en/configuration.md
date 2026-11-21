@@ -187,10 +187,10 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
 
-- `store`: Provider or model-level `extra_payload` can use `store = false` to disable server-side storage, after which the full native history will be sent. By default, server-side continuation is used; Automatically switch and log a WARN in the background when the upstream returns `store:false`.
-- Tool definitions follow the `additional_tools` of native input, current calling permissions are limited by `tool_choice.allowed_tools`, and `none` is sent when no tools are available. The upstream must support these two items; there is no top-level `tools` fallback. `extra_payload.tool_choice` can only further narrow permissions; setting `required` when forcing the call of unavailable tools or when no tools exist will result in an error.
-- Sessions use a versioned native input format. Old Sessions lacking format markers cannot continue conversations, be Forked, or be compressed, and must be newly created. Tool definitions within the same native history are fixed; if a schema with the same name changes, a new Session must also be created.
-- Compression: Responses Sessions use the native compression of the current conversation model, without using the `/model --compact` option. Naming and text summaries for Chat Sessions are available on both clients.
+- `store`: Provider or model-level `extra_payload` sends `store:false` and the full native window by default. Explicitly configuring `store = true` enables server-side continuation; model-level settings override Provider-level settings. If the upstream returns `store:false`, it automatically switches to the full window and logs a WARN in the background.
+- Tool definitions are passed via `additional_tools` in the native input, and current invocation permissions are restricted by `tool_choice.allowed_tools`; `none` is sent when no tools are available. The upstream must support both of these; there is no fallback to top-level `tools`. `extra_payload.tool_choice` can only further narrow permissions; setting it to `required` when forcing the invocation of unavailable tools or when no tools exist will result in an error.
+- Sessions use a versioned native input format. Old Sessions lacking format markers cannot continue conversations, be Forked, or be compacted; a new Session must be created. Tool definitions within the same native history are fixed; if a schema with the same name changes, a new Session must also be created.
+- Compaction: Responses Sessions use the native compaction of the current conversation model and do not use the selection from `/model --compact`. Naming and text summaries for Chat Sessions are available on both clients.
 
 ### Session Protocol Locking
 
