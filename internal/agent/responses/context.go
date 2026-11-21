@@ -182,27 +182,10 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 			if input.SessionID != row.ID || input.ConsumedBy != exchange.ID {
 				return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生输入关联不完整")
 			}
-			item, segments, err := decodeQueuedInput(input)
-			if err != nil {
+			if _, err := w.appendInput(input); err != nil {
 				return operationresult.Result[*nativeWindow]{}, err
 			}
 			w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
-			if item.Type == "additional_tools" || item.Type == "function_call" {
-				w.Items = append(w.Items, item)
-				continue
-			}
-			var header struct {
-				CallID string `json:"call_id"`
-				Role   string `json:"role"`
-			}
-			if err := json.Unmarshal(item.Raw, &header); err != nil {
-				return operationresult.Result[*nativeWindow]{}, err
-			}
-			if (input.CallID != "" && (item.Type != "function_call_output" || input.CallID != header.CallID)) || (input.CallID == "" && (item.Type != "message" || header.Role != "user")) {
-				return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生输入顺序或调用关联不匹配")
-			}
-			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
-			w.Items = append(w.Items, item)
 		}
 		var output []api.Item
 		if err := json.Unmarshal([]byte(exchange.ItemsJSON), &output); err != nil {

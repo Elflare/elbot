@@ -8,6 +8,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
+	"elbot/internal/session"
 	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"encoding/json"
@@ -146,6 +147,103 @@ func (p *asyncProbeChat) Stream(ctx context.Context, r chatcompletions.Request) 
 	return c, err
 }
 
+// Each request stays in flight until the test supplies its terminal chunk.
+type heldCall struct {
+	messages []llm.LLMMessage
+	reply    chan chatcompletions.Chunk
+}
+type heldChat struct {
+	isolatedClient
+	calls chan heldCall
+}
+
+func (c *heldChat) Stream(ctx context.Context, r chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
+	ch := make(chan chatcompletions.Chunk, 1)
+	select {
+	case c.calls <- heldCall{r.Messages, ch}:
+		return ch, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+func TestAsyncReportAcrossModelFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(testutil.WithCLIConversation(t.Context()), 5*time.Second)
+	defer cancel()
+	client := &heldChat{calls: make(chan heldCall, 1)}
+	deps := isolatedModuleDeps(t)
+	contractModels(t, &deps, client)
+	m := contractSupervisor(t, deps)
+	done := make(chan error, 1)
+	go func() { done <- m.HandleMessage(ctx, MessageRequest{Text: "independent input"}) }()
+	next := func() heldCall {
+		t.Helper()
+		select {
+		case c := <-client.calls:
+			return c
+		case err := <-done:
+			t.Fatalf("turn ended before handoff: %v", err)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		return heldCall{}
+	}
+	first := next()
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}
+	bound, err := m.sessions.CurrentBound(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := bound.Data.Session.ID
+	job, err := m.execution.StartAsyncTool(session.WithBinding(ctx, bound.Data.Binding), sid, "shell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer job.Done()
+	report := llm.ToolCallRequest{ID: "B", Name: "shell", Arguments: `{"cmd":"true","async":true}`}
+	if err := job.Deliver(report, llm.LLMMessage{Role: llm.RoleTool, Name: report.Name, ToolCallID: report.ID, Segments: llm.TextSegments("result")}); err != nil {
+		t.Fatal(err)
+	}
+	first.reply <- chatcompletions.Chunk{Error: fmt.Errorf("upstream failure")}
+	close(first.reply)
+	second := next()
+	ms := second.messages
+	if len(ms) < 2 || ms[len(ms)-1].ToolCallID != "B" || !slices.Equal(ms[len(ms)-2].ToolCalls, []llm.ToolCallRequest{report}) {
+		t.Fatalf("retried old input rather than delivering report: %+v", ms)
+	}
+	if err := m.HandleMessage(ctx, MessageRequest{Text: "queued follow-up"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.turns.Snapshot(sid); s.Phase != turn.PhaseLLM || s.PendingCount != 1 {
+		t.Fatalf("interrupted report: %+v", s)
+	}
+	second.reply <- chatcompletions.Chunk{DeltaContent: "noted"}
+	close(second.reply)
+	third := next()
+	ms = third.messages
+	if last := ms[len(ms)-1]; last.Role != llm.RoleUser || !strings.Contains(llm.SegmentsTextOnly(last.Segments), "queued follow-up") {
+		t.Fatal("lost queued user message", last)
+	}
+	n := 0
+	for _, msg := range ms {
+		if msg.ToolCallID == "B" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("report replayed %d times", n)
+	}
+	third.reply <- chatcompletions.Chunk{DeltaContent: "ok"}
+	close(third.reply)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("lost original error: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
 type mixedAsyncChat struct {
 	isolatedClient
 	requests []chatcompletions.Request
@@ -252,7 +350,7 @@ func testAsyncMixedHandoff(t *testing.T, stop bool) {
 			}
 			send("check after stop")
 			for _, msg := range chat.requests[1].Messages {
-				if msg.Role == llm.RoleTool && strings.Contains(llm.SegmentsTextOnly(msg.Segments), "不是新的执行") {
+				if msg.Role == llm.RoleTool && !slices.ContainsFunc(chat.calls, func(c chatcompletions.ToolCallDelta) bool { return c.ID == msg.ToolCallID }) {
 					t.Fatal("stopped report replayed", msg)
 				}
 			}
@@ -375,7 +473,7 @@ func TestAsyncProcessTool(t *testing.T) {
 					t.Fatalf("unexpected receipt: %+v", last)
 				}
 				for {
-					if _, err := os.Stat(started); err == nil {
+					if info, err := os.Stat(started); err == nil && info.Size() > 0 {
 						break
 					}
 					select {
@@ -385,9 +483,13 @@ func TestAsyncProcessTool(t *testing.T) {
 					}
 				}
 				receipt := llm.SegmentsTextOnly(ack.Messages[len(ack.Messages)-1].Segments)
-				id := strings.Split(strings.TrimPrefix(receipt, "已受理异步任务 "), "；")[0]
-				active, ok := m.requests.Get(id)
-				if !ok {
+				jobs := m.requests.List()
+				if len(jobs) != 1 {
+					t.Fatalf("expected one running job, got %+v", jobs)
+				}
+				active := jobs[0]
+				id := active.ID
+				if !strings.Contains(receipt, id) {
 					t.Fatalf("receipt %q does not name an active request", receipt)
 				}
 				records, err := deps.Store.ToolCalls().ListBySession(ctx, active.SessionID)

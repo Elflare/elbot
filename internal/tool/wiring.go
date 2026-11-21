@@ -86,7 +86,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	if _, err := registry.RegisterTools(ctx, share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
-	m.engine = execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: resolver.DiscoveryStateUpdate})
+	m.engine = execution.NewManager(execution.ManagerDeps{RecordToolCall: deps.Store.ToolCalls().Create, Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: resolver.DiscoveryStateUpdate})
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
 		RegisterTools: registry.RegisterTools,
 		Resolver:      resolver, NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,

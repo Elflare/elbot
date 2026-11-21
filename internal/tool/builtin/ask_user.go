@@ -23,7 +23,7 @@ func (t askUserTool) definition() share.ToolDefinition {
 		"question": map[string]any{"type": "string"},
 		"options":  map[string]any{"type": "array", "minItems": 1, "maxItems": 3, "items": map[string]any{"type": "string"}},
 	}
-	return share.NewBuilder("ask_user").Async(true).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
+	return share.NewBuilder("ask_user").Async(share.AsyncAnswers).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
 		Description("批量提问。默认异步：展示后返回，用户作答以 user 消息送达；async=false 等本组答齐后返回工具结果。勿复述或轮询。").
 		ObjectArray("questions", "题目", fields, []string{"question", "options"}, share.Required()).Tags("agent").Build(t.prepare)
 }
@@ -76,7 +76,7 @@ func (t askUserTool) prepare(_ context.Context, req share.CallRequest, info shar
 			group.Cancel()
 			return operationresult.Result[*share.Result]{Status: sent.Status, Message: sent.Message}, status, err
 		}
-		text, err := group.Result(ctx, status+".可等也可继续任务。用户作答以user消息显示。")
+		text, err := group.Result(ctx, status)
 		if err != nil {
 			return operationresult.Result[*share.Result]{Status: operationresult.Canceled, Message: err.Error()}, status, nil
 		}

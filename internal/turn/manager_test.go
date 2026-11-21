@@ -6,8 +6,24 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	"elbot/internal/storage"
 )
 
+func TestReportWakeQueuesUserWithoutReplayingReport(t *testing.T) {
+	m := NewSupervisor(testutil.IDSequence())
+	e := NewExecution("report")
+	input := Input{Reports: []*storage.Message{{ID: "B"}, {ToolCallID: "B"}}}
+	if !m.ReserveExecution("s", input, e) || !m.StartAttempt("s", input, e, "attempt") {
+		t.Fatal("report wake failed")
+	}
+	if !m.AppendPendingInput("s", Input{Text: "follow-up"}) || m.BeginAppend("s", "attempt", Input{Text: "interrupt"}) {
+		t.Fatal("report wake interrupted instead of queuing user")
+	}
+	pending, ok := m.CompleteTurn("s", "attempt", false)
+	if !ok || pending.Text != "follow-up" || len(pending.Reports) != 0 {
+		t.Fatalf("handoff: %+v", pending)
+	}
+}
 func TestMergedInputRetainsElyphRequirement(t *testing.T) {
 	for _, inputs := range [][]Input{
 		{{Text: "task", NeedsElyphRules: true}},
@@ -148,7 +164,7 @@ func TestCompleteLLMReturnsMergedPending(t *testing.T) {
 	m.AppendPendingInput("s1", Input{Text: "补充 A"})
 	m.AppendPendingInput("s1", Input{Text: "补充 B"})
 
-	pending, ok := m.CompleteTurn("s1", "attempt")
+	pending, ok := m.CompleteTurn("s1", "attempt", false)
 	if !ok {
 		t.Fatal("CompleteTurn returned false")
 	}

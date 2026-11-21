@@ -60,8 +60,8 @@ func fromLifecycleRiskConfirmation(confirmation lifecycle.RiskConfirmation) Risk
 func (m *Supervisor) StartToolPhase(sessionID, attempt string) bool {
 	return m.lifecycle.StartToolPhase(sessionID, attempt)
 }
-func (m *Supervisor) CompleteTurn(sessionID, attempt string) (Input, bool) {
-	input, ok := m.lifecycle.CompleteTurn(sessionID, attempt)
+func (m *Supervisor) CompleteTurn(sessionID, attempt string, failed bool) (Input, bool) {
+	input, ok := m.lifecycle.CompleteTurn(sessionID, attempt, failed)
 	return Input(input), ok
 }
 func (m *Supervisor) FinishAttempt(sessionID, attempt string) {

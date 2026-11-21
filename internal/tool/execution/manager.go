@@ -17,7 +17,8 @@ import (
 
 // ManagerDeps 由根部一次交付执行所需能力，不持有兄弟组件。
 type ManagerDeps struct {
-	Registry interface {
+	RecordToolCall func(context.Context, *storage.ToolCallRecord) error
+	Registry       interface {
 		Get(string) (toolshare.ToolDefinition, bool)
 		Query(context.Context, toolshare.ToolQuery) ([]toolshare.ToolDefinition, error)
 	} // 工具解析与目录查询。

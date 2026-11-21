@@ -37,7 +37,7 @@ func (m *Manager) StartToolPhase(sessionID, attempt string) bool {
 	turn.phase = PhaseTool
 	return true
 }
-func (m *Manager) CompleteTurn(sessionID, attempt string) (Input, bool) {
+func (m *Manager) CompleteTurn(sessionID, attempt string, failed bool) (Input, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
@@ -45,11 +45,15 @@ func (m *Manager) CompleteTurn(sessionID, attempt string) (Input, bool) {
 		return Input{}, false
 	}
 	pending := mergeInputs(turn.pending)
+	if failed && len(pending.Reports) == 0 {
+		beginStopTurn(m.turns, sessionID, turn)
+		return Input{}, false
+	}
 	if turn.execution == nil {
 		removeTurn(m.turns, sessionID, turn, false)
 	} else if pending.Text != "" || len(pending.Segments) > 0 || len(pending.Answers) > 0 || len(pending.Reports) > 0 {
 		finishAttempt(turn)
-		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: true}
+		m.turns[sessionID] = &state{phase: PhaseLLM, originalInput: pending, tools: map[string]int{}, execution: turn.execution, reserved: true, compactReady: len(pending.Reports) == 0}
 		pending.Segments = append([]llm.MessageSegment(nil), pending.Segments...)
 	} else {
 		removeTurn(m.turns, sessionID, turn, true)

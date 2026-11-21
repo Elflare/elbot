@@ -48,8 +48,7 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 			messages := []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("initial")}}
 			var pending *agentshare.PendingUserMessage
 			if withPending {
-				messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("pending")})
-				pending = &agentshare.PendingUserMessage{Message: storage.Message{Content: "pending"}, MessageIndex: 1}
+				pending = &agentshare.PendingUserMessage{Message: &storage.Message{Role: storage.RoleUser, Content: "pending"}, Segments: llm.TextSegments("pending")}
 			}
 			commits := &hookInputCommitter{}
 			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{NewMessageID: testutil.IDSequence().MessageID}, Tools: &ToolExecutor{Manager: hookTools{}}}

@@ -14,14 +14,14 @@ import (
 
 // The same decoder applies to declared async options across tool entry points.
 func asyncMode(info toolshare.Info, raw json.RawMessage, foreground bool) (bool, string) {
-	if !info.SupportsAsync {
+	if info.Async == toolshare.AsyncDisabled {
 		return false, ""
 	}
 	var args map[string]json.RawMessage
 	if json.Unmarshal(raw, &args) != nil || args == nil {
 		return false, "工具参数必须为 JSON 对象"
 	}
-	async := info.DefaultAsync
+	async := info.Async == toolshare.AsyncAnswers
 	if value, ok := args["async"]; ok {
 		switch string(value) {
 		case "true":
@@ -58,24 +58,17 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 		m.recordCallStarted(ctx, sessionID, call, target.Source, actor, risk, runSource)
 	})
 	m.recordCallCompleted(ctx, sessionID, call, target.Source, actor, risk, runSource, start, result)
-	auditCtx := context.WithoutCancel(ctx)
-	if err := job.Record(auditCtx, result.record(sessionID, call, actor, risk, start, storage.Now())); err != nil {
-		m.Log(auditCtx, newRunRecord(auditCtx, sessionID, "async_tool_record_failed", err))
-	}
 	if ctx.Err() == nil {
-		deliverOutputs(ctx, deps, &result)
-	}
-	msg := result.Message
-	completed := operationresult.Result[[]llm.MessageSegment]{Status: result.Result.Status, Message: result.Result.Message, Data: msg.Segments}
-	if result.ExecutionStarted && ctx.Err() == nil {
-		segments, err := deps.CompleteToolCall(ctx, session, call, risk, completed, result.Error)
-		if err != nil {
-			msg.Segments = llm.TextSegments(err.Error())
+		if err := result.complete(ctx, deps, session, call, risk); err != nil {
 			result.Error = err
-		} else {
-			msg.Segments = segments
+			result.Message.Segments = llm.TextSegments(err.Error())
 		}
 	}
+	auditCtx := context.WithoutCancel(ctx)
+	if err := m.RecordToolCall(auditCtx, result.record(sessionID, call, actor, risk, start, storage.Now())); err != nil {
+		m.Log(auditCtx, newRunRecord(auditCtx, sessionID, "async_tool_record_failed", err))
+	}
+	msg := result.Message
 	report := call
 	report.ID = "call_" + storage.NewID()
 	msg.ToolCallID = report.ID
@@ -83,7 +76,7 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 	if result.Error != nil {
 		state = "error"
 	}
-	msg.Segments = append(llm.TextSegments(fmt.Sprintf("异步任务 %s 回报（%s），不是新的执行。\n", job.ID, state)), msg.Segments...)
+	msg.Segments = append(llm.TextSegments(fmt.Sprintf("任务 %s 回报（%s），非新执行。\n", job.ID, state)), msg.Segments...)
 	if err := job.Deliver(report, msg); err != nil {
 		m.Log(ctx, newRunRecord(ctx, sessionID, "async_tool_delivery_failed", err))
 	}

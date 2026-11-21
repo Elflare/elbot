@@ -39,7 +39,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	tasks := make([]struct {
-		accepted   bool
 		risk       string
 		actor      contextinfo.Actor
 		startedAt  time.Time
@@ -85,7 +84,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	}
 	ready := make(chan int, len(req.Calls))
 	completed := 0
-	complete := func(index int) error {
+	complete := func(index int, receipt bool) error {
 		defer func() { completed++ }()
 		task := &tasks[index]
 		result := task.result
@@ -101,22 +100,12 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		actor := task.actor
 
 		metadata := storage.SessionMetadata{}
-		deliverOutputs(ctx, deps, &result)
-		var rawRecord *storage.ToolCallRecord
-		if !task.accepted {
-			rawRecord = result.record(sessionID, call, actor, task.risk, task.startedAt, task.finishedAt)
+		if err := result.complete(ctx, deps, req.Session, call, task.risk); err != nil {
+			return err
 		}
-		if result.ExecutionStarted {
-			completed := operationresult.Result[[]llm.MessageSegment]{Status: result.Result.Status, Message: result.Result.Message}
-			if result.Error == nil && result.Result.Status == operationresult.Success {
-				completed.Data = result.Message.Segments
-			}
-			segments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, task.risk, completed, result.Error)
-			if hookErr != nil {
-				return hookErr
-			} else {
-				result.Message.Segments = segments
-			}
+		var rawRecord *storage.ToolCallRecord
+		if !receipt {
+			rawRecord = result.record(sessionID, call, actor, task.risk, task.startedAt, task.finishedAt)
 		}
 		ruleCard := ""
 		if result.Result.Status == operationresult.Success && result.Result.Data != nil {
@@ -194,7 +183,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			case <-done:
 				return nil
 			case index := <-ready:
-				if err := complete(index); err != nil {
+				if err := complete(index, false); err != nil {
 					cancel()
 					<-done
 					return err
@@ -323,7 +312,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		var runToolCtx context.Context
 		var done func()
 		// ask_user registers an external answer destination; only process tools transfer a worker.
-		detached := async && call.Name != "ask_user"
+		detached := async && resolvedTool.Native.Definition.Async == toolshare.AsyncProcess
 		if detached {
 			job, err = req.Jobs.StartAsyncTool(toolCtx, sessionID, call.Name)
 			runToolCtx, done = job.Context, job.Done
@@ -335,7 +324,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			return toolshare.RunResult{Err: err}
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		runToolCtx = toolshare.WithCallMode(runToolCtx, toolshare.CallMode{Async: async, Send: deps.SendOutputs})
+		if resolvedTool.Native != nil && resolvedTool.Native.Definition.Async == toolshare.AsyncAnswers {
+			runToolCtx = toolshare.WithCallMode(runToolCtx, toolshare.CallMode{Async: async, Send: deps.SendOutputs})
+		}
 		if call.Name == "tool_weave" {
 			runToolCtx, err = m.bindWeave(runToolCtx, deps, snapshot, req.DiscoveredTools, call.ID, actor)
 			if err != nil {
@@ -352,11 +343,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		if detached {
 			// Save acceptance before starting the process. A failed commit cannot leak a job.
-			task.accepted = true
 			receipt := "已受理异步任务 " + job.ID + "；完成后自动回报。"
-			task.finishedAt = storage.Now()
-			task.result = executionResult{Message: toolMessage(call.Name, call.ID, receipt), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.Success}, Summary: receipt}
-			if err := complete(index); err != nil {
+			task.result = executionResult{Message: toolMessage(call.Name, call.ID, receipt), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.Success}}
+			if err := complete(index, true); err != nil {
 				done()
 				return toolshare.RunResult{Err: err}
 			}
@@ -380,7 +369,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	for completed < len(tasks) {
 		select {
 		case index := <-ready:
-			if err := complete(index); err != nil {
+			if err := complete(index, false); err != nil {
 				return toolshare.RunResult{Err: err}
 			}
 		case <-ctx.Done():
@@ -431,6 +420,22 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 	}
 	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
+}
+
+func (result *executionResult) complete(ctx context.Context, deps toolshare.RunnerDeps, session *storage.Session, call llm.ToolCallRequest, risk string) error {
+	deliverOutputs(ctx, deps, result)
+	if !result.ExecutionStarted {
+		return nil
+	}
+	completed := operationresult.Result[[]llm.MessageSegment]{Status: result.Result.Status, Message: result.Result.Message}
+	if result.Error == nil && completed.Status == operationresult.Success {
+		completed.Data = result.Message.Segments
+	}
+	segments, err := deps.CompleteToolCall(ctx, session, call, risk, completed, result.Error)
+	if err == nil {
+		result.Message.Segments = segments
+	}
+	return err
 }
 
 func deliverOutputs(ctx context.Context, deps toolshare.RunnerDeps, result *executionResult) {

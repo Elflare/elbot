@@ -102,7 +102,9 @@ func (s *QuestionSet) Create(items []Question, async bool) *QuestionGroup {
 		s.next[id]++
 		items[i].ID = s.next[id]
 		items[i].group = group
-		group.ids = append(group.ids, items[i].ID)
+		if !async {
+			group.ids = append(group.ids, items[i].ID)
+		}
 		s.sessions[id] = append(s.sessions[id], items[i])
 	}
 	return group
@@ -200,6 +202,9 @@ func questionAnswer(q Question) string {
 func (s *QuestionSet) SubmitWaiting(session string) (ids []int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(s.sessions[session]) == 0 {
+		return nil
+	}
 	s.sessions[session] = slices.DeleteFunc(s.sessions[session], func(q Question) bool {
 		g := q.group
 		if q.Draft == nil || g.done == nil {

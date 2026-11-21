@@ -135,8 +135,7 @@ type PendingUserMessage struct {
 	Answers      []*storage.AnswerBatch
 	// NeedsElyphRules is resolved after input hooks and before persistence.
 	NeedsElyphRules bool
-	Message         storage.Message
-	MessageIndex    int
+	Message         *storage.Message
 	PlatformText    string
 	Segments        []llm.MessageSegment
 }
@@ -162,7 +161,7 @@ func DrainPending(turns interface {
 		Content:  MessageContent(segments),
 		Segments: StoredMessageSegments(segments),
 	}
-	return &PendingUserMessage{Reports: pending.Reports, ExtraAnswers: extra, Answers: pending.Answers, Message: message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
+	return &PendingUserMessage{Reports: pending.Reports, ExtraAnswers: extra, Answers: pending.Answers, Message: &message, PlatformText: pending.PlatformText, Segments: segments, NeedsElyphRules: pending.NeedsElyphRules}
 }
 
 // ForegroundNotice is appended to the request tail as a synthetic user message;

@@ -60,7 +60,7 @@ type ExecutionTurns interface {
 	BeginAppend(string, string, turn.Input) bool
 	CanCompact(string, *turn.Execution) bool
 	CompleteCompactRun(string, string) bool
-	CompleteTurn(string, string) (turn.Input, bool)
+	CompleteTurn(string, string, bool) (turn.Input, bool)
 	FinishAttempt(string, string)
 	ExpireAppend(string, uint64) bool
 	ReserveExecution(string, turn.Input, *turn.Execution) bool
@@ -102,7 +102,6 @@ type ExecutionView interface {
 
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
-	RecordToolCall     func(context.Context, *storage.ToolCallRecord) error
 	AppendConfirmation delivery.Confirmation // 根部提供追加确认操作，Actions[1].Command 用于提示丢弃并停止。
 	AppendWait         agentshare.ConfirmationWaitPolicy
 	Sessions           ExecutionSessions

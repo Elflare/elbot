@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
+
 	"time"
 
 	"elbot/internal/elyph"
@@ -197,47 +197,37 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		}
 	}
 	baseMessages := llm.CloneMessages(messages)
-	if pending != nil && len(pending.Reports) > 0 {
-		reports := make([]llm.LLMMessage, 0, len(pending.Reports))
-		for _, m := range pending.Reports {
+	commit := storage.DialogueCommit{SessionID: sessionID}
+	if pending != nil {
+		commit.Messages = agentshare.OrderedInputMessages(pending.Reports, pending.Message, pending.ExtraAnswers)
+		for _, m := range commit.Messages {
 			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
 				return agentshare.CallInput{}, err
 			}
+		}
+		for _, m := range pending.Reports {
 			projected, err := agentshare.MessageFromStorage(*m)
 			if err != nil {
 				return agentshare.CallInput{}, err
 			}
-			reports = append(reports, projected)
-		}
-		if pending.Message.Role == "" {
-			baseMessages = append(baseMessages, reports...)
-			if err := persistence.Commit(ctx, storage.DialogueCommit{SessionID: sessionID, Messages: pending.Reports}); err != nil {
-				return agentshare.CallInput{}, err
-			}
-			pending = nil
-		} else {
-			baseMessages = slices.Insert(baseMessages, pending.MessageIndex, reports...)
-			pending.MessageIndex += len(reports)
+			baseMessages = append(baseMessages, projected)
 		}
 	}
-	if pending != nil {
-		baseMessages = agentshare.AppendAnswers(baseMessages, pending.ExtraAnswers)
-	}
-	requestMessages := llm.CloneMessages(baseMessages)
-	if notice, ok := agentshare.ForegroundNotice(session); ok {
-		requestMessages = append(requestMessages, notice)
-	}
+	userIndex := len(baseMessages)
 	hookMessage := agentshare.Message{}
-	if pending != nil {
-		if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, &pending.Message); err != nil {
-			return agentshare.CallInput{}, err
-		}
+	if pending != nil && pending.Message != nil {
+		baseMessages = append(baseMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
+		baseMessages = agentshare.AppendAnswers(baseMessages, pending.ExtraAnswers)
 		hookMessage = agentshare.Message{
 			ID:           pending.Message.ID,
 			Role:         string(llm.RoleUser),
 			PlatformText: pending.PlatformText,
-			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.MessageIndex].Segments...),
+			Segments:     append([]llm.MessageSegment(nil), pending.Segments...),
 		}
+	}
+	requestMessages := llm.CloneMessages(baseMessages)
+	if notice, ok := agentshare.ForegroundNotice(session); ok {
+		requestMessages = append(requestMessages, notice)
 	}
 	result, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMInput{
 		Message:  hookMessage,
@@ -268,7 +258,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	if !toolsEnabled {
 		tools = nil
 	}
-	if pending != nil {
+	if pending != nil && pending.Message != nil {
 		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
 		if err != nil {
 			return agentshare.CallInput{}, err
@@ -282,16 +272,13 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		if ruleCard != "" {
 			segments = append(llm.TextSegments(ruleCard+"\n\n"), segments...)
 		}
-		baseMessages[pending.MessageIndex].Segments = segments
-		requestMessages[pending.MessageIndex].Segments = segments
+		baseMessages[userIndex].Segments = segments
+		requestMessages[userIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
-		commit := storage.DialogueCommit{SessionID: sessionID, Messages: agentshare.OrderedInputMessages(pending.Reports, &pending.Message, pending.ExtraAnswers), ElyphRulesShown: ruleCard != ""}
-		for _, m := range pending.ExtraAnswers {
-			if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, m); err != nil {
-				return agentshare.CallInput{}, err
-			}
-		}
+		commit.ElyphRulesShown = ruleCard != ""
+	}
+	if pending != nil {
 		if err := commitInput(ctx, session, commit, persistence); err != nil {
 			return agentshare.CallInput{}, err
 		}

@@ -1,24 +1,11 @@
 package chat
 
 import (
-	agentshare "elbot/internal/agent/share"
-
 	"fmt"
 
 	"elbot/internal/llm"
-	"elbot/internal/turn"
 )
 
-func drainPendingUserInput(turns interface {
-	DrainMergedInput(string, string) turn.Input
-}, id string, messages []llm.LLMMessage, expected string) ([]llm.LLMMessage, *agentshare.PendingUserMessage) {
-	pending := agentshare.DrainPending(turns, id, expected)
-	if pending == nil || pending.Message.Role == "" {
-		return messages, pending
-	}
-	pending.MessageIndex = len(messages)
-	return append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments}), pending
-}
 func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMessage {
 	messages := make([]llm.LLMMessage, 0, len(calls))
 	for _, call := range calls {

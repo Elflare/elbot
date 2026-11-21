@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"cmp"
 	"context"
 	"elbot/internal/operationresult"
 	"elbot/internal/signal"
@@ -58,6 +59,9 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		ctx = turn.WithExecution(ctx, execution)
 	}
 	defer func() {
+		if runErr != nil {
+			operation = operationresult.Result[struct{}]{}
+		}
 		if runErr != nil || operation.Status != operationresult.Success {
 			_, release, err := c.deps.Sessions.EnterSessions(context.WithoutCancel(ctx), row.ID)
 			if err == nil {
@@ -75,45 +79,37 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 	}()
 	out = executionTurnOutput{view: c.deps.View, foreground: foregroundTurnOutput{ExecutionSender: c.deps.Output}, execution: execution, fallback: out}
 	for {
-		requestCtx, next, pending, err := c.runAttempt(ctx, row, text, out)
+		var input turn.Input
+		var err error
 		previousID := row.ID
-		row = next
-		if err != nil {
-			execution.Finish(err)
-			return requestCtx, operationresult.Result[struct{}]{}, err
-		}
-		if pending.Status != operationresult.Success {
-			execution.Finish(nil)
-			return requestCtx, operationresult.Result[struct{}]{Status: pending.Status, Message: pending.Message}, nil
-		}
-		input := pending.Data
+		requestCtx, row, operation, err = c.runAttempt(ctx, row, text, out, &input)
+		runErr = cmp.Or(runErr, err)
 		if input.Text == "" && len(input.Segments) == 0 && len(input.Answers) == 0 && len(input.Reports) == 0 {
-			if c.deps.Turns.Snapshot(next.ID).Execution != execution {
-				execution.Finish(nil)
+			if err == nil && operation.Status == operationresult.Success && c.deps.Turns.Snapshot(row.ID).Execution == execution {
+				return // Another attempt owns this execution.
 			}
-			return requestCtx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+			break
 		}
 		ctx = c.deps.View.Context(ctx)
-		if next.ID != previousID && !agentshare.IsBackgroundSession(next) {
+		if row.ID != previousID && !agentshare.IsBackgroundSession(row) {
 			current, err := c.deps.Sessions.CurrentBound(ctx, c.deps.Identity.Scope(ctx))
-			if err != nil {
-				execution.Finish(err)
-				return requestCtx, operationresult.Result[struct{}]{}, err
-			}
-			if current.Status != operationresult.Success {
-				execution.Finish(nil)
-				return requestCtx, operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+			if err != nil || current.Status != operationresult.Success {
+				runErr = cmp.Or(runErr, err)
+				operation = operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}
+				break
 			}
 			binding := current.Data.Binding
-			if binding.SessionID() != next.ID {
-				execution.Finish(nil)
-				return requestCtx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
+			if binding.SessionID() != row.ID {
+				operation = operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}
+				break
 			}
 			ctx = session.WithBinding(ctx, binding)
 		}
 		text = input.Text
 		ctx = agentshare.WithInboundTurnInput(ctx, input)
 	}
+	execution.Finish(runErr)
+	return
 }
 
 // sessionIdle runs outside business admission, after the owning work has joined.

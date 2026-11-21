@@ -88,7 +88,6 @@ type AsyncJob struct {
 	ID      string // Request ID accepted by /stop.
 	Context context.Context
 	Done    func()
-	Record  func(context.Context, *storage.ToolCallRecord) error
 	Deliver func(llm.ToolCallRequest, llm.LLMMessage) error
 }
 type RunRequest struct {

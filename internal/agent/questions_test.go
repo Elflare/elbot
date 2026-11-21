@@ -51,6 +51,12 @@ func (p *questionsPlatform) SendTo(ctx context.Context, target delivery.Target, 
 
 const questionArgs = `{"questions":[{"question":"哪些测试？","options":["相关包","全量"]},{"question":"如何提交？","options":["先审阅"]},{"question":"分支？","options":["本地"]},{"question":"部署？","options":["稍后"]}]}`
 
+func TestConfirmBeforeFirstQuestion(t *testing.T) {
+	var questions storage.QuestionSet
+	if ids := questions.SubmitWaiting("s"); len(ids) != 0 {
+		t.Fatalf("unexpected answers: %v", ids)
+	}
+}
 func TestSynchronousQuestionResult(t *testing.T) {
 	deps := isolatedModuleDeps(t)
 	connectTestNotifications(t, deps.Platform.(isolatedPlatformCapabilities).Router)

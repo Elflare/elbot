@@ -12,7 +12,21 @@ func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || (turn.phase != PhaseAwaitAppendConfirm && turn.phase != PhaseTool && !((len(input.Answers) > 0 || len(input.Reports) > 0) && (turn.phase == PhaseLLM || turn.phase == PhaseAwaitRiskConfirm))) {
+	if !ok {
+		return false
+	}
+	deferred := len(input.Answers) > 0 || len(input.Reports) > 0
+	switch turn.phase {
+	case PhaseLLM:
+		if !deferred && len(turn.originalInput.Reports) == 0 {
+			return false
+		}
+	case PhaseAwaitRiskConfirm:
+		if !deferred {
+			return false
+		}
+	case PhaseAwaitAppendConfirm, PhaseTool:
+	default:
 		return false
 	}
 	if appendPending(turn, input) && turn.phase == PhaseAwaitAppendConfirm {

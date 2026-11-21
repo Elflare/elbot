@@ -82,7 +82,7 @@ func currentShellDesc() string {
 }
 
 func shellBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("shell").Async(false).
+	return toolshare.NewBuilder("shell").Async(toolshare.AsyncProcess).
 		Description(fmt.Sprintf("执行命令，语法=%s。", currentShellDesc())).
 		Risk(toolshare.RiskHigh).
 		DependsOn("workspace").

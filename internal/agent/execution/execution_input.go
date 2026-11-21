@@ -116,8 +116,14 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
-		case turn.PhaseLLM:
-			if !c.deps.Turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text)) {
+		case turn.PhaseLLM, turn.PhaseTool:
+			input := agentshare.InboundTurnInput(ctx, text)
+			if c.deps.Turns.AppendPendingInput(session.ID, input) {
+				release()
+				_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
+				return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, err
+			}
+			if !c.deps.Turns.BeginAppend(session.ID, snapshot.Attempt, input) {
 				release()
 				continue
 			}
@@ -129,17 +135,6 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			}
 			release()
 			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?", Actions: c.deps.AppendConfirmation.Actions})
-			if err != nil {
-				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
-			}
-			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
-		case turn.PhaseTool:
-			if !c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text)) {
-				release()
-				continue
-			}
-			release()
-			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
 			if err != nil {
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}

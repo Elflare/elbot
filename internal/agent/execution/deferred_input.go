@@ -35,7 +35,7 @@ func (c *ExecutionCoordinator) StartAsyncTool(ctx context.Context, sid, name str
 		finish()
 		return tool.AsyncJob{}, err
 	}
-	return tool.AsyncJob{ID: req.ID, Context: job, Record: c.deps.RecordToolCall, Done: func() { done(); finish() }, Deliver: func(call llm.ToolCallRequest, msg llm.LLMMessage) error {
+	return tool.AsyncJob{ID: req.ID, Context: job, Done: func() { done(); finish() }, Deliver: func(call llm.ToolCallRequest, msg llm.LLMMessage) error {
 		return c.deliverAsyncTool(parent, sid, req.ID, done, call, msg)
 	}}, nil
 }

@@ -244,10 +244,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 		}
 		pending := agentshare.DrainPending(s.route.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-		if pending != nil && pending.Message.Role != "" {
-			pending.MessageIndex = len(s.projection)
-			s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
-		}
 		stream := out.StartStream(s.requestCtx)
 		if !summarizing {
 			s.route.Status.Record(s.ctx, runtimestatus.Snapshot{

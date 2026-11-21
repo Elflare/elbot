@@ -36,13 +36,10 @@ func (c *ExecutionCoordinator) DefaultModelContext(ctx context.Context) (context
 	return c.ModelContext(ctx, nil)
 }
 
-func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out agentshare.Output) (context.Context, *storage.Session, operationresult.Result[turn.Input], error) {
+func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out agentshare.Output, next *turn.Input) (context.Context, *storage.Session, operationresult.Result[struct{}], error) {
 	ctx, admitted, release, err := c.enterTurn(ctx, session)
-	if err != nil {
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if admitted.Status != operationresult.Success {
-		return ctx, session, operationresult.Result[turn.Input]{Status: admitted.Status, Message: admitted.Message}, nil
+	if err != nil || admitted.Status != operationresult.Success {
+		return ctx, session, admitted, err
 	}
 	selection := c.deps.SelectionForTurn(ctx, session)
 	validation, err := func() (operationresult.Result[struct{}], error) {
@@ -66,40 +63,31 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		}
 		return operationresult.Result[struct{}]{Status: registered.Status, Message: registered.Message}, err
 	}()
-	if err != nil {
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if validation.Status != operationresult.Success {
-		return ctx, session, operationresult.Result[turn.Input]{Status: validation.Status, Message: validation.Message}, nil
+	if err != nil || validation.Status != operationresult.Success {
+		return ctx, session, validation, err
 	}
 	ctx, compacted, err := c.compactBeforeTurn(ctx, session, text, out, selection)
-	if err != nil {
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if compacted.Status != operationresult.Success {
-		return ctx, session, operationresult.Result[turn.Input]{Status: compacted.Status, Message: compacted.Message}, nil
+	if err != nil || compacted.Status != operationresult.Success {
+		return ctx, session, operationresult.Result[struct{}]{Status: compacted.Status, Message: compacted.Message}, err
 	}
 	session = compacted.Data
 	ctx, admitted, release, err = c.enterTurn(ctx, session)
-	if err != nil {
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	if admitted.Status != operationresult.Success {
-		return ctx, session, operationresult.Result[turn.Input]{Status: admitted.Status, Message: admitted.Message}, nil
+	if err != nil || admitted.Status != operationresult.Success {
+		return ctx, session, admitted, err
 	}
 	attempt, err := c.deps.Turns.AllocateAttempt(ctx)
 	if err != nil {
 		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
+		return ctx, session, operationresult.Result[struct{}]{}, err
 	}
 	ctx = turn.WithAttempt(ctx, attempt)
 	execution := turn.ExecutionFromContext(ctx)
 	if !c.deps.Turns.StartAttempt(session.ID, agentshare.InboundTurnInput(ctx, text), execution, attempt) {
 		release()
 		if c.deps.Turns.Snapshot(session.ID).Execution == execution {
-			return ctx, session, operationresult.Result[turn.Input]{Status: operationresult.Success}, nil
+			return ctx, session, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
-		return ctx, session, operationresult.Result[turn.Input]{Status: operationresult.Busy, Message: "当前会话已有其他执行，输入尚未开始处理"}, nil
+		return ctx, session, operationresult.Result[struct{}]{Status: operationresult.Busy, Message: "当前会话已有其他执行，输入尚未开始处理"}, nil
 	}
 	// Restore durable usage before cancellation can publish the first snapshot.
 	var reqInfo request.Request
@@ -111,7 +99,7 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	if err != nil {
 		c.deps.Turns.FinishAttempt(session.ID, attempt)
 		release()
-		return ctx, session, operationresult.Result[turn.Input]{}, err
+		return ctx, session, operationresult.Result[struct{}]{}, err
 	}
 	release()
 	stopObserver := sync.OnceFunc(c.observeRequestStop(reqCtx, session.ID, attempt))
@@ -124,20 +112,26 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		ctx = contextinfo.WithModel(ctx, model)
 	}
 	if runErr != nil {
-		if err := c.finishAttempt(ctx, session, runErr); err != nil {
-			return ctx, session, operationresult.Result[turn.Input]{}, err
+		if reqCtx.Err() == nil {
+			// Continue only fresh input containing a report, not the failed request.
+			if input, ok := c.deps.Turns.CompleteTurn(session.ID, attempt, true); ok {
+				*next = input
+				return ctx, session, operationresult.Result[struct{}]{}, runErr
+			}
 		}
-		return ctx, session, operationresult.Result[turn.Input]{Status: operationresult.Success}, nil
+		if err := c.finishAttempt(ctx, session, runErr); err != nil {
+			return ctx, session, operationresult.Result[struct{}]{}, err
+		}
+		return ctx, session, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	if result.Status != operationresult.Success {
 		c.deps.Turns.StopAttempt(session.ID, attempt)
 		c.deps.Status.Record(ctx, runtimeDoneStatus(c.deps.Status.Snapshot(session.ID)))
-		return ctx, session, operationresult.Result[turn.Input]{Status: result.Status, Message: result.Message}, nil
+		return ctx, session, operationresult.Result[struct{}]{Status: result.Status, Message: result.Message}, nil
 	}
-	if err := c.finishAttempt(ctx, session, nil); err != nil {
-		return ctx, session, operationresult.Result[turn.Input]{}, err
-	}
-	return ctx, session, operationresult.Result[turn.Input]{Status: operationresult.Success, Data: pending}, nil
+	c.finishAttempt(ctx, session, nil)
+	*next = pending
+	return ctx, session, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *storage.Session, runErr error) error {
@@ -259,7 +253,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 			events.AsyncLog(ctx, record)
 		}
 	}
-	pending, completed := c.deps.Turns.CompleteTurn(session.ID, turn.AttemptFromContext(ctx))
+	pending, completed := c.deps.Turns.CompleteTurn(session.ID, turn.AttemptFromContext(ctx), false)
 	if !completed {
 		return turn.Input{}, nil
 	}

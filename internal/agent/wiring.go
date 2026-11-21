@@ -167,7 +167,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
-		RecordToolCall:     deps.Store.ToolCalls().Create,
 		AppendConfirmation: delivery.Confirmation{Actions: agentconfirmation.AppendConfirmationActions(commandText)},
 		AppendWait:         policy,
 		Sessions:           m.sessions,
