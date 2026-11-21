@@ -173,6 +173,18 @@ func migrateChatHistory(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	var hasAliasSender bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('platform_message_aliases') WHERE name='sender_id')`).Scan(&hasAliasSender); err != nil {
+		return err
+	}
+	if !hasAliasSender {
+		if _, err = tx.ExecContext(ctx, `ALTER TABLE platform_message_aliases ADD COLUMN sender_id TEXT NOT NULL DEFAULT '';
+UPDATE platform_message_aliases AS a SET sender_id = h.sender_id
+FROM chat_messages AS h
+WHERE (a.platform, a.chat_type, a.chat_id, a.platform_message_id) = (h.platform, h.chat_type, h.chat_id, h.platform_message_id)`); err != nil {
+			return err
+		}
+	}
 	if _, err = tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_alias_message ON platform_message_aliases(platform,chat_type,chat_id,platform_message_id)`); err != nil {
 		return err
 	}
@@ -227,28 +239,28 @@ func (r *ChatHistoryRepository) MapPlatformMessageAlias(ctx context.Context, map
 		mapping.CreatedAt = storage.Now()
 	}
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO platform_message_aliases (platform, chat_type, chat_id, alias, platform_message_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO platform_message_aliases (platform, chat_type, chat_id, alias, platform_message_id, sender_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(platform, chat_type, chat_id, alias) DO UPDATE SET
     platform_message_id = excluded.platform_message_id,
-    created_at = excluded.created_at`, mapping.Platform, mapping.ChatType, mapping.ChatID, mapping.Alias, mapping.PlatformMessageID, storage.FormatTime(mapping.CreatedAt))
+    sender_id = excluded.sender_id,
+    created_at = excluded.created_at`, mapping.Platform, mapping.ChatType, mapping.ChatID, mapping.Alias, mapping.PlatformMessageID, mapping.SenderID, storage.FormatTime(mapping.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("map platform message alias: %w", err)
 	}
 	return nil
 }
 
-func (r *ChatHistoryRepository) ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (string, error) {
-	var messageID string
-	err := r.db.QueryRowContext(ctx, `SELECT platform_message_id FROM platform_message_aliases
-WHERE platform = ? AND chat_type = ? AND chat_id = ? AND alias = ?`, platform, conversationKind, scopeID, alias).Scan(&messageID)
+func (r *ChatHistoryRepository) ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (messageID, senderID string, err error) {
+	err = r.db.QueryRowContext(ctx, `SELECT platform_message_id, sender_id FROM platform_message_aliases
+WHERE platform = ? AND chat_type = ? AND chat_id = ? AND alias = ?`, platform, conversationKind, scopeID, alias).Scan(&messageID, &senderID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", storage.ErrNotFound
+		return "", "", storage.ErrNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("resolve platform message alias: %w", err)
+		return "", "", fmt.Errorf("resolve platform message alias: %w", err)
 	}
-	return messageID, nil
+	return messageID, senderID, nil
 }
 
 const chatMessageColumns = `SELECT seq, id, platform, chat_id, chat_type, platform_message_id,

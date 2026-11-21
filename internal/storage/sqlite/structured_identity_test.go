@@ -243,7 +243,7 @@ func TestChatHistoryMigrationSeparatesConversationKinds(t *testing.T) {
 			if err != nil || row.Text != string(kind) {
 				t.Fatalf("row=%+v err=%v", row, err)
 			}
-			id, err := store.Repository().ResolvePlatformMessageAlias(t.Context(), "qqonebot", kind, "room:9", "alias")
+			id, _, err := store.Repository().ResolvePlatformMessageAlias(t.Context(), "qqonebot", kind, "room:9", "alias")
 			if err != nil || id != "same" {
 				t.Fatalf("alias=%q err=%v", id, err)
 			}

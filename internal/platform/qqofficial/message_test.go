@@ -4,6 +4,8 @@ package qqofficial
 
 import (
 	"context"
+	agentinput "elbot/internal/agent/input"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
@@ -128,6 +130,18 @@ func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
 	}
 }
 
+// Stop at the received hook, after the real Agent wakeup decision and before model dispatch.
+type quoteWakeupBoundary struct {
+	agentinput.MessageCommands
+	agentinput.MessageHooks
+}
+
+func (quoteWakeupBoundary) IsCommand(string) bool                             { return false }
+func (quoteWakeupBoundary) HasRoute(context.Context, agentshare.Message) bool { return false }
+func (quoteWakeupBoundary) PlatformMessageReceived(context.Context, agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
+	return agentshare.PlatformMessageReceivedResult{Consume: true}, nil
+}
+
 func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	ctx := t.Context()
 	db, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
@@ -153,7 +167,9 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 		return refcontext.Apply(ctx, deps, o)
 	}
 	h := &captureHandler{}
-	receive := func(raw string) share.MessageContext {
+	boundary := quoteWakeupBoundary{}
+	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Commands: boundary, Hooks: boundary})
+	receive := func(raw string, wantWake bool) share.MessageContext {
 		t.Helper()
 		var m inboundMessage
 		if err := json.Unmarshal([]byte(raw), &m); err != nil {
@@ -161,10 +177,15 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 		}
 		a.handleGroupMessage(ctx, h.HandleMessage, payload{Type: eventGroupMessageCreate}, m)
 		mc, _ := share.MessageContextFrom(h.ctx)
+		agentCtx := agentshare.WithMessageContext(h.ctx, agentshare.MessageContext{Bot: agentshare.Identity{UserID: mc.Bot.UserID}})
+		agentCtx, _, err := entry.HandleMessage(agentCtx, h.text)
+		if err != nil || agentshare.WakeupFromContext(agentCtx) != wantWake {
+			t.Fatalf("%s: expected wakeup=%v, err=%v", m.ID, wantWake, err)
+		}
 		return mc
 	}
-	receive(`{"id":"a","group_openid":"g","author":{"member_openid":"A","username":"nick A","member_nickname":"card A"},"content":"a","message_scene":{"ext":["msg_idx=idxA"]}}`)
-	mc := receive(`{"id":"b","group_openid":"g","author":{"member_openid":"B","username":"nick B"},"content":"b","message_scene":{"ext":["ref_msg_idx=idxA"]}}`)
+	receive(`{"id":"a","group_openid":"g","author":{"member_openid":"A","username":"nick A","member_nickname":"card A"},"content":"a","message_scene":{"ext":["msg_idx=idxA"]}}`, false)
+	mc := receive(`{"id":"b","group_openid":"g","author":{"member_openid":"B","username":"nick B"},"content":"b","message_scene":{"ext":["ref_msg_idx=idxA"]}}`, false)
 	row, err := history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "b")
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +206,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 		case "status":
 			fmt.Fprint(w, `{"id":"cmd","ext_info":{"ref_idx":"idxCmd"}}`)
 		default:
-			fmt.Fprint(w, `{"id":"assistant"}`)
+			fmt.Fprint(w, `{"id":"assistant","ext_info":{"ref_idx":"idxAssistant"}}`)
 		}
 	}))
 	defer server.Close()
@@ -196,7 +217,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mc = receive(`{"id":"next","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxHook"]}}`)
+	mc = receive(`{"id":"next","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxHook"]}}`, true)
 	if mc.Conversation.ReplyToSenderID != "bot" || mc.Reply.Text != "hook text" || !strings.Contains(mc.ContextText, "hook text") || mc.ResumeSessionID != "" || mc.ForkFromMessageID != "" {
 		t.Errorf("hook reply=%+v, context=%q, sender=%q", mc.Reply, mc.ContextText, mc.Conversation.ReplyToSenderID)
 	}
@@ -204,7 +225,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mc = receive(`{"id":"cmdquote","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxCmd"]}}`)
+	mc = receive(`{"id":"cmdquote","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxCmd"]}}`, true)
 	if mc.Conversation.ReplyToSenderID != "bot" || !strings.Contains(mc.ContextText, "status") {
 		t.Fatalf("command reply=%+v", mc.Reply)
 	}
@@ -215,6 +236,16 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if _, err = history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "assistant"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("unmarked output duplicated in history: %v", err)
 	}
+	mc = receive(`{"id":"llmquote","group_openid":"g","author":{"member_openid":"B"},"content":"还在？","message_scene":{"ext":["ref_msg_idx=idxAssistant"]}}`, true)
+	if len(mc.Mentions) != 0 || mc.ReplyToMessageID != "assistant" || mc.ReplyToSenderID != mc.Bot.UserID || mc.ReplyToSenderID != "bot" {
+		t.Fatalf("LLM quote: id=%q sender=%q mentions=%v", mc.ReplyToMessageID, mc.ReplyToSenderID, mc.Mentions)
+	}
+	mapTestReference(t, a, "group", "g", "displayOnly", "cmd")
+	mc = receive(`{"id":"display","group_openid":"g","author":{"member_openid":"B"},"content":"在？","message_scene":{"ext":["ref_msg_idx=displayOnly"]}}`, false)
+	if mc.ReplyToSenderID != "" || mc.Reply.SenderID != "bot" {
+		t.Fatalf("wakeup sender=%q, history sender=%q", mc.ReplyToSenderID, mc.Reply.SenderID)
+	}
+	receive(`{"id":"unmapped","group_openid":"g","author":{"member_openid":"B"},"content":"还在？","message_scene":{"ext":["ref_msg_idx=unknown"]}}`, false)
 }
 
 func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {

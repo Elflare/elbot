@@ -242,6 +242,7 @@ type PlatformMessageAlias struct {
 	ChatID            string               // Conversation in which the index is valid.
 	Alias             string               // Platform reference index, not a message ID.
 	PlatformMessageID string               // Actual message ID used by history and output mappings.
+	SenderID          string               // 被索引消息的发送者 ID；机器人输出使用机器人自身的 ID。
 	CreatedAt         time.Time            // Registration time used by chat history retention.
 }
 
@@ -587,7 +588,7 @@ type ChatHistoryRepository interface {
 	GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*ChatMessage, error)
 	Append(ctx context.Context, message *ChatMessage) error
 	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
-	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (string, error)
+	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (messageID, senderID string, err error)
 	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*ChatMessage, error)
 	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
 	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)

@@ -5,6 +5,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"strings"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
@@ -46,8 +47,9 @@ func mentionsBot(msg agentshare.MessageContext) bool {
 
 func (h *MessageHandler) isReplyToBot(ctx context.Context, msg agentshare.MessageContext) bool {
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	if info.ReplyToSenderID != "" && info.ReplyToSenderID == strings.TrimSpace(msg.Bot.UserID) {
-		return true
+	replyToBot := info.ReplyToSenderID != "" && info.ReplyToSenderID == strings.TrimSpace(msg.Bot.UserID)
+	if replyToBot || info.Source.Platform == config.PlatformQQOfficial {
+		return replyToBot
 	}
 	replyID := info.ReplyToMessageID
 	if replyID == "" {

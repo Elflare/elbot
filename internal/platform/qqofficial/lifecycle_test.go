@@ -271,7 +271,7 @@ func TestCloseWaitsForWholeSendAndCanRetry(t *testing.T) {
 	if err := <-sent; err != nil {
 		t.Fatal(err)
 	}
-	if id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, config.PlatformQQOfficial, "private", "u", "alias"); err != nil || id != "sent" {
+	if id, _, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, config.PlatformQQOfficial, "private", "u", "alias"); err != nil || id != "sent" {
 		t.Fatalf("alias = %q, %v", id, err)
 	}
 }

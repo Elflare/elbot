@@ -198,7 +198,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		if t.Kind == targetGroup && recordHistory {
 			a.recordGroupOutput(ctx, t, id, p.history)
 		}
-		a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id)
+		a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id, a.cfg.AppID)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
 		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, OutputIndexes: p.indexes})
 	}

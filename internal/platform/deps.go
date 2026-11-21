@@ -27,7 +27,7 @@ type SupervisorDeps struct {
 	ChatHistory interface {
 		Append(context.Context, *storage.ChatMessage) error
 		MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
+		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (messageID, senderID string, err error)
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
 	Media *media.MediaCenter // 由 dispatch 和远程 CLI 各自的消费接口裁剪媒体能力。

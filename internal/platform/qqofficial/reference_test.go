@@ -165,7 +165,7 @@ type failingAliasHistory struct{ interfaceHistory }
 type interfaceHistory interface {
 	share.ChatHistoryWriter
 	MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-	ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
+	ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (messageID, senderID string, err error)
 }
 
 func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing.T) {
@@ -256,7 +256,7 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 					if err != nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != fmt.Sprintf("sent-%d", calls) {
 						t.Fatalf("receipt=%+v err=%v", receipt, err)
 					}
-					id, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), config.PlatformQQOfficial, qqOfficialChatType(target), target.OpenID, fmt.Sprintf("REFIDX_%d", calls))
+					id, _, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), config.PlatformQQOfficial, qqOfficialChatType(target), target.OpenID, fmt.Sprintf("REFIDX_%d", calls))
 					if fail {
 						if !errors.Is(err, storage.ErrNotFound) {
 							t.Fatalf("failed write: %v", err)

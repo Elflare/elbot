@@ -98,7 +98,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 
 	msgIndex, refIndex := inboundReferenceIndexes(msg)
 	referenced := inboundReferencedMessage(msg, refIndex)
-	replyID, err := a.resolveInboundReplyID(ctx, conversation, scopeID, refIndex)
+	replyID, replyToSenderID, err := a.resolveInboundReplyID(ctx, conversation, scopeID, refIndex)
 	actorID := contextinfo.ActorIdentity{Platform: a.Name(), ID: senderID}
 	a.mu.Lock()
 	bot := share.Identity{Username: a.username}
@@ -131,6 +131,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			},
 			PlatformMessageID: strings.TrimSpace(msg.ID),
 			ReplyToMessageID:  replyID,
+			ReplyToSenderID:   replyToSenderID,
 			PlatformData:      messageData{EventID: strings.TrimSpace(p.ID), EventType: p.Type},
 		},
 		GroupRole:             contextinfo.GroupRoleUnknown,
@@ -190,7 +191,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
-		messageCtx.Conversation.ReplyToSenderID = ref.Reply.SenderID
 		if strings.TrimSpace(ref.Text) != "" || len(ref.ReferenceSegments) > 0 {
 			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
 		}
@@ -201,11 +201,8 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	if historyReply.Text == "" {
 		historyReply.Text = referenced.Text
 	}
-	if historyReply.SenderID == "" && (ref.ResumeSessionID != "" || ref.ForkFromMessageID != "") {
-		historyReply.SenderID, historyReply.SenderName = bot.UserID, "bot"
-	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, name, scopeID, text, replyID, historyReply)
-	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID)
+	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID, senderID)
 	_ = handler(msgCtx, text, messageCtx)
 }
 
