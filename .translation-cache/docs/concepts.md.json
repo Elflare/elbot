@@ -104,14 +104,6 @@
       "translation": "# Core Concepts\n\nThis article explains the main concepts of ElBot: how it organizes conversations, tools, context, and extensibility.\n\n",
       "updated_at": 1793353326
     },
-    "docs/concepts.md:section:91961fce7cbf00f9f34788f974a0c64bd2d1425071181d14e89f087300162a52": {
-      "kind": "section",
-      "source": "## Shell\n\n`shell` 的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计），超出时在对应输出末尾附上截断说明。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。\n\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "0c74fb45b9be3b98bf664aac399b97bff54690c8c3a92724201e52dc0bd6d1ab",
-      "translation": "## Shell\n\nThe stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); if exceeded, a truncation notice is appended to the end of the corresponding output. The command will continue to run and drain the output; when complete large-scale output is required, write it to a file and then read it by range.\n\n",
-      "updated_at": 1794984202
-    },
     "docs/concepts.md:section:9657deabf8f8b096a61cde7dbe1e14357983abcd11079ed3079edd41bb9ca4ea": {
       "kind": "section",
       "source": "## Session\n\nSession 是持久化会话单位：一次连续对话的上下文、模式、消息历史和工具调用记录。\n\n不同平台、不同作用域各用各自的 Session，避免上下文互相污染；CLI 是高权限入口，可跨平台查看和管理。\n\n创建、恢复、归档、置顶和删除，以及引用回复恢复 Session 的规则，见 [命令速查：Session](commands.md#session)。\n\n",
@@ -143,6 +135,14 @@
       "source_hash": "9c1cb3698b47780a7cf121d5b0fad408e9ced3ce87017faa7619f16bd462a639",
       "translation": "## Skill and ELyph\n\nA Skill is a reusable task extension: it can be a set of task instructions for an Agent to read, or it can be wrapped as a structured tool for LLM invocation.\n\n| Type | Form |\n| --- | --- |\n| AgentSkill | The document describes the task, and the LLM completes it using general tools according to the instructions. |\n| Tool-based Skill | Registered as a regular tool, invoked by the LLM via structured parameters. |\n\nELyph Task Notation is a structured representation for describing reusable tasks, using a more stable format to express inputs, outputs, steps, conditions, and constraints, thereby reducing the ambiguity of natural language descriptions.\n\nFor tooling configuration, see [AgentSkill Tooling Configuration](configuration.md#agentskill-工具化配置); for the relationship between ELyph and Skill and the complete syntax, see [ELyph Task Notation](elyph.md).\n\n",
       "updated_at": 1793353326
+    },
+    "docs/concepts.md:section:c4e72162374dffb438ac39bb0e3c6a9cab4da6805b75fd9f02f195172ff26c24": {
+      "kind": "section",
+      "source": "## Shell\n\n前台 Work 中，`shell` 和 `tool_weave` 支持异步执行，长耗时命令不影响模型继续工作。\n\n`shell` 的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计），超出时在对应输出末尾附上截断说明。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "690f2a3bff9c7a6376f25385cd7957c0abe504b91d83bfb0ec72ebac0cf9435f",
+      "translation": "## Shell\n\nIn foreground work mode, `shell` and `tool_weave` support asynchronous execution, so long-running commands do not prevent the model from continuing its work.\n\nThe stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); when exceeded, a truncation notice is appended to the end of the corresponding output. Commands will continue to run and drain the output; when full large-scale output is required, write it to a file and then read it by range.\n\n",
+      "updated_at": 1795241342
     },
     "docs/concepts.md:section:ca02d26ba67774e5269734a2cd247c74f55897ce322c3876499521ace53e830e": {
       "kind": "section",
@@ -194,8 +194,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "7a71f79dcf087cdc7c411ab3335b776b51b5fdb52fb21129274f7c25464346e4",
+  "source_hash": "3d7d64007c620988e8d22507b3c34f2e46c7fdc62406be676853765f7bf9d286",
   "target": "docs.en/concepts.md",
-  "updated_at": 1795174554,
+  "updated_at": 1795241343,
   "version": 3
 }
