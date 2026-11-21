@@ -17,6 +17,7 @@ import (
 const AgentSkillConfigFile = "ELBOT_SKILL.toml"
 
 type AgentSkillManifest struct {
+	Async          bool // 可执行 Skill 允许前台调用方选择异步；未指定调用参数时仍同步。
 	Weavable       bool // 可执行 Skill 声明仅返回文本，允许 tool_weave 调用。
 	Risk           toolshare.RiskLevel
 	SuperadminOnly bool
@@ -33,6 +34,7 @@ type AgentSkillManifest struct {
 }
 
 type agentSkillManifestFile struct {
+	Async          bool              `toml:"async"`
 	Weavable       bool              `toml:"weavable"`
 	Risk           string            `toml:"risk"`
 	SuperadminOnly bool              `toml:"superadmin_only"`
@@ -72,7 +74,7 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 	if err := toml.Unmarshal(data, &raw); err != nil {
 		return AgentSkillManifest{}, fmt.Errorf("parse %s: %w", AgentSkillConfigFile, err)
 	}
-	allowed := map[string]bool{"weavable": true, "risk": true, "superadmin_only": true, "tags": true, "depends_on": true, "command": true, "timeout_seconds": true, "expose_root": true, "use_workspace": true, "parameters": true, "args": true, "positional": true}
+	allowed := map[string]bool{"async": true, "weavable": true, "risk": true, "superadmin_only": true, "tags": true, "depends_on": true, "command": true, "timeout_seconds": true, "expose_root": true, "use_workspace": true, "parameters": true, "args": true, "positional": true}
 	keys := make([]string, 0, len(raw))
 	for key := range raw {
 		if !allowed[key] {
@@ -122,6 +124,9 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if !ok {
 		return AgentSkillManifest{}, fmt.Errorf("parameters.properties is required")
 	}
+	if _, reserved := properties["async"]; file.Async && reserved {
+		return AgentSkillManifest{}, fmt.Errorf("parameters.properties.async is reserved when async = true")
+	}
 	if len(properties) > 0 && len(file.Args) == 0 && len(file.Positional) == 0 {
 		return AgentSkillManifest{}, fmt.Errorf("[args] or positional is required")
 	}
@@ -166,7 +171,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if file.TimeoutSeconds == 0 {
 		file.TimeoutSeconds = int(defaultRunnerTimeout.Seconds())
 	}
-	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, DependsOn: file.DependsOn, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Parameters: parameters, Args: copyStringMap(file.Args), Positional: append([]string(nil), file.Positional...), Callable: true, Weavable: file.Weavable}, nil
+	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, DependsOn: file.DependsOn, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Parameters: parameters, Args: copyStringMap(file.Args), Positional: append([]string(nil), file.Positional...), Callable: true, Async: file.Async, Weavable: file.Weavable}, nil
 }
 
 func agentSkillManifestCallable(file agentSkillManifestFile) bool {

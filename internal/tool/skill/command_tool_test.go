@@ -14,6 +14,44 @@ import (
 	"testing"
 )
 
+func TestCommandSkillAsyncOption(t *testing.T) {
+	const config = `command = ["example"]
+parameters = '{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}'
+positional = ["input"]
+`
+	for _, tc := range []struct {
+		setting string
+		mode    toolshare.AsyncMode
+	}{
+		{"", toolshare.AsyncDisabled},
+		{"async = false", toolshare.AsyncDisabled},
+		{"async = true", toolshare.SyncByDefault},
+	} {
+		t.Run(tc.setting, func(t *testing.T) {
+			manifest, err := ParseAgentSkillManifest([]byte(config + tc.setting))
+			if err != nil {
+				t.Fatal(err)
+			}
+			def := (commandTool{manifest: manifest}).Definition()
+			param, ok := def.Schema().Parameters["properties"].(map[string]any)["async"]
+			if def.Definition.Async != tc.mode || ok != (tc.mode == toolshare.SyncByDefault) {
+				t.Fatalf("mode = %v, async property = %#v", def.Definition.Async, param)
+			}
+			if !ok {
+				return
+			}
+			prop := param.(map[string]any)
+			if prop["type"] != "boolean" || prop["default"] != false {
+				t.Fatalf("async property = %#v", prop)
+			}
+			args, err := commandArguments(manifest, json.RawMessage(`{"async":true,"input":"hello"}`))
+			if err != nil || len(args) != 1 || args[0] != "hello" {
+				t.Fatalf("args = %v, err = %v", args, err)
+			}
+		})
+	}
+}
+
 func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
 	manifest := AgentSkillManifest{
 		Positional: []string{"text", "number"},

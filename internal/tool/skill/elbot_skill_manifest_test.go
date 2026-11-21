@@ -71,6 +71,16 @@ input = "--input"
 	}
 }
 
+func TestAsyncManifestRejectsConflictingParameter(t *testing.T) {
+	_, err := ParseAgentSkillManifest([]byte(`async = true
+command = ["example"]
+parameters = '{"type":"object","properties":{"async":{"type":"boolean"}}}'
+positional = ["async"]`))
+	if err == nil {
+		t.Fatal("accepted async as both a command argument and a runtime option")
+	}
+}
+
 func TestParseAgentSkillManifestRejectsUnknownField(t *testing.T) {
 	_, err := ParseAgentSkillManifest([]byte(`risk = "low"
 command = ["python", "foo.py"]

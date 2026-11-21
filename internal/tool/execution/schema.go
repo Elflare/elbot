@@ -27,9 +27,11 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 		}
 		seen[schema.Name] = true
 		copy := share.CloneSchema(schema)
-		if view.Mode == storage.SessionModeBackground && schema.Name == "shell" {
-			props, _ := copy.Parameters["properties"].(map[string]any)
-			delete(props, "async")
+		if view.Mode == storage.SessionModeBackground {
+			if definition, ok := m.Registry.Get(schema.Name); ok && definition.Definition.Async != share.AsyncDisabled {
+				props, _ := copy.Parameters["properties"].(map[string]any)
+				delete(props, "async")
+			}
 		}
 		out = append(out, copy)
 	}

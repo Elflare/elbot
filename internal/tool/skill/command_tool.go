@@ -30,7 +30,12 @@ type commandTool struct {
 
 func (t commandTool) Definition() toolshare.ToolDefinition {
 	parameters := projectMediaSchema(t.manifest.Parameters).(map[string]any)
-	return toolshare.ToolDefinition{Definition: toolshare.Info{Name: t.record.Name, Description: t.record.Description, Risk: t.manifest.Risk, Weavable: t.manifest.Weavable, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags, DependsOn: t.manifest.DependsOn}, Parameters: parameters, Prepare: t.PrepareCall, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
+	info := toolshare.Info{Name: t.record.Name, Description: t.record.Description, Risk: t.manifest.Risk, Weavable: t.manifest.Weavable, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags, DependsOn: t.manifest.DependsOn}
+	if t.manifest.Async {
+		info.Async = toolshare.SyncByDefault
+		parameters["properties"].(map[string]any)["async"] = map[string]any{"type": "boolean", "default": false, "description": "前台直接调用时，传 true 异步执行。"}
+	}
+	return toolshare.ToolDefinition{Definition: info, Parameters: parameters, Prepare: t.PrepareCall, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
 }
 
 func (t commandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {

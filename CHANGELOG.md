@@ -5,7 +5,7 @@
 ### Added
 
 - QQ 官方适配器保存发送者头像。
-- 前台 `shell` 和 `tool_weave` 现在支持异步。
+- 前台 `shell` 和 `tool_weave` 现在支持异步。技能也可配置为异步。
 - 新增前台工具 `ask_user`，默认异步。
 - 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。
 - AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。

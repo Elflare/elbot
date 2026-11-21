@@ -106,6 +106,9 @@ func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session 
 	if !target.Native.Definition.Weavable {
 		return operationresult.Result[string]{Status: operationresult.Forbidden, Message: "工具已停止支持编排：" + call.Name}, nil
 	}
+	if _, reason := asyncMode(target.Native.Definition, json.RawMessage(call.Arguments), false); reason != "" {
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: reason}, nil
+	}
 	ctx = deps.PrepareToolContext(ctx, session, call)
 	prepared, err := m.prepareCall(ctx, target, call)
 	if err != nil {

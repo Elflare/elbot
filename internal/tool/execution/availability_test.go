@@ -115,6 +115,29 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	}
 }
 
+func TestBackgroundSchemaHidesAsyncOption(t *testing.T) {
+	permission := security.DefaultPermission()
+	registry := toolregistry.NewRegistry(permission)
+	def := (fakeTool{name: "long_skill", risk: toolshare.RiskSafe}).Definition()
+	def.Definition.Async = toolshare.SyncByDefault
+	def.Parameters = map[string]any{"type": "object", "properties": map[string]any{"async": map[string]any{"type": "boolean"}}}
+	if err := registerTestTools(registry, def); err != nil {
+		t.Fatal(err)
+	}
+	manager := newTestManager(registry, permission)
+	discovered := []toolshare.DiscoveredTool{{Name: "long_skill", Source: toolshare.SourceKindNative, Schema: def.Schema()}}
+	for _, mode := range []string{storage.SessionModeBackground, storage.SessionModeWork} {
+		schemas, err := manager.Schemas(t.Context(), toolshare.Context{Mode: mode}, discovered)
+		if err != nil || len(schemas) != 1 {
+			t.Fatalf("schemas = %v, err = %v", schemas, err)
+		}
+		_, ok := schemas[0].Parameters["properties"].(map[string]any)["async"]
+		if ok != (mode == storage.SessionModeWork) {
+			t.Fatalf("mode %v: async visible = %v", mode, ok)
+		}
+	}
+}
+
 func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.DefaultPermission())
 	var discovered []toolshare.DiscoveredTool

@@ -62,6 +62,7 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	original, _ := json.Marshal(outer.Schema())
 	edit := (fakeTool{name: "edit_file", risk: share.RiskHigh}).Definition()
 	edit.Definition.Weavable = true
+	edit.Definition.Async = share.SyncByDefault
 	if err := registerTestTools(catalog, outer, web.NewWebExtractTool(env).Definition(), web.NewWebSearchTool(env).Definition(), edit, discovery.NewDiscoverTool(discovery.NewResolver(catalog))); err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +104,9 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	user := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})
 	if edit, err := share.WeaveFromContext(bound).Call(user, "edit_file", json.RawMessage("{}")); err != nil || edit.Status != operationresult.Success || edit.Data != "edit_file" {
 		t.Fatalf("edit within approved weave: %+v %v", edit, err)
+	}
+	if edit, err := share.WeaveFromContext(bound).Call(user, "edit_file", json.RawMessage(`{"async":true}`)); err != nil || edit.Status != operationresult.InvalidArguments {
+		t.Fatalf("async weave subcall: %+v %v", edit, err)
 	}
 	for _, tool := range state.DiscoveredTools {
 		actual, _ := json.Marshal(tool.Schema)
