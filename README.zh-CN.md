@@ -49,13 +49,30 @@ ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `disco
 
 **tool_weave** 让模型用一次工具调用完成原本需要多轮交互的任务。模型用 Python 批量或并发调用 ElBot 工具，筛选后只取所需结果，以此节省 Token 和提升速度。[^3] [了解工具编排原理](docs/concepts.md#用-python-编排工具)
 
-一次实测中，ElBot 和 Codex 均使用 `gpt-6.2-astra` 修复 ElBot 的同一个 bug。ElBot 少调用模型 12 次，总 Token 用量低 81.3%。
+ElBot 和 Codex 均使用 `gpt-6.2-astra` 修复 ElBot 的同一个 bug，在代码质量相近的情况下，ElBot 少调用模型 12 次，总 Token 用量低 81.3%。
 
 ```mermaid
+---
+config:
+  xyChart:
+    width: 760
+    height: 150
+    titleFontSize: 18
+    xAxis:
+      showAxisLine: false
+      showTick: false
+    yAxis:
+      showAxisLine: false
+      showTick: false
+      showLabel: false
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#487DB5"
+---
 xychart-beta horizontal
-    title "修复同一 bug：ElBot 少用 81.3% Token"
-    x-axis ["ElBot（25 次调用）", "Codex（37 次调用）"]
-    y-axis "Token 用量（万）" 0 --> 200
+    title "同一 bug，ElBot 少用 81.3% Token"
+    x-axis ["ElBot · 36.34 万 Token · 25 次调用", "Codex · 194.51 万 Token · 37 次调用"]
+    y-axis 0 --> 200
     bar [36.34, 194.51]
 ```
 
