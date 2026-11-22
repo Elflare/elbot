@@ -1230,14 +1230,14 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 	}
 }
 
-func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
-	if got := strings.Join(NewReadFileTool(FileGuard{}).Definition().Definition.Tags, ","); got != "files,agent" {
+func TestFileToolsHaveFilesTag(t *testing.T) {
+	if got := strings.Join(NewReadFileTool(FileGuard{}).Definition().Definition.Tags, ","); got != "files" {
 		t.Fatalf("read_file tags = %q", got)
 	}
 	if !NewReadFileTool(FileGuard{}).Definition().Definition.SuperadminOnly {
 		t.Fatal("read_file should be superadmin-only")
 	}
-	if got := strings.Join((EditFileTool{Rollback: fileops.NewService(nil)}).Definition().Definition.Tags, ","); got != "files,agent" {
+	if got := strings.Join((EditFileTool{Rollback: fileops.NewService(nil)}).Definition().Definition.Tags, ","); got != "files" {
 		t.Fatalf("edit_file tags = %q", got)
 	}
 }

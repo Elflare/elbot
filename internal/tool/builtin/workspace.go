@@ -61,7 +61,7 @@ func workspaceBuilder() *toolshare.Builder {
 		Description("切目录只能用此工具。持久化当前目录，文件工具和shell的路径相对工作目录。目标目录 ≠ 当前工作目录时切。{}→查询，reset=true→重置，否则path→切换。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
-		Tags("agent", "files").
+		Tags("files").
 		ForegroundOnly().
 		String("path", "切换目录，支持~/或$HOME/开头。").
 		Boolean("reset", "true→重置默认目录并忽略path。")

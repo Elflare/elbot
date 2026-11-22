@@ -24,7 +24,7 @@ func (t askUserTool) definition() share.ToolDefinition {
 	}
 	return share.NewBuilder("ask_user").Async(share.AsyncByDefault).ForegroundOnly().OwnerScoped().Risk(share.RiskLow).
 		Description("批量提问，默认异步。用户交卷后以工具结果回报，空题标为未回答。async=false 等待交卷。勿复述或轮询。").
-		ObjectArray("questions", "题目", fields, []string{"question", "options"}, share.Required()).Tags("agent").Build(t.prepare)
+		ObjectArray("questions", "题目", fields, []string{"question", "options"}, share.Required()).Build(t.prepare)
 }
 
 func (t askUserTool) prepare(_ context.Context, req share.CallRequest, info share.Info) (operationresult.Result[*share.PreparedCall], error) {

@@ -169,7 +169,7 @@ func readFileBuilder() *toolshare.Builder {
 		Description("读文本→行号+revision；grep搜索文本；ast查看Go文件声明骨架，再按行范围read实现。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
-		Tags("files", "agent").
+		Tags("files").
 		DependsOn("workspace", "rollback_file").
 		String("path", "read/ast仅文件；grep可递归目录。", toolshare.Required()).
 		String("encoding", "文件编码，默认auto。").
@@ -399,7 +399,7 @@ func editFileBuilder() *toolshare.Builder {
 		Description("批量编辑单个文本文件；成功→unified diff，任一操作失败→不写入。").
 		Risk(toolshare.RiskHigh).
 		DependsOn("workspace", "rollback_file").
-		Tags("files", "agent").
+		Tags("files").
 		String("path", "相对workspace或绝对路径。", toolshare.Required()).
 		String("encoding", "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。").
 		String("expected_revision", "已有文件∧含replace/insert/delete/overwrite⇒必填；取read_file的revision。其他操作可传以校验版本；新建时省略。").

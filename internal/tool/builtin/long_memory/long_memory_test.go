@@ -411,9 +411,9 @@ func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 	}
 }
 
-func TestLongMemoryToolsHaveAgentTag(t *testing.T) {
+func TestLongMemoryToolsHaveNoBuiltinTags(t *testing.T) {
 	for _, memoryTool := range NewLongMemoryTools(t.TempDir()) {
-		if got := strings.Join(memoryTool.Definition.Tags, ","); got != "agent" {
+		if got := memoryTool.Definition.Tags; len(got) != 0 {
 			t.Fatalf("%s tags = %q", memoryTool.Definition.Name, got)
 		}
 	}

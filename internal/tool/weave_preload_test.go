@@ -37,10 +37,8 @@ func TestWeavePreloadReflectsFullCommittedState(t *testing.T) {
 			t.Fatalf("preload %v: %q, %v", step.names, committed.WeaveDescription, err)
 		}
 	}
-	for _, tag := range []string{"agent", "files"} {
-		prepared, err := m.PrepareTools(ctx, []string{tag})
-		if err != nil || !slices.ContainsFunc(prepared.Update.Tools, func(item DiscoveredTool) bool { return item.Name == "tool_weave" }) {
-			t.Fatalf("tag %q did not preload tool_weave: %v", tag, err)
-		}
+	prepared, err := m.PrepareTools(ctx, []string{"files"})
+	if err != nil || !slices.ContainsFunc(prepared.Update.Tools, func(item DiscoveredTool) bool { return item.Name == "tool_weave" }) {
+		t.Fatalf("files tag did not preload tool_weave: %v", err)
 	}
 }
