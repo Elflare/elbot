@@ -50,7 +50,8 @@ func (m *Manager) ImportURL(ctx context.Context, rawURL string, input share.Inpu
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return operationresult.Result[share.MediaInfo]{Status: operationresult.Failed, Message: fmt.Sprintf("download media: unexpected HTTP status %d", response.StatusCode)}, nil
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Failed, Message: "download media: " + string(body)}, nil
 	}
 	if input.Source.URL == "" {
 		input.Source.URL = u.String()
