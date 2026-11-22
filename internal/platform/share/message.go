@@ -37,6 +37,7 @@ type MessageSegment struct {
 }
 
 type ReplyContext struct {
+	Display     string           // 入站引用展示快照；无对应历史记录时为空。
 	MessageID   string           // 被引用的平台消息 ID。
 	HistorySeq  int64            // 当前聊天中被引用记录的短号；未入库时为零。
 	IsAssistant bool             // 被引用消息由当前机器人发出。

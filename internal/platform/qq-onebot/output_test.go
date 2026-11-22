@@ -82,7 +82,7 @@ func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {
 	}
 	out := delivery.FilePath(path)
 	out.Name = "report.txt"
-	segments, err := outputSegments(sendFileModeBase64, out)
+	segments, _, _, err := outputSegments(sendFileModeBase64, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestOutputSegmentsImageUsesBase64ForPlainPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := delivery.ImagePath(path)
-	segments, err := outputSegments(sendFileModeBase64, out)
+	segments, _, _, err := outputSegments(sendFileModeBase64, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestOutputSegmentsImageUsesFileURIForRelativePath(t *testing.T) {
 	if err := os.WriteFile(want, []byte("png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	segments, err := outputSegments(sendFileModeFileURI, delivery.ImagePath(rel))
+	segments, _, _, err := outputSegments(sendFileModeFileURI, delivery.ImagePath(rel))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestOutputSegmentsImageUsesFileURIForRelativePath(t *testing.T) {
 
 func TestOutputSegmentsImageUsesStructuredURL(t *testing.T) {
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/a.png"}}
-	segments, err := outputSegments(sendFileModeBase64, out)
+	segments, _, _, err := outputSegments(sendFileModeBase64, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestOutputSegmentsImageUsesStructuredURL(t *testing.T) {
 
 func TestOutputSegmentsUsesBase64ForData(t *testing.T) {
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("png")}}
-	segments, err := outputSegments(sendFileModeFileURI, out)
+	segments, _, _, err := outputSegments(sendFileModeFileURI, out)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestOutputSegmentsRecordSources(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			segments, err := outputSegments(tc.mode, tc.out)
+			segments, _, _, err := outputSegments(tc.mode, tc.out)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -251,7 +251,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 
 func TestOutputSegmentsBase64ReturnsReadError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.png")
-	_, err := outputSegments(sendFileModeBase64, delivery.ImagePath(path))
+	_, _, _, err := outputSegments(sendFileModeBase64, delivery.ImagePath(path))
 	if err == nil || !strings.Contains(err.Error(), "read image path") {
 		t.Fatalf("err = %v", err)
 	}

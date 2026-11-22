@@ -84,9 +84,7 @@ type fileInfo struct {
 	FilePath     string `json:"file_path"`
 }
 
-type sentMessage struct {
-	MessageID int64 `json:"message_id"`
-}
+type sentMessage = message
 
 type sendMessageRequest struct {
 	ChatID            int64        `json:"chat_id"`

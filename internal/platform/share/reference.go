@@ -20,15 +20,16 @@ type ReferencedMessage struct {
 
 // ReferenceOptions 是单次引用恢复输入；存储依赖由根部固定注入。
 type ReferenceOptions struct {
-	Platform       string                                                                     // 平台名称。
-	ChatType       contextinfo.ChatType                                                       // 会话类型，与原生 ID 共同标识会话。
-	ChatID         string                                                                     // 聊天范围。
-	Owner          contextinfo.ActorIdentity                                                  // 当前行为者。
-	UseBotUsername bool                                                                       // 助手引用使用当前机器人身份中的昵称，而非被引用记录的发送者名。
-	ReplyID        string                                                                     // 被引用的消息 ID。
-	Text           string                                                                     // 当前输入正文。
-	Fetch          func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
-	Enrich         func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
+	Bot      Identity                  // 当前平台的机器人身份，用于识别引用作者和补全展示名。
+	Platform string                    // 平台名称。
+	ChatType contextinfo.ChatType      // 会话类型，与原生 ID 共同标识会话。
+	ChatID   string                    // 聊天范围。
+	Owner    contextinfo.ActorIdentity // 当前行为者。
+
+	ReplyID string                                                                     // 被引用的消息 ID。
+	Text    string                                                                     // 当前输入正文。
+	Fetch   func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
+	Enrich  func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
 }
 
 type ReferenceResult struct {
@@ -40,11 +41,8 @@ type ReferenceResult struct {
 	Reply             ReplyContext     // 原始引用事实。
 }
 
-func FormatReferenceText(reply ReplyContext, currentText string) string {
-	header := "引用"
-	if reply.HistorySeq > 0 {
-		header += " h" + strconv.FormatInt(reply.HistorySeq, 10)
-	}
+func FormatReferenceText(reply ReplyContext) string {
+	header := "引用 h" + strconv.FormatInt(reply.HistorySeq, 10)
 	name := strings.TrimSpace(reply.SenderName)
 	id := strings.TrimSpace(reply.SenderID)
 	if reply.IsAssistant {
@@ -66,9 +64,5 @@ func FormatReferenceText(reply ReplyContext, currentText string) string {
 	if content := strings.TrimSpace(reply.Text); content != "" {
 		header += "：" + content
 	}
-	formatted := "[" + header + "]"
-	if currentText = strings.TrimSpace(currentText); currentText != "" {
-		formatted += "\n\n" + currentText
-	}
-	return formatted
+	return "[" + header + "]"
 }

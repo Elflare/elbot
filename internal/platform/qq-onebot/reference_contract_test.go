@@ -20,11 +20,7 @@ func resolveFetchedReferenceForTest(ctx context.Context, opts share.ReferenceOpt
 	if err != nil {
 		return share.ReferenceResult{}, err
 	}
-	text := opts.Text
-	if len(display) == 0 {
-		text = share.FormatReferenceText(reply, opts.Text)
-	}
 	return share.ReferenceResult{
-		Text: text, Reply: reply, ReferenceSegments: ref.Segments, DisplaySegments: display,
+		Text: opts.Text, Reply: reply, ReferenceSegments: ref.Segments, DisplaySegments: display,
 	}, nil
 }

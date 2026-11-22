@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -432,9 +434,6 @@ func TestHandleEventPreservesReferenceDecision(t *testing.T) {
 		{Text: "foreign answer context", Reply: share.ReplyContext{MessageID: "42", Text: "foreign answer"}},
 	} {
 		adapter := newTestAdapter(t, Config{}, nil, nil, "1")
-		adapter.findByPlatformMessage = func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
-			return &storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant}, nil
-		}
 		adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 			if opts.Platform != "qqonebot" || (opts.ChatType != "group" || opts.ChatID != "9") || opts.Owner != (contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}) || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
 				t.Fatalf("reference options = %#v", opts)
@@ -470,7 +469,7 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 }
 
 func TestOutputSegments(t *testing.T) {
-	segments, err := outputSegments(sendFileModeBase64, delivery.Emoticon("178", "滑稽"))
+	segments, _, _, err := outputSegments(sendFileModeBase64, delivery.Emoticon("178", "滑稽"))
 	if err != nil {
 		t.Fatalf("outputSegments emoticon: %v", err)
 	}
@@ -478,7 +477,7 @@ func TestOutputSegments(t *testing.T) {
 		t.Fatalf("emoticon segments = %#v", segments)
 	}
 
-	segments, err = outputSegments(sendFileModeBase64, delivery.At("123456"))
+	segments, _, _, err = outputSegments(sendFileModeBase64, delivery.At("123456"))
 	if err != nil {
 		t.Fatalf("outputSegments at: %v", err)
 	}
@@ -506,8 +505,9 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 		if opts.ReplyID != "42" {
 			t.Fatalf("reply ID = %q", opts.ReplyID)
 		}
-		reply := share.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"}
-		return share.ReferenceResult{Text: share.FormatReferenceText(reply, opts.Text), Reply: reply}, nil
+		reply := share.ReplyContext{HistorySeq: 1, MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"}
+		reply.Display = share.FormatReferenceText(reply)
+		return share.ReferenceResult{Text: reply.Display + "\n\n" + opts.Text, Reply: reply}, nil
 	}
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler.HandleMessage, Event{
@@ -519,7 +519,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	wantText := `[引用：被引用者(id:1001)：被引用内容]
+	wantText := `[引用 h1：被引用者(id:1001)：被引用内容]
 
 本次发送的内容`
 	if msgCtx.ContextText != wantText {
@@ -530,11 +530,36 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := storage.ChatMessageReply(*row)
-	if reply.MessageID != "42" || reply.SenderID != "1001" || reply.SenderName != "被引用者" || reply.Text != "被引用内容" {
+	if reply.MessageID != "42" || reply.SenderID != "1001" || reply.SenderName != "被引用者" || reply.Text != "被引用内容" || reply.Display+"\n\n"+row.Text != wantText {
 		t.Fatalf("stored reply = %#v", reply)
 	}
 }
 
+func TestUnavailableQuotedMessageKeepsCurrentMessage(t *testing.T) {
+	var calls atomic.Int32
+	transport := newTestTransport(t, func(req request) response {
+		calls.Add(1)
+		if req.Action != "get_msg" {
+			t.Errorf("unexpected action %s", req.Action)
+		}
+		return response{Status: "failed", Retcode: 100, Echo: req.Echo}
+	})
+	a := newTestAdapter(t, Config{}, nil, nil)
+	a.transport = transport
+	h := &captureHandler{}
+	a.handleEvent(t.Context(), h.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"reply","data":{"id":"77"}},{"type":"text","data":{"text":"B 的正文"}}]`)})
+	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), "group", "9", "7")
+	if err != nil || row.Text != "B 的正文" {
+		t.Fatalf("current history=%+v err=%v", row, err)
+	}
+	if h.ctx == nil {
+		t.Fatal("current message was not dispatched")
+	}
+	msg, _ := share.MessageContextFrom(h.ctx)
+	if h.text != row.Text || msg.ReplyToSenderID != "" || msg.Reply.IsAssistant || calls.Load() != 1 {
+		t.Fatalf("row=%+v err=%v input=%q reply=%+v calls=%d", row, err, h.text, msg.Reply, calls.Load())
+	}
+}
 func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		switch req.Action {
@@ -555,7 +580,7 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.ReplyToSenderID != "1000" {
+	if msgCtx.ReplyToSenderID != "1000" || !msgCtx.Reply.IsAssistant {
 		t.Fatalf("reply sender = %q", msgCtx.ReplyToSenderID)
 	}
 }
@@ -668,19 +693,20 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		t.Cleanup(func() { _ = db.Close() })
 		history = db.Repository()
 	}
+	parseCommand := func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }
+	refs := refcontext.Options{ParseCommand: parseCommand, ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage, FindOutputs: store.Media().FindOutputs, FindHistory: store.Media().FindHistory, GetMedia: store.Media().Get}
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled": cfg.Enabled, "ws_url": cfg.URL, "access_token": cfg.AccessToken, "access_token_env": cfg.AccessTokenEnv,
 		"reconnect_interval_seconds": cfg.ReconnectIntervalSeconds, "api_timeout_seconds": cfg.APITimeoutSeconds,
 		"trigger_keywords": cfg.TriggerKeywords, "send_file_mode": cfg.SendFileMode,
 	}, Deps{
-		ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
+		ParseCommand: parseCommand,
 		CommonConfig: share.CommonConfig{PlatformName: testPlatformName,
 			Superadmins: share.NewSuperadmins(testPlatformName, adminIDs),
 		},
-		ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage,
-		FindOutputs: store.Media().FindOutputs,
-		ReferenceResolver: func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-			return share.ReferenceResult{Text: opts.Text, Reply: share.ReplyContext{MessageID: opts.ReplyID}}, nil
+		ChatHistory: history,
+		ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+			return refcontext.Apply(ctx, refs, opts)
 		},
 	})
 	if err != nil {

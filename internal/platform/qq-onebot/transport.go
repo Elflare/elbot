@@ -344,6 +344,21 @@ func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, erro
 	return data, nil
 }
 
+func (t *Transport) getLoginInfo(ctx context.Context) (Sender, error) {
+	resp, err := t.call(ctx, "get_login_info", map[string]any{})
+	if err != nil {
+		return Sender{}, err
+	}
+	var data Sender
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return Sender{}, fmt.Errorf("decode get_login_info response: %w", err)
+	}
+	if data.UserID == 0 {
+		return Sender{}, fmt.Errorf("get_login_info response missing user_id")
+	}
+	return data, nil
+}
+
 func (t *Transport) GetGroupMemberInfo(ctx context.Context, groupID, userID int64) (Sender, error) {
 	resp, err := t.call(ctx, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
 	if err != nil {

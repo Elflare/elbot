@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	"elbot/internal/storage"
 )
 
 type messageStream struct {
@@ -137,7 +138,7 @@ func (s *messageStream) sendFinal(ctx context.Context, text string, actions []de
 		switch {
 		case req.MessageID != 0:
 			if req.RichMessage != nil || req.ReplyMarkup != nil || req.Text != s.preview.Text || req.ParseMode != s.preview.ParseMode {
-				_, err = s.adapter.client.editMessageText(ctx, req)
+				sent, err = s.adapter.client.editMessageText(ctx, req)
 			}
 			sent.MessageID = req.MessageID
 		case req.RichMessage != nil:
@@ -152,11 +153,8 @@ func (s *messageStream) sendFinal(ctx context.Context, text string, actions []de
 		if i == 0 {
 			s.message = sent.MessageID
 		}
-		if sent.MessageID != 0 {
-			if req.MessageID == 0 {
-				s.messages = append(s.messages, sent.MessageID)
-			}
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
+		if s.adapter.recordOutput(ctx, s.target, &receipt, sent, 0, storage.ChatSegment{Type: "text", Text: page}) && req.MessageID == 0 {
+			s.messages = append(s.messages, sent.MessageID)
 		}
 	}
 	s.finished = true

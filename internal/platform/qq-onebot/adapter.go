@@ -4,9 +4,7 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/command"
-	"elbot/internal/contextinfo"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,15 +25,9 @@ type Config struct {
 // Deps 是 OneBot 构造所需的配置与借用能力，由 Platform 根部装配。
 type Deps struct {
 	share.CommonConfig
-	ParseCommand func(string) command.Parsed // 根部绑定配置前缀的命令解析能力。
-	// ChatHistory 只写入历史和查询被引用消息的身份。
-	ChatHistory interface {
-		share.ChatHistoryWriter
-		share.ChatHistoryReader
-	}
-	ReferenceResolver     func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error)                                  // 引用恢复能力。
-	FindByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 查询消息输出关联。
-	FindOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 查询未过期的媒体输出关联。
+	ParseCommand      func(string) command.Parsed // 根部绑定配置前缀的命令解析能力。
+	ChatHistory       share.ChatHistoryWriter
+	ReferenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 引用恢复能力。
 }
 
 type Adapter struct {
@@ -44,16 +36,12 @@ type Adapter struct {
 	cfg               Config
 	parseCommand      func(string) command.Parsed                                                  // 借用的命令解析函数。
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
-	chatHistory       interface {
-		share.ChatHistoryWriter
-		share.ChatHistoryReader
-	}
-	findByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 借用的消息关联查询。
-	findOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 借用的媒体输出关联查询。
-	transport             *Transport                                                                                                    // 常驻连接，保留到最终关闭。
-	lastMessageID         int64                                                                                                         // 上一条非零入站 ID，断线重连时保留。
+	chatHistory       share.ChatHistoryWriter
+	transport         *Transport // 常驻连接，保留到最终关闭。
+	lastMessageID     int64      // 上一条非零入站 ID，断线重连时保留。
 
 	mu               sync.Mutex
+	bot              share.Identity  // 常驻连接的登录账号与昵称，由 mu 保护。
 	started          bool            // 已尝试启动，重复 Start 不替换上下文或 handler。
 	closing          bool            // 入站及新临时拨号已停止。
 	closingResources bool            // 最终清理已启动，重试只等待同一次清理。
@@ -91,7 +79,7 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 		name: deps.PlatformName, superadmins: deps.Superadmins,
 		parseCommand: deps.ParseCommand,
 		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
-		findByPlatformMessage: deps.FindByPlatformMessage, findOutputs: deps.FindOutputs,
+
 		transport:   newTransport(deps.PlatformName, cfg.URL, cfg.AccessToken, time.Duration(cfg.APITimeoutSeconds)*time.Second),
 		connectDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
 		temporary: make(map[*Transport]context.CancelFunc),
@@ -122,6 +110,8 @@ func validateSendFileMode(mode string) error {
 		return fmt.Errorf("qqonebot send_file_mode must be %q or %q, got %q", sendFileModeBase64, sendFileModeFileURI, mode)
 	}
 }
+
+func (a *Adapter) botIdentity() share.Identity { a.mu.Lock(); defer a.mu.Unlock(); return a.bot }
 
 func (a *Adapter) Name() string { return a.name }
 

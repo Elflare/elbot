@@ -62,6 +62,12 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	first, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "old-forward", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest-forward", latest)
+	history := newRefTestHistory(t)
+	for _, id := range []string{"old-forward", "latest-forward"} {
+		if err := history.Append(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, PlatformMessageID: id, IsAssistant: true, Text: first.Content}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, tc := range []struct {
 		name, reply, text string
 		actor             contextinfo.ActorIdentity
@@ -74,7 +80,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			result, err := Apply(ctx, newRefTestOptions(store, history), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return share.ReferencedMessage{Text: "[forward]", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}}}, true, nil
 			}, Enrich: func(_ context.Context, _ string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 				calls++
@@ -104,7 +110,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 					t.Fatalf("command=%#v", result)
 				}
 			case "other actor":
-				if result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "[引用：助手]\n<forward_message>\nold\n</forward_message>\n\n问题" {
+				if result.Reply.Display != "[引用 h1：助手：old]" || result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "[引用 h1：助手]\n<forward_message>\nold\n</forward_message>\n\n问题" {
 					t.Fatalf("ordinary reference=%#v", result)
 				}
 			}

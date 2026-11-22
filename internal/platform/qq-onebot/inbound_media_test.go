@@ -58,16 +58,6 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := newTestAdapter(t, Config{}, store, nil)
-	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-		if opts.ReplyID != "sent" {
-			t.Fatalf("reply ID = %q", opts.ReplyID)
-		}
-		return share.ReferenceResult{
-			Text:              opts.Text,
-			ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, MediaID: item.Data.ID}},
-			Reply:             share.ReplyContext{MessageID: "sent"},
-		}, nil
-	}
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("unexpected reference API: %s", req.Action)
 		return response{Status: "failed", Echo: req.Echo}

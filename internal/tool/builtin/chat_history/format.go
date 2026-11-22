@@ -9,7 +9,7 @@ const (
 	chatHistoryMessageLimit = 300
 )
 
-// Keep participant IDs in a single roster, including senders in quote previews.
+// Keep participant IDs in a single roster, for history rows.
 func formatHistoryRows(messages []Message, target int64, full, avatars bool) []string {
 	type person struct{ id, name, url string }
 	var people []person
@@ -42,22 +42,13 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 			day = d
 		}
 		who := user(m.SenderID, m.SenderName, m.SenderAvatarURL)
+		if m.IsAssistant {
+			who = strings.TrimSpace("助手 " + who)
+		}
 		body := m.Text
-		quote := m.Reply
 		marker := "...[单条消息过长，已截断]"
-		if quote.MessageID != "" {
-			header := "引用"
-			if quote.Seq > 0 {
-				header += fmt.Sprintf(" h%d", quote.Seq)
-			}
-			if u := user(quote.SenderID, quote.SenderName, ""); u != "" {
-				header += " · " + u
-			}
-			if quote.Text != "" {
-				header += ": " + truncateChatHistoryReference(quote.Text, full, marker)
-			}
-			body = "[" + header + "]\n" + truncateChatHistoryReference(body, full, marker)
-
+		if m.Quote != "" {
+			body = truncateChatHistoryReference(m.Quote, full, marker) + "\n" + truncateChatHistoryReference(body, full, marker)
 		} else {
 			body = truncateChatHistoryMessage(body, full, marker)
 		}

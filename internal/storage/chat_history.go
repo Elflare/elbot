@@ -22,39 +22,30 @@ type ChatSegment struct {
 
 // ChatReply 是历史引用的内容快照，消息 ID 单独保存在历史行中。
 type ChatReply struct {
-	MessageID  string // 被引用的平台消息标识。
-	SenderID   string // 被引用消息的发送者标识。
-	SenderName string // 被引用消息的发送者展示名。
-	Text       string // 被引用消息的正文。
+	MessageID  string `json:"-"` // 被引用的平台消息标识，单独存列。
+	SenderID   string `json:"sender_id,omitempty"`
+	SenderName string `json:"sender_name,omitempty"`
+	Text       string `json:"text,omitempty"`    // 原文，不含引用前缀。
+	Display    string `json:"display,omitempty"` // 入站时确定的带历史短号的引用展示。
 }
 
 type chatMetadata struct {
-	Reply *chatReplyMetadata `json:"reply,omitempty"` // 可选的引用内容快照。
-}
-
-type chatReplyMetadata struct {
-	SenderID   string `json:"sender_id,omitempty"`   // 引用发送者的平台标识。
-	SenderName string `json:"sender_name,omitempty"` // 引用发送者的展示名。
-	Text       string `json:"text,omitempty"`        // 引用正文快照。
+	Reply ChatReply `json:"reply"`
 }
 
 func MarshalChatMetadata(reply ChatReply) string {
-	if strings.TrimSpace(reply.MessageID) == "" {
+	if reply.MessageID == "" {
 		return ""
 	}
-	data, _ := json.Marshal(chatMetadata{Reply: &chatReplyMetadata{
-		SenderID: strings.TrimSpace(reply.SenderID), SenderName: strings.TrimSpace(reply.SenderName), Text: strings.TrimSpace(reply.Text),
-	}})
+	data, _ := json.Marshal(chatMetadata{Reply: reply})
 	return string(data)
 }
 
 func ChatMessageReply(message ChatMessage) ChatReply {
-	reply := ChatReply{MessageID: strings.TrimSpace(message.ReplyToPlatformMessageID)}
 	var metadata chatMetadata
-	if json.Unmarshal([]byte(strings.TrimSpace(message.Metadata)), &metadata) == nil && metadata.Reply != nil {
-		reply.SenderID, reply.SenderName, reply.Text = strings.TrimSpace(metadata.Reply.SenderID), strings.TrimSpace(metadata.Reply.SenderName), strings.TrimSpace(metadata.Reply.Text)
-	}
-	return reply
+	_ = json.Unmarshal([]byte(message.Metadata), &metadata)
+	metadata.Reply.MessageID = message.ReplyToPlatformMessageID
+	return metadata.Reply
 }
 
 // MarshalChatSegments 清除临时、敏感来源和物化结果后保存片段，保留原始顺序。

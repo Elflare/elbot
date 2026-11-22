@@ -5,7 +5,6 @@ package qqofficial
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -155,13 +154,14 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	var ref share.ReferenceResult
 	if err == nil && replyID != "" {
 		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:       a.Name(),
-			ChatID:         messageCtx.Conversation.Source.ChatID,
-			ChatType:       conversation,
-			Owner:          actorID,
-			UseBotUsername: true,
-			ReplyID:        replyID,
-			Text:           text,
+			Bot:      messageCtx.Bot,
+			Platform: a.Name(),
+			ChatID:   messageCtx.Conversation.Source.ChatID,
+			ChatType: conversation,
+			Owner:    actorID,
+
+			ReplyID: replyID,
+			Text:    text,
 			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return referenced, len(referenced.Segments) > 0, nil
 			},
@@ -181,11 +181,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		globalevents.Log(context.WithoutCancel(msgCtx), record)
 		return
 	}
-	if replyID == "" && len(referenced.Segments) > 0 && !a.parseCommand(text).OK {
-		ref.Reply = share.ReplyContext{Text: referenced.Text, Segments: referenced.Segments}
-		ref.ReferenceSegments = referenced.Segments
-		ref.Text = share.FormatReferenceText(ref.Reply, text)
-	}
 	if replyID != "" || len(ref.ReferenceSegments) > 0 {
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
@@ -197,11 +192,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		messageCtx.Segments = share.FinalMessageSegments(text, segments, nil)
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
-	historyReply := messageCtx.Reply
-	if historyReply.Text == "" {
-		historyReply.Text = referenced.Text
-	}
-	a.recordChatMessage(ctx, msg, conversation, senderID, name, scopeID, text, replyID, historyReply)
+	a.recordChatMessage(ctx, msg, conversation, senderID, name, scopeID, text, replyID, segments, messageCtx.Reply)
 	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID, senderID)
 	_ = handler(msgCtx, text, messageCtx)
 }
@@ -220,7 +211,7 @@ func normalizedInboundText(content string) string {
 	return strings.TrimSpace(qqOfficialFaceFallbackPattern.ReplaceAllString(content, ""))
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, name, scopeID, text, replyID string, reply share.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, name, scopeID, text, replyID string, sourceSegments []share.MessageSegment, reply share.ReplyContext) {
 	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -230,12 +221,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 			createdAt = parsed
 		}
 	}
-	sourceSegments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
-	segments := make([]storage.ChatSegment, len(sourceSegments))
-	for i, segment := range sourceSegments {
-		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
-	}
-	history := &storage.ChatMessage{
+	history := storage.ChatMessage{
 		Platform:                 a.Name(),
 		ChatID:                   scopeID,
 		ChatType:                 conversation,
@@ -245,38 +231,12 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		SenderAvatarURL:          strings.TrimSpace(msg.Author.Avatar),
 		Text:                     strings.TrimSpace(text),
 		Raw:                      msg.Content,
-		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
-		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
-	a.appendChatMessage(ctx, history)
+	share.RecordInboundMessage(ctx, a.chatHistory, history, sourceSegments, reply)
 }
 
-func (a *Adapter) appendChatMessage(ctx context.Context, history *storage.ChatMessage) {
-	if err := a.chatHistory.Append(ctx, history); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryLog,
-				Level:        slog.LevelError,
-				EventName:    "record_qqofficial_chat_message_failed",
-				Module:       a.Name(),
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("record qqofficial chat message failed\nerror=%v\nmessage_id=%v", err, history.PlatformMessageID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			record.Identity = globalevents.LogIdentityFromContext(ctx)
-			globalevents.Log(context.WithoutCancel(ctx), record)
-		}
-	}
-}
-
-// messageData 是发布后不可变的协议扩展，消息和会话 ID 保存在公共会话事实中。
 type messageData struct {
 	EventID   string // 来源事件标识，供无消息 ID 的回复使用。
 	EventType string // 原生入站事件类型。

@@ -11,7 +11,6 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -152,6 +151,9 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	history := db.Repository()
 	markdown := false
 	a := newTestAdapter(t, Config{AppID: "bot", MarkdownByDefault: &markdown}, history)
+	if err := a.handleDispatch(ctx, nil, payload{Type: eventReady, Data: []byte(`{"user":{"username":"芙蕾娅"}}`)}, &gatewayState{}); err != nil {
+		t.Fatal(err)
+	}
 	deps := refcontext.Options{ChatHistory: history, ParseCommand: a.parseCommand,
 		FindByPlatformMessage: func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
 			return nil, storage.ErrNotFound
@@ -233,12 +235,23 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "assistant"); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("unmarked output duplicated in history: %v", err)
+	for id, text := range map[string]string{"assistant": "assistant reply", "hook": "hook text", "cmd": "status"} {
+		row, err := history.GetByPlatformMessage(ctx, a.Name(), "group", "g", id)
+		if err != nil || !row.IsAssistant || row.SenderName != "芙蕾娅" || row.Text != text {
+			t.Fatalf("sent %s: row=%+v err=%v", id, row, err)
+		}
 	}
 	mc = receive(`{"id":"llmquote","group_openid":"g","author":{"member_openid":"B"},"content":"还在？","message_scene":{"ext":["ref_msg_idx=idxAssistant"]}}`, true)
 	if len(mc.Mentions) != 0 || mc.ReplyToMessageID != "assistant" || mc.ReplyToSenderID != mc.Bot.UserID || mc.ReplyToSenderID != "bot" {
 		t.Fatalf("LLM quote: id=%q sender=%q mentions=%v", mc.ReplyToMessageID, mc.ReplyToSenderID, mc.Mentions)
+	}
+	quote, err := history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "llmquote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := storage.ChatMessageReply(*quote).Display
+	if snapshot != fmt.Sprintf("[引用 h%d：芙蕾娅（助手）：assistant reply]", mc.Reply.HistorySeq) || mc.ContextText != snapshot+"\n\n"+quote.Text {
+		t.Fatalf("snapshot=%q live=%q", snapshot, mc.ContextText)
 	}
 	mapTestReference(t, a, "group", "g", "displayOnly", "cmd")
 	mc = receive(`{"id":"display","group_openid":"g","author":{"member_openid":"B"},"content":"在？","message_scene":{"ext":["ref_msg_idx=displayOnly"]}}`, false)
@@ -359,33 +372,6 @@ func TestHandleC2CMessageUsesNativeIdentity(t *testing.T) {
 	}
 	if msgCtx.Conversation.Identity.ID != "user-1" {
 		t.Fatalf("platform user id = %q, want user-1", msgCtx.Conversation.Identity.ID)
-	}
-}
-
-func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
-	adapter := newTestAdapter(t, Config{}, nil)
-	handler := &captureHandler{}
-	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
-		ID:          "msg-1",
-		Author:      inboundAuthor{UserOpenID: "user-1"},
-		Content:     "你看看有没",
-		MessageType: 103,
-		MsgElements: []messageElement{{Content: "已保存附件：attachment-1\n路径：/tmp/attachment-1"}},
-	})
-
-	want := "[引用：已保存附件：attachment-1\n路径：/tmp/attachment-1]\n\n你看看有没"
-	if handler.text != "你看看有没" {
-		t.Fatalf("text = %q, want current text", handler.text)
-	}
-	msgCtx, ok := share.MessageContextFrom(handler.ctx)
-	if !ok {
-		t.Fatal("missing message context")
-	}
-	if msgCtx.ContextText != want {
-		t.Fatalf("context text = %q, want %q", msgCtx.ContextText, want)
-	}
-	if msgCtx.Reply.MessageID != "" || msgCtx.Reply.Text != "已保存附件：attachment-1\n路径：/tmp/attachment-1" {
-		t.Fatalf("reply = %#v", msgCtx.Reply)
 	}
 }
 

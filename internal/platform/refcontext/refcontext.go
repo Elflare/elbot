@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -39,11 +40,22 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 	if err != nil {
 		return share.ReferenceResult{}, err
 	}
-	if hasStored {
-		result.Reply.Text = strings.TrimSpace(stored.Content)
-		if result.Reply.Text != "" {
-			result.Reply.Segments = []share.MessageSegment{{Type: share.SegmentText, Text: result.Reply.Text}}
+	result.Reply.IsAssistant = hasStored && stored.Role == storage.RoleAssistant
+	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return share.ReferenceResult{}, err
+	}
+	if row != nil {
+		reply := &result.Reply
+		reply.HistorySeq, reply.SenderID, reply.SenderName, reply.Text = row.Seq, row.SenderID, row.SenderName, row.Text
+		reply.IsAssistant = reply.IsAssistant || row.IsAssistant || (row.SenderID != "" && row.SenderID == opts.Bot.UserID)
+		if reply.IsAssistant && reply.SenderName == "" {
+			reply.SenderName = opts.Bot.Username
 		}
+		if reply.Text == "" && row.Segments != "" {
+			reply.Text = "[媒体消息]"
+		}
+		reply.Display = share.FormatReferenceText(*reply)
 	}
 	if parsed := deps.ParseCommand(opts.Text); parsed.OK {
 		if hasStored && stored.Role == storage.RoleAssistant && parsed.Name == "fork" {
@@ -59,15 +71,14 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 			return share.ReferenceResult{}, err
 		}
 		if omitReference {
-			result.Reply = share.ReplyContext{MessageID: replyID}
 			return result, nil
 		}
-		if result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
-			_, result.ReferenceSegments, result.Reply, _, err = fallbackReferenceText(ctx, deps, opts, replyID, stored, hasStored)
-			return result, err
-		}
 	}
-	result.Text, result.ReferenceSegments, result.Reply, result.DisplaySegments, err = fallbackReferenceText(ctx, deps, opts, replyID, stored, hasStored)
+	text, segments, reply, display, err := fallbackReferenceText(ctx, deps, opts, row, result.Reply, stored, hasStored)
+	result.ReferenceSegments, result.Reply = segments, reply
+	if result.ResumeSessionID == "" && result.ForkFromMessageID == "" {
+		result.Text, result.DisplaySegments = text, display
+	}
 	return result, err
 }
 
@@ -79,49 +90,36 @@ func referencedMessage(ctx context.Context, deps Options, opts share.ReferenceOp
 	return msg, err == nil, err
 }
 
-func fallbackReferenceText(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, stored *storage.Message, hasStored bool) (string, []share.MessageSegment, share.ReplyContext, []share.MessageSegment, error) {
+func fallbackReferenceText(ctx context.Context, deps Options, opts share.ReferenceOptions, row *storage.ChatMessage, reply share.ReplyContext, stored *storage.Message, hasStored bool) (string, []share.MessageSegment, share.ReplyContext, []share.MessageSegment, error) {
 	content := ""
 	var segments []share.MessageSegment
-	reply := share.ReplyContext{MessageID: replyID}
-	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return "", nil, share.ReplyContext{}, nil, err
-	}
-	if row != nil {
-		reply.HistorySeq = row.Seq
-		reply.SenderID, reply.SenderName = row.SenderID, row.SenderName
-	}
+	replyID := reply.MessageID
 	ref, ok, err := referenceSource(ctx, deps, opts, replyID, row)
 	if err != nil {
 		return "", nil, share.ReplyContext{}, nil, err
 	}
 	if ok {
-		if ref.SenderID != "" {
+		if reply.SenderID == "" {
 			reply.SenderID = ref.SenderID
 		}
-		if ref.SenderName != "" {
-			reply.SenderName = ref.SenderName
-		}
+		reply.IsAssistant = reply.IsAssistant || ref.IsAssistant
 		content = ref.Text
 		segments = ref.Segments
 	}
 	if hasStored && strings.TrimSpace(stored.Content) != "" {
 		content = stored.Content
 	}
-	msg, _ := share.MessageContextFrom(ctx)
-	reply.IsAssistant = ref.IsAssistant || (hasStored && stored.Role == storage.RoleAssistant) || (reply.SenderID != "" && reply.SenderID == msg.Bot.UserID)
-	if reply.IsAssistant && (opts.UseBotUsername || reply.SenderName == "") {
-		reply.SenderName = msg.Bot.Username
+	if row == nil { // 仍交付已恢复的引用媒体，但没有可展示的历史短号。
+		reply.Segments = segments
+		return opts.Text, segments, reply, nil, nil
 	}
 	content = strings.TrimSpace(content)
-	reply.Text = content
 	reply.Segments = append([]share.MessageSegment(nil), segments...)
 	if len(reply.Segments) == 0 && content != "" {
 		reply.Segments = []share.MessageSegment{{Type: share.SegmentText, Text: content}}
 	}
 	if content == "" && len(segments) > 0 {
 		content = "[媒体消息]"
-		reply.Text = content
 	}
 	// A mapped assistant already has its canonical content. In particular,
 	// enriching it must not duplicate the text of an automatic resume or fork.
@@ -136,8 +134,8 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 		}
 		if len(display) > 0 {
 			header := reply
-			header.Text = "" // 正文已在展开片段中，只补引用来源。
-			display = append([]share.MessageSegment{{Type: share.SegmentText, Text: share.FormatReferenceText(header, "") + "\n"}}, display...)
+			header.Text = "" // 展开片段已经携带正文，实时上下文只加来源。
+			display = append([]share.MessageSegment{{Type: share.SegmentText, Text: share.FormatReferenceText(header) + "\n"}}, display...)
 			var text strings.Builder
 			for _, segment := range display {
 				if segment.Type == share.SegmentText {
@@ -150,14 +148,13 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 			return strings.TrimSpace(text.String()), segments, reply, display, nil
 		}
 	}
-	if content == "" {
-		return opts.Text, segments, reply, nil, nil
-	}
-	return share.FormatReferenceText(reply, opts.Text), segments, reply, nil, nil
+	return strings.TrimSpace(reply.Display + "\n\n" + opts.Text), segments, reply, nil, nil
 }
 
 func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) ([]share.MessageSegment, error) {
-	out := append([]share.MessageSegment(nil), segments...)
+	if !slices.ContainsFunc(segments, func(s share.MessageSegment) bool { return s.Type == share.SegmentImage || s.Type == share.SegmentFile }) {
+		return segments, nil
+	}
 	associations, err := deps.FindHistory(ctx, row.Platform, row.ChatType, row.ChatID, row.PlatformMessageID)
 	if err != nil {
 		return nil, err
@@ -169,8 +166,8 @@ func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMess
 		}
 	}
 	mediaIndex := 0
-	for i := range out {
-		segment := &out[i]
+	for i := range segments {
+		segment := &segments[i]
 		if segment.Type != share.SegmentImage && segment.Type != share.SegmentFile {
 			continue
 		}
@@ -191,7 +188,7 @@ func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMess
 		}
 		segment.MediaID = association.MediaID
 	}
-	return out, nil
+	return segments, nil
 }
 
 func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, row *storage.ChatMessage) (share.ReferencedMessage, bool, error) {

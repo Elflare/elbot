@@ -115,11 +115,6 @@ func senderName(sender Sender) string { return firstNonEmpty(sender.Card, sender
 func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
-	replyToSenderID, err := a.replyToSenderID(ctx, event, normalized.ReplyID)
-	if err != nil {
-		a.logContextFailure(ctx, err)
-		return
-	}
 	text := normalized.Text
 	currentSegments := normalized.Segments
 	conversationID := strconv.FormatInt(event.UserID, 10)
@@ -148,7 +143,6 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			},
 			PlatformMessageID: strconv.FormatInt(event.MessageID, 10),
 			ReplyToMessageID:  normalized.ReplyID,
-			ReplyToSenderID:   replyToSenderID,
 		},
 		GroupRole:             oneBotGroupRole(event),
 		MediaResolver:         a,
@@ -157,7 +151,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		Segments:              share.FinalMessageSegments(text, currentSegments, nil),
 		RawText:               normalized.Text,
 		PlatformMessage:       append(json.RawMessage(nil), event.Message...),
-		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
+		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10), Username: a.botIdentity().Username},
 		Mentions:              append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),
 		Meta: map[string]any{
@@ -189,6 +183,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
+			Bot:      messageCtx.Bot,
 			Platform: a.Name(),
 			ChatID:   messageCtx.Conversation.Source.ChatID,
 			ChatType: messageCtx.Conversation.Source.ChatType,
@@ -200,12 +195,17 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		})
 		if err != nil {
 			a.logContextFailure(msgCtx, err)
+			a.recordChatMessage(ctx, event, normalized, share.ReplyContext{})
 			return
 		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
+		messageCtx.ReplyToSenderID = ref.Reply.SenderID
+		if ref.Reply.IsAssistant {
+			messageCtx.ReplyToSenderID = messageCtx.Bot.UserID
+		}
 		referenceSegments = ref.ReferenceSegments
 		if len(ref.DisplaySegments) > 0 {
 			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, referenceInputSegments, referenceInputText)
@@ -313,50 +313,22 @@ func oneBotChatType(event Event) contextinfo.ChatType {
 	}
 }
 
-func (a *Adapter) replyToSenderID(ctx context.Context, event Event, replyID string) (string, error) {
-	replyID = strings.TrimSpace(replyID)
-	if replyID == "" {
-		return "", nil
-	}
-	msg, err := a.findByPlatformMessage(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return "", err
-	}
-	if err == nil && msg.Role == storage.RoleAssistant {
-		return strconv.FormatInt(event.SelfID, 10), nil
-	}
-	outputs, err := a.findOutputs(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID, time.Now())
-	if err != nil {
-		return "", err
-	}
-	if len(outputs) > 0 {
-		return strconv.FormatInt(event.SelfID, 10), nil
-	}
-	history, err := a.chatHistory.GetByPlatformMessage(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return "", err
-	}
-	if err == nil {
-		return history.SenderID, nil
-	}
-	data, err := a.transport.GetMessage(ctx, replyID)
-	if err != nil {
-		return "", err
-	}
-	if data.UserID == 0 {
-		return "", nil
-	}
-	return strconv.FormatInt(data.UserID, 10), nil
-}
-
 func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (share.ReferencedMessage, bool, error) {
 	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
 		data, err := a.transport.GetMessage(ctx, replyID)
 		if err != nil {
-			return share.ReferencedMessage{}, false, err
+			if ctx.Err() != nil {
+				return share.ReferencedMessage{}, false, ctx.Err()
+			}
+			a.logContextFailure(ctx, err)
+			return share.ReferencedMessage{}, false, nil // get_msg 不可用不影响当前消息。
 		}
 		ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
-		return share.ReferencedMessage{SenderID: strconv.FormatInt(data.UserID, 10), SenderName: senderName(data.Sender), Text: ref.Text, Segments: ref.Segments}, true, nil
+		var id string
+		if data.UserID != 0 {
+			id = strconv.FormatInt(data.UserID, 10)
+		}
+		return share.ReferencedMessage{SenderID: id, IsAssistant: data.UserID != 0 && data.UserID == event.SelfID, SenderName: senderName(data.Sender), Text: ref.Text, Segments: ref.Segments}, true, nil
 	}
 }
 
@@ -368,12 +340,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	if event.Time > 0 {
 		createdAt = time.Unix(event.Time, 0)
 	}
-	sourceSegments := normalized.Segments
-	segments := make([]storage.ChatSegment, len(sourceSegments))
-	for i, segment := range sourceSegments {
-		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
-	}
-	message := &storage.ChatMessage{
+	message := storage.ChatMessage{
 		Platform:                 a.Name(),
 		ChatID:                   scopeID(event),
 		ChatType:                 oneBotChatType(event),
@@ -382,31 +349,11 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 		SenderName:               senderName(event.Sender),
 		Text:                     normalized.Text,
 		Raw:                      normalized.Text,
-		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
-		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
-		CreatedAt:                createdAt,
+
+		CreatedAt: createdAt,
 	}
-	if err := a.chatHistory.Append(ctx, message); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryLog,
-				Level:        slog.LevelError,
-				EventName:    "record_qq_chat_message_failed",
-				Module:       a.Name(),
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("record qq chat message failed\nerror=%v\nmessage_id=%v", err, event.MessageID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			record.Identity = globalevents.LogIdentityFromContext(ctx)
-			globalevents.Log(context.WithoutCancel(ctx), record)
-		}
-	}
+	share.RecordInboundMessage(ctx, a.chatHistory, message, normalized.Segments, reply)
 }
 
 func (a *Adapter) isMessageEvent(event Event) bool {

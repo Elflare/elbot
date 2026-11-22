@@ -42,6 +42,8 @@ type NotificationReceiver interface {
 	ConnectNotifications(*signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error)
 }
 
+type notificationSendKey struct{} // 内部通知不进入聊天历史。
+
 // ConnectNotifications 将通知交给发送端，连接由根部持有和释放。
 func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], sender delivery.MessageSender) (*signal.Connection, error) {
 	return s.Observe(func(ctx context.Context, n events.Notification) {
@@ -49,7 +51,7 @@ func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], s
 			return
 		}
 		target := NotificationTarget(n)
-		_, err := sender.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
+		_, err := sender.SendTo(context.WithValue(ctx, notificationSendKey{}, true), target, []delivery.Output{delivery.Text(n.Text)})
 		if err != nil {
 			record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "notification", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
 			events.AsyncLog(ctx, record)

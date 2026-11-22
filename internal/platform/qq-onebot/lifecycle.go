@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	globalevents "elbot/internal/events"
@@ -208,6 +209,16 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 			defer a.transports.Done()
 			readDone <- a.readLoop(a.transportCtx, handler)
 		}()
+		account, loginErr := a.transport.getLoginInfo(ctx)
+		var bot share.Identity
+		if loginErr != nil {
+			globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "onebot_login_info_failed", Module: a.Name(), Content: loginErr.Error(), ResultStatus: globalevents.LogStatus(loginErr)})
+		} else {
+			bot = share.Identity{UserID: strconv.FormatInt(account.UserID, 10), Username: account.Nickname}
+		}
+		a.mu.Lock()
+		a.bot = bot
+		a.mu.Unlock()
 		backoff.Reset()
 		{
 			record := globalevents.LogRecord{

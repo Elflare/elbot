@@ -58,7 +58,7 @@ func TestReferenceAliasKeepsScope(t *testing.T) {
 	}
 	a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		msg, _ := share.MessageContextFrom(ctx)
-		if msg.Bot.Username != "Atri" || !opts.UseBotUsername {
+		if msg.Bot.Username != "Atri" {
 			t.Fatalf("missing READY identity: %+v", msg.Bot)
 		}
 		if opts.ChatType != "group" || opts.ChatID != "group" || opts.ReplyID != "original" {
@@ -118,44 +118,17 @@ func TestGroupQuoteRequiresNewContent(t *testing.T) {
 }
 func TestEventReferenceWithoutHistory(t *testing.T) {
 	for _, group := range []bool{false, true} {
-		for _, tc := range []struct {
-			name, content, quote string
-			messageType          int
-			attachments          []messageAttachment
-			want                 string
-		}{
-			{name: "text", content: "remember", quote: "meeting", messageType: 103, want: "[引用：meeting]\n\nremember"},
-			{name: "image", content: "describe", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/image.png", ContentType: "image/png"}}, want: "[引用：[媒体消息]]\n\ndescribe"},
-			{name: "file", content: "read", messageType: 103, attachments: []messageAttachment{{URL: "https://example.com/file.txt", Filename: "file.txt", ContentType: "text/plain"}}, want: "[引用：[媒体消息]]\n\nread"},
-			{name: "command", content: "/help", quote: "meeting", messageType: 103},
-			{name: "missing", content: "remember", messageType: 103},
-			{name: "ordinary", content: "remember", quote: "not a quote"},
-		} {
-			t.Run(fmt.Sprintf("group=%v/%s", group, tc.name), func(t *testing.T) {
-				a := newTestAdapter(t, Config{}, nil)
-				msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group",
-					Content: tc.content, MessageType: tc.messageType,
-					MsgElements: []messageElement{{Content: tc.quote, Attachments: tc.attachments}},
-				}
-				h := &captureHandler{}
-				if group {
-					a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
-				} else {
-					a.handleC2CMessage(t.Context(), h.HandleMessage, payload{Type: eventC2CMessageCreate}, msg)
-				}
-				got, ok := share.MessageContextFrom(h.ctx)
-				if !ok || h.text != tc.content || got.RawText != tc.content || got.ContextText != tc.want {
-					t.Fatalf("context text=%q, want=%q, raw=%q", got.ContextText, tc.want, got.RawText)
-				}
-				if got.ReplyToMessageID != "" || got.Reply.MessageID != "" || got.ResumeSessionID != "" || got.ForkFromMessageID != "" {
-					t.Fatalf("unmapped reference acquired identity: %+v", got)
-				}
-				if len(tc.attachments) > 0 {
-					if len(got.ContextSegments) != 2 || got.ContextSegments[1].URL != tc.attachments[0].URL || len(got.Segments) != 1 {
-						t.Fatalf("reference segments=%+v current=%+v", got.ContextSegments, got.Segments)
-					}
-				}
-			})
+		a := newTestAdapter(t, Config{}, nil)
+		msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group", MessageType: 103, Content: "remember", MsgElements: []messageElement{{Content: "quoted"}}}
+		h := &captureHandler{}
+		if group {
+			a.handleGroupMessage(t.Context(), h.HandleMessage, payload{}, msg)
+		} else {
+			a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, msg)
+		}
+		got, _ := share.MessageContextFrom(h.ctx)
+		if h.text != "remember" || got.Reply.Display != "" || got.ContextText != "" {
+			t.Fatalf("unmapped reference changed input: %q %+v", h.text, got.Reply)
 		}
 	}
 }

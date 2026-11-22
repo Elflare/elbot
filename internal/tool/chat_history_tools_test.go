@@ -39,11 +39,10 @@ func TestChatHistoryFullParameter(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	for _, reference := range []bool{false, true} {
 		body := strings.Repeat("雪🔥", 200) + "MESSAGE_TAIL"
-		row := storage.ChatMessage{Platform: "p", PlatformMessageID: "42", SenderID: "u", Text: body}
+		row := storage.ChatMessage{Seq: 42, Platform: "p", PlatformMessageID: "42", SenderID: "u", Text: body}
 		if reference {
 			row.ReplyToPlatformMessageID = "41"
-			metadata, _ := json.Marshal(map[string]any{"reply": map[string]string{"text": strings.Repeat("引", 350) + "REFERENCE_TAIL", "sender_id": "v"}})
-			row.Metadata = string(metadata)
+			row.Metadata = storage.MarshalChatMetadata(storage.ChatReply{MessageID: "41", Display: "[引用 h41：助手：" + strings.Repeat("引", 350) + "REFERENCE_TAIL]"})
 		}
 		repo := historyResultRepository{rows: []storage.ChatMessage{row}}
 		for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: historyTestDeps(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: historyTestDeps(repo)})} {

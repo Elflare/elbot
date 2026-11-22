@@ -119,12 +119,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		createdAt = time.Unix(msg.Date, 0)
 	}
 	senderID := userIDString(msg.From)
-	sourceSegments := normalized.Segments
-	segments := make([]storage.ChatSegment, len(sourceSegments))
-	for i, segment := range sourceSegments {
-		segments[i] = storage.ChatSegment{Type: string(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
-	}
-	chatMessage := &storage.ChatMessage{
+	chatMessage := storage.ChatMessage{
 		Platform:                 a.Name(),
 		ChatID:                   scopeID(msg.Chat),
 		ChatType:                 telegramChatType(msg.Chat),
@@ -133,31 +128,11 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 		SenderName:               displayNamePtr(msg.From, ""),
 		Text:                     normalized.Text,
 		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
-		Segments:                 storage.MarshalChatSegments(segments),
 		ReplyToPlatformMessageID: normalized.ReplyID,
-		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
-		CreatedAt:                createdAt,
+
+		CreatedAt: createdAt,
 	}
-	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryLog,
-				Level:        slog.LevelError,
-				EventName:    "record_telegram_chat_message_failed",
-				Module:       a.Name(),
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("record telegram chat message failed\nerror=%v\nmessage_id=%v", err, msg.MessageID),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			if errors.Is(err, context.Canceled) {
-				record.ResultStatus = globalevents.ResultCanceled
-				record.Level = slog.LevelInfo
-			}
-			record.Identity = globalevents.LogIdentityFromContext(ctx)
-			globalevents.Log(context.WithoutCancel(ctx), record)
-		}
-	}
+	share.RecordInboundMessage(ctx, a.chatHistory, chatMessage, normalized.Segments, reply)
 }
 
 func scopeID(c chat) string { return strconv.FormatInt(c.ID, 10) }
@@ -369,6 +344,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
+			Bot:      messageCtx.Bot,
 			Platform: a.Name(),
 			ChatID:   messageCtx.Conversation.Source.ChatID,
 			ChatType: messageCtx.Conversation.Source.ChatType,

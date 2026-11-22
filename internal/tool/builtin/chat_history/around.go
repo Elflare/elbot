@@ -12,7 +12,8 @@ import (
 
 type GetChatHistoryAroundTool struct{ Deps }
 type aroundChatHistoryArgs struct {
-	IncludeAvatar bool `json:"include_avatar"`
+	IncludeAssistant bool `json:"include_assistant"`
+	IncludeAvatar    bool `json:"include_avatar"`
 	// Full 只返回目标消息及其引用的完整正文，不带前后文。
 	Full      bool   `json:"full"`
 	MessageID string `json:"message_id"`
@@ -33,6 +34,7 @@ func aroundChatHistoryBuilder() *toolshare.Builder {
 		String("message_id", "当前聊天的历史消息短号，如 h8121，h 可省略。", toolshare.Required()).
 		Integer("before", "前文条数，默认10，上限50。").
 		Integer("after", "后文条数，默认10，上限50。").
+		Boolean("include_assistant", "默认false；true→包含助手消息，对目标消息同样有效。").
 		Boolean("include_avatar", "默认false；true→按发送者附带本聊天内最新非空头像 URL，可能已过期。").
 		Boolean("full", "默认false；true→只取目标消息全文和完整引用，忽略 before/after。")
 }
@@ -60,7 +62,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 		if chat.Status != operationresult.Success {
 			return operationresult.Result[*toolshare.Result]{Status: chat.Status, Message: chat.Message}, chat.Message, nil
 		}
-		req := storage.ChatHistoryAroundRequest{IncludeAvatar: args.IncludeAvatar, Platform: chat.Data.Platform, ChatType: chat.Data.ChatType, ChatID: chat.Data.ChatID, Seq: messageID}
+		req := storage.ChatHistoryAroundRequest{IncludeAssistant: args.IncludeAssistant, IncludeAvatar: args.IncludeAvatar, Platform: chat.Data.Platform, ChatType: chat.Data.ChatType, ChatID: chat.Data.ChatID, Seq: messageID}
 		if !args.Full {
 			req.Before = clampChatHistoryWindow(args.Before)
 			req.After = clampChatHistoryWindow(args.After)

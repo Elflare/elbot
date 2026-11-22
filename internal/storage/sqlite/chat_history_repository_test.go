@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -49,6 +50,55 @@ func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 				t.Fatalf("segments = %v, error = %v", segments, err)
 			}
 		}()
+	}
+}
+
+func TestAssistantHistoryVisibility(t *testing.T) {
+	ctx := t.Context()
+	store, err := NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	repo := store.Repository()
+	for i, id := range []string{"one", "first reply", "two", "second reply", "three"} {
+		if err := repo.Append(ctx, &storage.ChatMessage{Platform: "p", ChatType: "group", ChatID: "c", PlatformMessageID: id, Text: id, IsAssistant: i%2 != 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expect := func(rows []storage.ChatMessage, err error, want ...string) {
+		t.Helper()
+		var ids []string
+		for _, row := range rows {
+			ids = append(ids, row.PlatformMessageID)
+		}
+		if err != nil || !slices.Equal(ids, want) {
+			t.Fatalf("got %v (%v), want %v", ids, err, want)
+		}
+	}
+	q := storage.ChatHistorySearchRequest{Platform: "p", ChatType: "group", ChatID: "c", Limit: 3}
+	rows, err := repo.Search(ctx, q)
+	expect(rows, err, "one", "two", "three")
+	center := rows[1].Seq
+	q.IncludeAssistant = true
+	rows, err = repo.Search(ctx, q)
+	expect(rows, err, "two", "second reply", "three")
+	assistant := rows[1].Seq
+	window := storage.ChatHistoryAroundRequest{Platform: "p", ChatType: "group", ChatID: "c", Seq: center, Before: 1, After: 1}
+	rows, err = repo.Around(ctx, window)
+	expect(rows, err, "one", "two", "three")
+	window.IncludeAssistant = true
+	rows, err = repo.Around(ctx, window)
+	expect(rows, err, "first reply", "two", "second reply")
+	window.Seq, window.Before, window.After = assistant, 0, 0
+	rows, err = repo.Around(ctx, window)
+	expect(rows, err, "second reply")
+	if !rows[0].IsAssistant {
+		t.Fatal("missing assistant role")
+	}
+	window.IncludeAssistant = false
+	if _, err = repo.Around(ctx, window); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("hidden target: %v", err)
 	}
 }
 

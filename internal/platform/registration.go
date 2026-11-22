@@ -98,8 +98,6 @@ func registrations(frontendDir string) []registration {
 				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 					return refcontext.Apply(ctx, references, opts)
 				},
-				FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
-				FindOutputs:           deps.Store.Media().FindOutputs,
 			})
 			if err != nil {
 				return err

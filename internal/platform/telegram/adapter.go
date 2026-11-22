@@ -25,6 +25,7 @@ type Adapter struct {
 	commandCatalog    []command.Info                                                               // 根部交付的命令目录，由 mu 保护。
 
 	mu               sync.Mutex
+	bot              share.Identity  // 最近一次 getMe 的机器人 ID 和显示名，由 mu 保护。
 	started          bool            // 已尝试启动，重复启动返回同一结果。
 	closing          bool            // 已停止入站接纳与轮询。
 	closingResources bool            // 已停止操作准入并开始最终清理。

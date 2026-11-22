@@ -32,15 +32,15 @@ func encodeReferenceSegments(segments []share.MessageSegment) string {
 func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 	for _, tc := range []struct {
 		platform, sender, name, username, want string
-		stored, useBotUsername                 bool
+		stored                                 bool
 	}{
-		{"qqofficial", "self", "昨日昵称", "Atri", "[引用 h1：Atri（助手）：正文]", true, true},
-		{"qqofficial", "self", "昨日昵称", "", "[引用 h1：助手：正文]", true, true},
-		{"qqofficial", "other", "bot", "Atri", "[引用 h1：bot(id:other)：正文]", true, true},
-		{"qqonebot", "self", "亚托莉", "", "[引用：亚托莉（助手）：正文]", false, false},
-		{"telegram", "other", "Atri", "Atri", "[引用 h1：Atri(id:other)：正文]", true, false},
+		{"qqofficial", "self", "昨日昵称", "Atri", "[引用 h1：昨日昵称（助手）：正文]", true},
+		{"qqofficial", "self", "", "", "[引用 h1：助手：正文]", true},
+		{"qqofficial", "other", "bot", "Atri", "[引用 h1：bot(id:other)：正文]", true},
+		{"qqonebot", "self", "亚托莉", "", "", false},
+		{"telegram", "other", "Atri", "Atri", "[引用 h1：Atri(id:other)：正文]", true},
 	} {
-		ctx := share.WithMessageContext(t.Context(), share.MessageContext{Bot: share.Identity{UserID: "self", Username: tc.username}})
+		ctx := t.Context()
 		history := newRefTestHistory(t)
 		chat := "target"
 		if !tc.stored {
@@ -50,10 +50,15 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 		if err := history.Append(ctx, row); err != nil {
 			t.Fatal(err)
 		}
-		opts := share.ReferenceOptions{UseBotUsername: tc.useBotUsername, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+		opts := share.ReferenceOptions{Bot: share.Identity{UserID: "self", Username: tc.username}, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 			return share.ReferencedMessage{SenderID: tc.sender, SenderName: tc.name, Text: "正文"}, true, nil
 		}}
-		got, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history), opts)
+		deps := newRefTestOptions(newRefTestStore(t), history)
+		deps.FindHistory = func(context.Context, string, contextinfo.ChatType, string, string) ([]storage.HistoryMedia, error) {
+			t.Fatal("text-only reference queried media associations")
+			return nil, nil
+		}
+		got, err := Apply(ctx, deps, opts)
 		if err != nil || got.Text != tc.want || got.Reply.MessageID != opts.ReplyID {
 			t.Fatalf("%s: got %q (%+v), err %v; want %q", tc.platform, got.Text, got.Reply, err, tc.want)
 		}
@@ -65,14 +70,14 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 		}
 	}
 }
-func TestApplyFallsBackToReferencedText(t *testing.T) {
+func TestUnrecordedReferenceKeepsInput(t *testing.T) {
 	result, err := Apply(context.Background(), newRefTestOptions(newRefTestStore(t), newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice-1", Text: "说：收到", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
-		return share.ReferencedMessage{SenderID: "123456", SenderName: "通知", Text: "已保存附件：attachment-1", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "已保存附件：attachment-1"}}}, true, nil
+		return share.ReferencedMessage{Text: "可读正文但无短号"}, true, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用：通知(id:123456)：已保存附件：attachment-1]\n\n说：收到"
+	want := "说：收到"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -114,7 +119,7 @@ func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	if result.ResumeSessionID != latest.SessionID || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want resume %q", result, latest.SessionID)
 	}
-	if result.Text != "继续" || result.Reply.MessageID != "p-latest" || result.Reply.Text != "" || len(result.Reply.Segments) != 0 {
+	if result.Text != "继续" || result.Reply.MessageID != "p-latest" || !result.Reply.IsAssistant || result.Reply.Text != "" || len(result.Reply.Segments) != 0 {
 		t.Fatalf("resume reference = %#v", result)
 	}
 }
@@ -163,7 +168,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用：助手：report]\n\n继续"
+	want := "继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -183,7 +188,7 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用：助手：old]\n\n继续"
+	want := "继续"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -205,7 +210,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用：助手：old]\n\n继续"
+	want := "继续"
 	if result.Text != want || result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
 		t.Fatalf("result = %#v, want fallback %q", result, want)
 	}

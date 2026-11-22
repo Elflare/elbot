@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
+	"elbot/internal/storage"
 	"encoding/base64"
 	"fmt"
 	"net/url"
@@ -72,22 +73,7 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		defer close(readDone)
 		transport.readResponses(context.WithoutCancel(ctx))
 	}()
-	t, err := targetToQQ(target)
-	if target.Empty() {
-		t, err = a.contextTarget(ctx)
-	}
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	if text, ok := textOutputs(outputs); ok {
-		return sendText(ctx, transport, t, text)
-	}
-	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	receipt, err := sendSegments(ctx, transport, t, segments)
-	return oneBotReceipt(a.Name(), receipt, t, outputs), err
+	return a.sendOutputs(ctx, transport, target, outputs)
 }
 
 func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -97,8 +83,12 @@ func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs
 	if delivery.UseTemporaryConnection(ctx) {
 		return a.sendTemporary(ctx, outTarget, outputs)
 	}
-	text, ok := textOutputs(outputs)
-	if outTarget.Empty() && ok && strings.TrimSpace(text) == "" {
+	return a.sendOutputs(ctx, a.transport, outTarget, outputs)
+}
+
+func (a *Adapter) sendOutputs(ctx context.Context, transport *Transport, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	text, plain := textOutputs(outputs)
+	if plain && strings.TrimSpace(text) == "" {
 		return delivery.Receipt{}, nil
 	}
 	var t target
@@ -111,32 +101,44 @@ func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	if ok {
-		return sendText(ctx, a.transport, t, text)
+	var receipt delivery.Receipt
+	var history []storage.ChatSegment
+	var replyID string
+	if plain {
+		receipt, err = sendText(ctx, transport, t, text)
+	} else {
+		var segments []Segment
+		segments, history, replyID, err = outputSegments(a.cfg.SendFileMode, outputs...)
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		receipt, err = sendSegments(ctx, transport, t, segments)
 	}
-	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		return delivery.Receipt{}, err
+		return receipt, err
 	}
-	receipt, err := sendSegments(ctx, a.transport, t, segments)
-	return oneBotReceipt(a.Name(), receipt, t, outputs), err
+	receipt = oneBotReceipt(a.Name(), receipt, t, outputs)
+	bot := a.botIdentity()
+	for _, s := range receipt.SentMessages {
+		platformshare.RecordAssistantMessage(ctx, a.chatHistory, storage.ChatMessage{Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID, PlatformMessageID: s.PlatformMessageID, SenderID: bot.UserID, SenderName: bot.Username, Text: text, ReplyToPlatformMessageID: replyID}, history)
+	}
+	return receipt, nil
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
-	var text strings.Builder
 	for _, out := range outputs {
 		if out.Kind != delivery.KindText {
 			return "", false
 		}
+	}
+	var text strings.Builder
+	for _, out := range outputs {
 		text.WriteString(delivery.FallbackText(out))
 	}
 	return text.String(), true
 }
 
 func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, error) {
-	if strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, nil
-	}
 	pages := qqTextPages(text)
 	var nodes []Segment
 	if len(pages) > 1 {
@@ -164,7 +166,7 @@ func sendText(ctx context.Context, transport *Transport, t target, text string) 
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	return oneBotReceipt(transport.platformName, receiptWithMessageID(id), t, nil), err
+	return receiptWithMessageID(id), err
 }
 
 func sendSegments(ctx context.Context, transport *Transport, t target, segments []Segment) (delivery.Receipt, error) {
@@ -235,26 +237,40 @@ func targetToQQ(outTarget delivery.Target) (target, error) {
 	}
 }
 
-func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment, error) {
+func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment, []storage.ChatSegment, string, error) {
+	var history []storage.ChatSegment
+	var replyID string
 	segments := make([]Segment, 0, len(outputs))
 	for _, out := range outputs {
+		seg := storage.ChatSegment{Type: "text"}
 		switch out.Kind {
 		case delivery.KindText:
-			segments = append(segments, Segment{Type: "text", Data: map[string]any{"text": delivery.FallbackText(out)}})
+			seg.Text = delivery.FallbackText(out)
+			segments = append(segments, Segment{Type: "text", Data: map[string]any{"text": seg.Text}})
 		case delivery.KindReply:
-			replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
+			replyID = strings.TrimSpace(out.ReplyToPlatformMessageID)
 			text := out.Text
 			if len(out.Blocks) > 0 {
 				text = delivery.ContentBlocksText(out.Blocks)
 			}
+			seg.Text = text
 			segments = append(segments, Segment{Type: "reply", Data: map[string]any{"id": replyID}}, Segment{Type: "text", Data: map[string]any{"text": text}})
 		case delivery.KindEmoticon:
+			seg.Text = delivery.FallbackText(out)
 			id := strings.TrimSpace(out.EmoticonID)
 			segments = append(segments, Segment{Type: "face", Data: map[string]any{"id": id}})
 		case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
 			file, err := oneBotSourceFile(out.Source, string(out.Kind), sendFileMode)
 			if err != nil {
-				return nil, err
+				return nil, nil, "", err
+			}
+			if out.Kind == delivery.KindRecord {
+				seg.Text = "[语音]"
+			} else {
+				seg = storage.ChatSegment{Type: string(out.Kind), Name: out.Name, MIMEType: out.Source.MIMEType}
+				if out.Source.MediaID == "" {
+					seg.URL = out.Source.URL
+				}
 			}
 			data := map[string]any{"file": file}
 			if out.Kind == delivery.KindFile {
@@ -264,13 +280,15 @@ func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment,
 			}
 			segments = append(segments, Segment{Type: string(out.Kind), Data: data})
 		case delivery.KindAt:
+			seg.Text = delivery.FallbackText(out)
 			qq := strings.TrimSpace(out.Name)
 			segments = append(segments, Segment{Type: "at", Data: map[string]any{"qq": qq}})
 		default:
-			return nil, fmt.Errorf("unsupported output kind %q", out.Kind)
+			return nil, nil, "", fmt.Errorf("unsupported output kind %q", out.Kind)
 		}
+		history = append(history, seg)
 	}
-	return segments, nil
+	return segments, history, replyID, nil
 }
 
 func oneBotSourceFile(source delivery.Source, label, sendFileMode string) (string, error) {

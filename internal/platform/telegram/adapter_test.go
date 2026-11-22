@@ -503,7 +503,7 @@ func TestPollingPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 		w.Header().Set("Connection", "close")
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/getMe"):
-			fmt.Fprint(w, `{"ok":true,"result":{"id":123,"username":"test_bot"}}`)
+			fmt.Fprint(w, `{"ok":true,"result":{"id":123,"first_name":"Test","last_name":"Bot","username":"test_bot"}}`)
 		case strings.HasSuffix(r.URL.Path, "/getUpdates"):
 			http.Error(w, "poll failed", http.StatusBadGateway)
 		default:
@@ -536,6 +536,9 @@ func TestPollingPublishesGlobalConnectionsOnReconnect(t *testing.T) {
 		}
 		if err := adapter.Wait(context.Background()); err != nil {
 			t.Fatal(err)
+		}
+		if id := adapter.bot; id.UserID != "123" || id.Username != "Test Bot" {
+			t.Fatalf("getMe identity=%+v", id)
 		}
 		if calls != 2 {
 			t.Fatalf("connections=%d", calls)

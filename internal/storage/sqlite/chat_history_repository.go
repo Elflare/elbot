@@ -164,6 +164,15 @@ func migrateChatHistory(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	var hasAssistant bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('chat_messages') WHERE name='is_assistant')`).Scan(&hasAssistant); err != nil {
+		return err
+	}
+	if !hasAssistant {
+		if _, err = tx.ExecContext(ctx, `ALTER TABLE chat_messages ADD COLUMN is_assistant INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
 	var hasAvatar bool
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pragma_table_info('chat_messages') WHERE name='sender_avatar_url')`).Scan(&hasAvatar); err != nil {
 		return err
@@ -202,9 +211,10 @@ func (r *ChatHistoryRepository) Append(ctx context.Context, message *storage.Cha
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO chat_messages (
     id, platform, chat_id, chat_type, platform_message_id,
-    sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at, sender_avatar_url
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at, sender_avatar_url, is_assistant
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(platform, chat_type, chat_id, platform_message_id) DO UPDATE SET
+    is_assistant = MAX(chat_messages.is_assistant, excluded.is_assistant),
     sender_id = excluded.sender_id,
     sender_name = excluded.sender_name,
     sender_avatar_url = COALESCE(excluded.sender_avatar_url, chat_messages.sender_avatar_url),
@@ -226,7 +236,7 @@ ON CONFLICT(platform, chat_type, chat_id, platform_message_id) DO UPDATE SET
 		nullString(message.ReplyToPlatformMessageID),
 		nullString(message.Metadata),
 		storage.FormatTime(message.CreatedAt),
-		nullString(message.SenderAvatarURL),
+		nullString(message.SenderAvatarURL), message.IsAssistant,
 	)
 	if err != nil {
 		return fmt.Errorf("append chat message: %w", err)
@@ -263,9 +273,8 @@ WHERE platform = ? AND chat_type = ? AND chat_id = ? AND alias = ?`, platform, c
 	return messageID, senderID, nil
 }
 
-const chatMessageColumns = `SELECT seq, id, platform, chat_id, chat_type, platform_message_id,
- sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at,
- COALESCE((SELECT parent.seq FROM chat_messages parent WHERE parent.platform=m.platform AND parent.chat_type=m.chat_type AND parent.chat_id=m.chat_id AND parent.platform_message_id=m.reply_to_platform_message_id),0)`
+const chatMessageColumns = `SELECT is_assistant, seq, id, platform, chat_id, chat_type, platform_message_id,
+ sender_id, sender_name, text, raw, segments, reply_to_platform_message_id, metadata, created_at`
 const chatMessageSelect = chatMessageColumns + `, '' FROM chat_messages m `
 const replyMessageSelect = chatMessageColumns + `, COALESCE((SELECT alias FROM platform_message_aliases a WHERE a.platform=m.platform AND a.chat_type=m.chat_type AND a.chat_id=m.chat_id AND a.platform_message_id=m.platform_message_id ORDER BY a.rowid DESC LIMIT 1),'') FROM chat_messages m `
 
@@ -298,6 +307,9 @@ func (r *ChatHistoryRepository) Search(ctx context.Context, req storage.ChatHist
 	}
 	conditions := []string{"platform = ?", "chat_type = ?", "chat_id = ?", "(text != '' OR COALESCE(segments, '') != '')"}
 	params := []any{req.Platform, req.ChatType, req.ChatID}
+	if !req.IncludeAssistant {
+		conditions = append(conditions, "is_assistant = 0")
+	}
 	if len(req.QueryTerms) > 0 {
 		op := "OR"
 		if strings.EqualFold(strings.TrimSpace(req.QueryMode), "and") {
@@ -353,11 +365,14 @@ func (r *ChatHistoryRepository) Around(ctx context.Context, req storage.ChatHist
 	if err != nil {
 		return nil, err
 	}
-	previous, err := r.listAroundSide(ctx, req.Platform, req.ChatType, req.ChatID, target.Seq, req.Before, true)
+	if target.IsAssistant && !req.IncludeAssistant {
+		return nil, storage.ErrNotFound
+	}
+	previous, err := r.listAroundSide(ctx, req, req.Before, true)
 	if err != nil {
 		return nil, err
 	}
-	next, err := r.listAroundSide(ctx, req.Platform, req.ChatType, req.ChatID, target.Seq, req.After, false)
+	next, err := r.listAroundSide(ctx, req, req.After, false)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +452,7 @@ func (r *ChatHistoryRepository) DeleteBefore(ctx context.Context, cutoff time.Ti
 	return int(rows), nil
 }
 
-func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, limit int, before bool) ([]storage.ChatMessage, error) {
+func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, req storage.ChatHistoryAroundRequest, limit int, before bool) ([]storage.ChatMessage, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -448,9 +463,9 @@ func (r *ChatHistoryRepository) listAroundSide(ctx context.Context, platform str
 		order = "DESC"
 	}
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(chatMessageSelect+`
-WHERE platform = ? AND chat_type = ? AND chat_id = ? AND (text != '' OR COALESCE(segments, '') != '') AND seq %s ?
+WHERE platform = ? AND chat_type = ? AND chat_id = ? AND (text != '' OR COALESCE(segments, '') != '') AND (? OR is_assistant = 0) AND seq %s ?
 ORDER BY seq %s
-LIMIT ?`, operator, order), platform, conversationKind, scopeID, seq, limit)
+LIMIT ?`, operator, order), req.Platform, req.ChatType, req.ChatID, req.IncludeAssistant, req.Seq, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list chat messages around: %w", err)
 	}
@@ -485,7 +500,7 @@ func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMes
 	var senderName, raw, segments, replyToPlatformMessageID, metadata sql.NullString
 	var createdAt string
 	if err := row.Scan(
-		&message.Seq,
+		&message.IsAssistant, &message.Seq,
 		&message.ID,
 		&message.Platform,
 		&message.ChatID,
@@ -498,7 +513,7 @@ func scanChatMessage(row interface{ Scan(dest ...any) error }) (*storage.ChatMes
 		&segments,
 		&replyToPlatformMessageID,
 		&metadata,
-		&createdAt, &message.ReplySeq, &message.ReferenceIndex,
+		&createdAt, &message.ReferenceIndex,
 	); err != nil {
 		return nil, err
 	}

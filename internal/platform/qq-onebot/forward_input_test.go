@@ -152,7 +152,7 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 			want := "外层前\n<forward_message>\n节点：节点前\n{image:inside}节点后[forward][语音]\n</forward_message>中间<forward_message>\n[forward]\n</forward_message>{image:outside}外层后"
 			switch reference {
 			case "ordinary":
-				want = "[引用：引用者(id:2)：引用正文]{image:quoted-image}\n\n" + want
+				want = "{image:quoted-image}\n\n" + want
 			case "forward":
 				want = "<forward_message>\n引用正文\n</forward_message>\n\n" + want
 			}

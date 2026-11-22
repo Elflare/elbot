@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
+	"elbot/internal/storage"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -92,6 +93,9 @@ func (a *Adapter) telegramReceipt(receipt delivery.Receipt, target target, media
 	return receipt
 }
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {
+	var msg sentMessage
+	var err error
+	seg := storage.ChatSegment{Type: string(out.Kind), Name: out.Name, MIMEType: out.Source.MIMEType}
 	switch out.Kind {
 	case delivery.KindText:
 		out.ShowActionHints = false
@@ -103,14 +107,21 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 		}
 		return a.sendText(ctx, t, out.Text, replyID, out.Actions)
 	case delivery.KindEmoticon:
-		return a.sendSticker(ctx, t, out, 0)
+		msg, err = a.client.sendSticker(ctx, t.NativeChatID, out.EmoticonID, 0)
+		seg = storage.ChatSegment{Type: "text", Text: delivery.FallbackText(out)}
 	case delivery.KindImage:
-		return a.sendPhoto(ctx, t, out, 0)
+		msg, err = a.client.sendPhoto(ctx, t.NativeChatID, sourceFromOutput(out), 0)
 	case delivery.KindFile:
-		return a.sendDocument(ctx, t, out, 0)
+		msg, err = a.client.sendDocument(ctx, t.NativeChatID, sourceFromOutput(out), 0)
 	default:
 		return a.sendText(ctx, t, delivery.FallbackText(out), 0, nil)
 	}
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	var receipt delivery.Receipt
+	a.recordOutput(ctx, t, &receipt, msg, 0, seg)
+	return receipt, nil
 }
 
 func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, error) {
@@ -133,10 +144,12 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 	pages := telegramRichTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
+		var pageReply int64
 		req := sendRichMessageRequest{ChatID: t.NativeChatID, RichMessage: inputRichMessage{Markdown: page}}
 		if i == 0 {
 			if replyTo != 0 {
-				req.ReplyParameters = &replyParameters{MessageID: replyTo}
+				pageReply = replyTo
+				req.ReplyParameters = &replyParameters{MessageID: pageReply}
 			}
 			if len(actions) > 0 {
 				req.ReplyMarkup = commandKeyboard(actions)
@@ -146,9 +159,7 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 		if err != nil {
 			return receipt, err
 		}
-		if msg.MessageID != 0 {
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))
-		}
+		a.recordOutput(ctx, t, &receipt, msg, pageReply, storage.ChatSegment{Type: "text", Text: page})
 	}
 	return receipt, nil
 }
@@ -176,26 +187,33 @@ func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMo
 		if err != nil {
 			return receipt, err
 		}
-		if msg.MessageID != 0 {
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(msg.MessageID))
-		}
+		a.recordOutput(ctx, t, &receipt, msg, req.ReplyToMessageID, storage.ChatSegment{Type: "text", Text: page})
 	}
 	return receipt, nil
 }
 
-func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
-	msg, err := a.client.sendPhoto(ctx, t.NativeChatID, sourceFromOutput(out), replyTo)
-	return receiptWithMessageID(msg.MessageID), err
-}
-
-func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
-	msg, err := a.client.sendDocument(ctx, t.NativeChatID, sourceFromOutput(out), replyTo)
-	return receiptWithMessageID(msg.MessageID), err
-}
-
-func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, error) {
-	msg, err := a.client.sendSticker(ctx, t.NativeChatID, out.EmoticonID, replyTo)
-	return receiptWithMessageID(msg.MessageID), err
+// recordOutput 接收单页或单个附件的回执；协议返回的正文优先于提交的文本。
+func (a *Adapter) recordOutput(ctx context.Context, t target, receipt *delivery.Receipt, msg sentMessage, replyTo int64, seg storage.ChatSegment) bool {
+	if msg.MessageID == 0 {
+		return false
+	}
+	id := formatMessageID(msg.MessageID)
+	receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
+	if msg.Text != "" {
+		seg.Text = msg.Text
+	}
+	if len(msg.Photo) > 0 {
+		photo := largestPhoto(msg.Photo)
+		seg.PlatformFileID, seg.Size = photo.FileID, photo.FileSize
+	}
+	if d := msg.Document; d != nil {
+		seg.PlatformFileID, seg.Name, seg.MIMEType, seg.Size = d.FileID, d.FileName, d.MIMEType, d.FileSize
+	}
+	a.mu.Lock()
+	bot := a.bot
+	a.mu.Unlock()
+	platformshare.RecordAssistantMessage(ctx, a.chatHistory, storage.ChatMessage{Platform: a.Name(), ChatType: t.ChatType, ChatID: t.ChatID, PlatformMessageID: id, SenderID: bot.UserID, SenderName: bot.Username, ReplyToPlatformMessageID: formatMessageID(replyTo)}, []storage.ChatSegment{seg})
+	return true
 }
 
 func targetFromDelivery(outTarget delivery.Target) (target, error) {
@@ -229,13 +247,6 @@ func mediaSourceName(out delivery.Output) string {
 		}
 	}
 	return "file"
-}
-
-func receiptWithMessageID(id int64) delivery.Receipt {
-	if id == 0 {
-		return delivery.Receipt{}
-	}
-	return delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(id)}}
 }
 
 func telegramRichTextPages(text string) []string {

@@ -51,13 +51,9 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	if t.Proactive && !a.cfg.allowProactive() {
 		return delivery.Receipt{}, fmt.Errorf("qqofficial proactive messages are disabled")
 	}
-	recordHistory := t.commandReply
 	nativeType := 0
 	hasImage := false
 	for _, out := range outputs {
-		if out.Delivery.HookPoint != "" {
-			recordHistory = true
-		}
 		switch out.Kind {
 		case delivery.KindImage, delivery.KindRecord, delivery.KindFile:
 			hasImage = hasImage || out.Kind == delivery.KindImage
@@ -68,6 +64,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 			}
 		}
 	}
+	var replyID string
 	var msg messageToCreate
 	pages := []outputPage{{}}
 	page := &pages[0]
@@ -111,6 +108,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 				if msg.MessageReference != nil && msg.MessageReference.MessageID != out.ReplyReferenceIndex {
 					return delivery.Receipt{}, fmt.Errorf("qqofficial cannot combine different reply targets")
 				}
+				replyID = out.ReplyToPlatformMessageID
 				msg.MessageReference = &messageReference{MessageID: out.ReplyReferenceIndex}
 				text = delivery.OutputBody(out, false)
 			case delivery.KindImage:
@@ -165,6 +163,9 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 			msg.MsgType = msgTypeMarkdown
 		}
 	}
+	a.mu.Lock()
+	botName := a.username
+	a.mu.Unlock()
 	var receipt delivery.Receipt
 	chatType := qqOfficialChatType(t)
 	for i, p := range pages {
@@ -195,9 +196,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		if id == "" {
 			continue
 		}
-		if t.Kind == targetGroup && recordHistory {
-			a.recordGroupOutput(ctx, t, id, p.history)
-		}
+		platformshare.RecordAssistantMessage(ctx, a.chatHistory, storage.ChatMessage{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, SenderID: a.cfg.AppID, SenderName: botName, ReplyToPlatformMessageID: replyID}, p.history)
 		a.recordMessageAlias(ctx, chatType, t.OpenID, resp.ExtInfo.RefIdx, id, a.cfg.AppID)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, id)
 		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{Platform: a.Name(), ChatType: chatType, ChatID: t.OpenID, PlatformMessageID: id, OutputIndexes: p.indexes})
@@ -220,6 +219,9 @@ func (p *outputPage) addMedia(i int, out delivery.Output) {
 	seg := storage.ChatSegment{Type: string(out.Kind), Name: out.Name, MIMEType: out.Source.MIMEType}
 	if out.Source.MediaID == "" {
 		seg.URL = out.Source.URL
+	}
+	if out.Kind == delivery.KindRecord {
+		seg = storage.ChatSegment{Type: "text", Text: "[语音]"}
 	}
 	p.history = append(p.history, seg)
 	p.indexes = append(p.indexes, i)
@@ -281,18 +283,6 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id string, segments []storage.ChatSegment) {
-	var b strings.Builder
-	for _, seg := range segments {
-		b.WriteString(seg.Text)
-	}
-	text := b.String()
-	a.appendChatMessage(ctx, &storage.ChatMessage{
-		Platform: a.Name(), ChatType: contextinfo.ChatGroup, ChatID: target.OpenID,
-		PlatformMessageID: id, SenderID: a.cfg.AppID,
-		Text: text, Raw: text, Segments: storage.MarshalChatSegments(segments), CreatedAt: storage.Now(),
-	})
-}
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if target.Empty() {
 		return a.sendContextOutput(ctx, outputs, false)

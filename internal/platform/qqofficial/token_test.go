@@ -241,10 +241,7 @@ func TestUnauthorizedRefreshRetriesOnlyOnce(t *testing.T) {
 func TestIngressStopsWhileOutgoingTokenRefreshContinues(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
-		adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true, "app_id": "app", "client_secret": "secret"}, Deps{CommonConfig: testCommonConfig(t)})
-		if err != nil {
-			t.Fatal(err)
-		}
+		adapter := newTestAdapter(t, Config{Enabled: true, AppID: "app", ClientSecret: "secret"}, nil)
 		transport := tokenRoundTripper(func(r *http.Request) (*http.Response, error) {
 			if r.URL.String() == defaultTokenURL {
 				close(entered)

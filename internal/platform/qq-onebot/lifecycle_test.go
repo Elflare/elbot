@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -36,7 +37,11 @@ func newConnectedAdapter(t *testing.T, handler share.MessageHandler) (*Adapter, 
 			if err := wsjson.Read(r.Context(), conn, &req); err != nil {
 				return
 			}
-			if err := wsjson.Write(r.Context(), conn, response{Status: "ok", Echo: req.Echo, Data: []byte(`{"message_id":88}`)}); err != nil {
+			data := []byte(`{"message_id":88}`)
+			if req.Action == "get_login_info" {
+				data = []byte(`{"user_id":99,"nickname":"霜"}`)
+			}
+			if err := wsjson.Write(r.Context(), conn, response{Status: "ok", Echo: req.Echo, Data: data}); err != nil {
 				return
 			}
 		}
@@ -52,6 +57,33 @@ func newConnectedAdapter(t *testing.T, handler share.MessageHandler) (*Adapter, 
 	case <-time.After(5 * time.Second):
 		t.Fatal("connection was not established")
 		return nil, nil
+	}
+}
+
+func TestHistoryUsesLoginIdentityForProactiveSend(t *testing.T) {
+	ready := make(chan struct{}, 1)
+	sub, err := events.PlatformConnected.Observe(func(_ context.Context, e events.PlatformConnectedEvent) {
+		if e.Platform == testPlatformName {
+			ready <- struct{}{}
+		}
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Disconnect()
+	a, _ := newConnectedAdapter(t, nil)
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("login did not finish")
+	}
+	_, err = a.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("proactive")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), "private", "1", "88")
+	if err != nil || row.SenderID != "99" || row.SenderName != "霜" || row.Text != "proactive" {
+		t.Fatalf("history=%+v err=%v", row, err)
 	}
 }
 
@@ -104,7 +136,7 @@ func TestLifecycleWaitsForWorkAndPreservesSending(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatalf("accepted %d calls", calls.Load())
 	}
-	if _, err := a.chatHistory.GetByPlatformMessage(t.Context(), "qqonebot", "private", "1", "2"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), "qqonebot", "private", "1", "2"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("rejected event was recorded: %v", err)
 	}
 	releaseOnce()
@@ -126,7 +158,7 @@ func TestLifecycleWaitsForWorkAndPreservesSending(t *testing.T) {
 	if err := a.Start(t.Context(), nil); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("restart after Close = %v", err)
 	}
-	if _, err := a.chatHistory.GetByPlatformMessage(t.Context(), "qqonebot", "private", "1", "1"); err != nil {
+	if _, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), "qqonebot", "private", "1", "1"); err != nil {
 		t.Fatalf("borrowed history was closed: %v", err)
 	}
 }

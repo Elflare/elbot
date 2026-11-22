@@ -44,7 +44,7 @@ func TestHistoryReadsByPurpose(t *testing.T) {
 	}
 	defer store.Close()
 	repo := store.Repository()
-	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted"}
+	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted", Display: "[引用 h42：名字（助手）：quoted]"}
 	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "text", Text: "before"}, {Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "first"}, {Type: "text", Text: "between"}, {Type: "image", PlatformFileID: "second"},
 	})}
@@ -61,7 +61,7 @@ func TestHistoryReadsByPurpose(t *testing.T) {
 		t.Fatalf("reply=%+v err=%v", got, err)
 	}
 	display, err := d.message(ctx, *got.Data)
-	if err != nil || display.Reply.Text != "quoted" || len(display.Media) != 3 || display.Media[0].IsImage || display.Media[1].MediaID != "cached" || !display.Media[2].IsImage {
+	if err != nil || display.Quote != reply.Display || len(display.Media) != 3 || display.Media[0].IsImage || display.Media[1].MediaID != "cached" || !display.Media[2].IsImage {
 		t.Fatalf("display=%+v err=%v", display, err)
 	}
 	before := counter.reads

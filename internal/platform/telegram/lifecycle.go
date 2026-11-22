@@ -193,6 +193,9 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 		}
 		backoff.Reset()
 		bot := share.Identity{UserID: formatMessageID(me.ID), Username: strings.TrimSpace(me.Username)}
+		a.mu.Lock()
+		a.bot = share.Identity{UserID: bot.UserID, Username: displayName(me)}
+		a.mu.Unlock()
 		if err := a.syncBotCommands(ctx); err != nil {
 			{
 				record := globalevents.LogRecord{

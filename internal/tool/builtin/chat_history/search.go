@@ -15,18 +15,19 @@ import (
 
 type SearchChatHistoryTool struct{ Deps }
 type searchChatHistoryArgs struct {
-	IncludeAvatar bool            `json:"include_avatar"`
-	Platform      json.RawMessage `json:"platform"`  // 保留字段是否提供，显式 null 也交查询层按空值处理。
-	ChatType      json.RawMessage `json:"chat_type"` // 会话类型的显式输入，仅后台允许。
-	ChatID        json.RawMessage `json:"chat_id"`   // 原生会话 ID 的显式输入，仅后台允许。
-	Limit         int             `json:"limit"`
-	Query         string          `json:"query"`
-	QueryMode     string          `json:"query_mode"`
-	User          string          `json:"user"`
-	Since         string          `json:"since"`
-	Until         string          `json:"until"`
-	Hours         int             `json:"hours"`
-	Days          int             `json:"days"`
+	IncludeAssistant bool            `json:"include_assistant"`
+	IncludeAvatar    bool            `json:"include_avatar"`
+	Platform         json.RawMessage `json:"platform"`  // 保留字段是否提供，显式 null 也交查询层按空值处理。
+	ChatType         json.RawMessage `json:"chat_type"` // 会话类型的显式输入，仅后台允许。
+	ChatID           json.RawMessage `json:"chat_id"`   // 原生会话 ID 的显式输入，仅后台允许。
+	Limit            int             `json:"limit"`
+	Query            string          `json:"query"`
+	QueryMode        string          `json:"query_mode"`
+	User             string          `json:"user"`
+	Since            string          `json:"since"`
+	Until            string          `json:"until"`
+	Hours            int             `json:"hours"`
+	Days             int             `json:"days"`
 }
 
 func (t SearchChatHistoryTool) Definition() toolshare.ToolDefinition {
@@ -49,6 +50,7 @@ func searchChatHistoryBuilder() *toolshare.Builder {
 		Integer("hours", "最近小时数；≤0→忽略。").
 		Integer("days", "最近日历天数；≤0→忽略。").
 		Integer("limit", "默认10，上限50。").
+		Boolean("include_assistant", "默认false；true→包含助手发到聊天中的消息。").
 		Boolean("include_avatar", "默认false；true→按发送者附带本聊天内最新非空头像 URL，可能已过期。")
 }
 func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
@@ -238,8 +240,8 @@ func (m Deps) search(ctx context.Context, req searchChatHistoryArgs, scope searc
 
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, time.Now())
 	rows, err := m.Repository.Search(ctx, storage.ChatHistorySearchRequest{
-		IncludeAvatar: req.IncludeAvatar,
-		Platform:      chat.Data.Platform, ChatID: chat.Data.ChatID,
+		IncludeAssistant: req.IncludeAssistant, IncludeAvatar: req.IncludeAvatar,
+		Platform: chat.Data.Platform, ChatID: chat.Data.ChatID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
 		SenderQuery: strings.TrimSpace(req.User),
 		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.Data.ChatType,

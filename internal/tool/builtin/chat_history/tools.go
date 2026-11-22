@@ -63,10 +63,10 @@ func (b *Deps) messages(ctx context.Context, rows []storage.ChatMessage) ([]Mess
 func (b *Deps) message(ctx context.Context, row storage.ChatMessage) (Message, error) {
 	reply := storage.ChatMessageReply(row)
 	message := Message{
-		Seq:             row.Seq,
+		IsAssistant: row.IsAssistant, Seq: row.Seq,
 		SenderAvatarURL: row.SenderAvatarURL,
 		SenderID:        row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt,
-		Reply: ReplyContext{Seq: row.ReplySeq, MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text},
+		Quote: reply.Display,
 	}
 	history := historyMediaMessage(row)
 	segments := history.Media
@@ -126,23 +126,16 @@ func (ids *historySeqs) UnmarshalJSON(data []byte) error {
 }
 
 type Message struct {
-	Seq int64 // 聊天历史短号的序号。
+	IsAssistant bool
+	Seq         int64 // 聊天历史短号的序号。
 
-	SenderAvatarURL string       // 按需附带的会话内最新发送者头像。
-	SenderID        string       // 平台发送者 ID。
-	SenderName      string       // 发送者展示名，缺失时由工具使用 ID 展示。
-	Text            string       // 消息正文，未做工具展示截断。
-	Reply           ReplyContext // 被引用消息的事实，由工具组织展示。
-	CreatedAt       time.Time    // 消息时间。
-	Media           []MediaItem  // 仅包含媒体项，切片位置加一即对外媒体序号。
-}
-
-type ReplyContext struct {
-	Seq        int64  // 已入库引用目标的序号。
-	MessageID  string // 被引用消息的平台 ID；空值表示没有引用。
-	SenderID   string // 被引用消息的发送者 ID。
-	SenderName string // 被引用消息的发送者展示名。
-	Text       string // 被引用消息的正文。
+	SenderAvatarURL string      // 按需附带的会话内最新发送者头像。
+	SenderID        string      // 平台发送者 ID。
+	SenderName      string      // 发送者展示名，缺失时由工具使用 ID 展示。
+	Text            string      // 消息正文，未做工具展示截断。
+	Quote           string      // 入站时生成的引用展示快照。
+	CreatedAt       time.Time   // 消息时间。
+	Media           []MediaItem // 仅包含媒体项，切片位置加一即对外媒体序号。
 }
 
 type MediaItem struct {
