@@ -503,8 +503,8 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	if !strings.Contains(result.Data.Content, "-beta") || !strings.Contains(result.Data.Content, "+BETA") || !strings.Contains(result.Data.Content, "+DELTA") {
 		t.Fatalf("unexpected diff:\n%s", result.Data.Content)
 	}
-	if !strings.Contains(result.Data.Content, "revision_after: "+fileops.ContentRevision(content)) {
-		t.Fatalf("unexpected revision output:\n%s", result.Data.Content)
+	if !strings.HasPrefix(result.Data.Content, fmt.Sprintf("edited: %s | encoding: utf-8 | revision_after: %s\ndiff:\n", path, fileops.ContentRevision(content))) {
+		t.Fatalf("unexpected edit header:\n%s", result.Data.Content)
 	}
 }
 

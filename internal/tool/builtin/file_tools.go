@@ -465,12 +465,12 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, "file edit rejected: " + committed.Message, nil
 	}
 	result := committed.Data
-	content := fmt.Sprintf("edited: %s\nencoding: %s\nrevision_after: %s\ndiff:\n%s", result.Path, result.Encoding, result.RevisionAfter, result.Diff)
+	content := fmt.Sprintf("edited: %s | encoding: %s | revision_after: %s\ndiff:\n%s", result.Path, result.Encoding, result.RevisionAfter, result.Diff)
 	if result.Created {
-		content = "created: true\n" + content
+		content = "created: true | " + content
 	}
 	if result.DryRun {
-		content = "dry_run: true\n" + content
+		content = "dry_run: true | " + content
 	}
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
 	var warnings []string
