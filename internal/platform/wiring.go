@@ -36,8 +36,8 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	parseCommand := func(text string) command.Parsed { return command.Parse(text, prefixes) }
 	referenceDeps := refcontext.Options{
 		ParseCommand:          parseCommand,
-		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
-		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, bool, error) {
+		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage, PlatformMessageIDs: deps.Store.Messages().PlatformMessageIDs,
+		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, error) {
 			return m.agent.ResolveReference(ctx, session.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
 		},
 		FindHistory: deps.Store.Media().FindHistory,

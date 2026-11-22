@@ -110,34 +110,34 @@ func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string)
 }
 
 // ResolveReference 决定引用助手消息后的续接方式；准入时仍复核访问权限。
-func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, message storage.Message) (resumeID, forkID string, omitReference bool, err error) {
+func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, message storage.Message) (resumeID, forkID string, err error) {
 	row, err := s.deps.Sessions.Get(ctx, message.SessionID)
 	if errors.Is(err, storage.ErrNotFound) {
-		return "", "", false, nil
+		return "", "", nil
 	}
 	if err != nil {
-		return "", "", false, err
+		return "", "", err
 	}
 	if share.IsBackground(row) {
 		if s.deps.IsSuperadmin(scope) {
-			return row.ID, "", false, nil
+			return row.ID, "", nil
 		}
-		return "", "", false, nil
+		return "", "", nil
 	}
 	if row.Owner != scope.Owner || row.Platform != scope.Platform || row.ChatType != scope.ChatType || row.ChatID != scope.ChatID {
-		return "", "", false, nil
+		return "", "", nil
 	}
 	messages, err := s.deps.Messages.ListBySession(ctx, row.ID)
 	if err != nil {
-		return "", "", false, err
+		return "", "", err
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == storage.RoleAssistant {
 			if messages[i].ID == message.ID {
-				return row.ID, "", true, nil
+				return row.ID, "", nil
 			}
 			break
 		}
 	}
-	return "", message.ID, false, nil
+	return "", message.ID, nil
 }

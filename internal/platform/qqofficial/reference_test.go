@@ -15,6 +15,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 )
@@ -119,7 +120,14 @@ func TestGroupQuoteRequiresNewContent(t *testing.T) {
 func TestEventReferenceWithoutHistory(t *testing.T) {
 	for _, group := range []bool{false, true} {
 		a := newTestAdapter(t, Config{}, nil)
-		msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group", MessageType: 103, Content: "remember", MsgElements: []messageElement{{Content: "quoted"}}}
+		a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+			return refcontext.Apply(ctx, refcontext.Options{ParseCommand: a.parseCommand}, opts)
+		}
+		const quote = "[群聊的聊天记录]\n=== 消息 1 ===\n测试正文"
+		msg := inboundMessage{ID: "current", Author: inboundAuthor{Username: "芙蕾娅", UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group", MessageType: 103, Content: "你好", MsgElements: []messageElement{{Content: quote}}}
+		if group {
+			msg.MessageScene.Ext = []string{"ref_msg_idx=unmatched"}
+		}
 		h := &captureHandler{}
 		if group {
 			a.handleGroupMessage(t.Context(), h.HandleMessage, payload{}, msg)
@@ -127,8 +135,16 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 			a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, msg)
 		}
 		got, _ := share.MessageContextFrom(h.ctx)
-		if h.text != "remember" || got.Reply.Display != "" || got.ContextText != "" {
-			t.Fatalf("unmapped reference changed input: %q %+v", h.text, got.Reply)
+		want := "[引用 未知用户：" + quote + "]\n芙蕾娅：你好"
+		if h.text != "你好" || got.ContextText != want || len(got.ContextSegments) != 1 || got.ContextSegments[0].Text != want {
+			t.Fatalf("quote context = %q, segments = %+v", got.ContextText, got.ContextSegments)
+		}
+		row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), got.Source.ChatType, got.Source.ChatID, "current")
+		if err != nil || row.Text != "你好" || storage.ChatMessageReply(*row).Display != got.Reply.Display || got.Reply.Display+"\n芙蕾娅："+row.Text != want {
+			t.Fatalf("stored snapshot=%+v, err=%v", row, err)
+		}
+		if got.ReplyToMessageID != "" || got.ReplyToSenderID != "" || got.Reply.MessageID != "" || len(got.Mentions) != 0 {
+			t.Fatalf("unmapped quote acquired identity: %+v", got.Conversation)
 		}
 	}
 }
@@ -158,15 +174,15 @@ func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing
 						t.Fatalf("options = %+v", opts)
 					}
 					if !fromHistory {
-						ref, ok, err := opts.Fetch(ctx, opts.ReplyID)
-						if err != nil || !ok || ref.Text != "original text" || len(ref.Segments) != 2 {
-							t.Fatalf("event reference = %+v, %v", ref, err)
+						ref := opts.EventQuote
+						if ref.Text != "original text" || len(ref.Segments) != 2 {
+							t.Fatalf("event reference = %+v", ref)
 						}
 					}
 					if text == "/help" {
-						return share.ReferenceResult{Text: text}, nil
+						return share.ReferenceResult{Text: text, DisplaySegments: opts.Segments}, nil
 					}
-					return share.ReferenceResult{Text: "[引用：original text]\n\ndescribe", Reply: share.ReplyContext{MessageID: "original", Text: "original text"}, ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, URL: image.URL}}}, nil
+					return share.ReferenceResult{Text: "[引用：original text]\n\ndescribe", Reply: share.ReplyContext{MessageID: "original", Text: "original text"}, DisplaySegments: []share.MessageSegment{{Type: share.SegmentText, Text: "[引用：original text]\n\ndescribe"}, {Type: share.SegmentImage, URL: image.URL}}}, nil
 				}
 				msg := inboundMessage{ID: "reply", Author: inboundAuthor{UserOpenID: "user"}, Content: text,
 					MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},

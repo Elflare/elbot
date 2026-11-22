@@ -37,7 +37,7 @@ type MessageSegment struct {
 }
 
 type ReplyContext struct {
-	Display     string           // 入站引用展示快照；无对应历史记录时为空。
+	Display     string           // 入站引用展示快照，不要求存在本地历史短号。
 	MessageID   string           // 被引用的平台消息 ID。
 	HistorySeq  int64            // 当前聊天中被引用记录的短号；未入库时为零。
 	IsAssistant bool             // 被引用消息由当前机器人发出。
@@ -47,24 +47,41 @@ type ReplyContext struct {
 	Segments    []MessageSegment // 引用消息片段。
 }
 
-// FinalMessageSegments 保留非空白正文，再按当前消息、引用消息的顺序追加非文本片段；不修改输入切片。
-func FinalMessageSegments(text string, current, referenced []MessageSegment) []MessageSegment {
-	out := make([]MessageSegment, 0, 1+len(current)+len(referenced))
-	if strings.TrimSpace(text) != "" {
-		out = append(out, MessageSegment{Type: SegmentText, Text: text})
-	}
-	out = AppendNonTextSegments(out, current)
-	out = AppendNonTextSegments(out, referenced)
-	return out
-}
-
-// AppendNonTextSegments 将 segments 中的非文本片段按原顺序追加到 out。
-func AppendNonTextSegments(out []MessageSegment, segments []MessageSegment) []MessageSegment {
-	for _, segment := range segments {
-		if segment.Type != SegmentText {
-			out = append(out, segment)
+// SegmentsText 只投影正文和提及，不把媒体描述当成用户文字。
+func SegmentsText(segments []MessageSegment) string {
+	var text strings.Builder
+	for _, s := range segments {
+		if s.Type == SegmentText || s.Type == SegmentAt {
+			text.WriteString(s.Text)
 		}
 	}
+	return text.String()
+}
+
+// FinalMessageSegments 在原有片段之间插入展示文字；不移动媒体，也不修改输入。
+func FinalMessageSegments(before []MessageSegment, text string, after []MessageSegment) []MessageSegment {
+	out := make([]MessageSegment, 0, len(before)+len(after)+1)
+	var words strings.Builder
+	flush := func() {
+		if words.Len() > 0 {
+			out = append(out, MessageSegment{Type: SegmentText, Text: words.String()})
+			words.Reset()
+		}
+	}
+	add := func(parts []MessageSegment) {
+		for _, s := range parts {
+			if s.Type == SegmentText {
+				words.WriteString(s.Text)
+			} else {
+				flush()
+				out = append(out, s)
+			}
+		}
+	}
+	add(before)
+	words.WriteString(text)
+	add(after)
+	flush()
 	return out
 }
 

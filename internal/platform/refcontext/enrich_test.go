@@ -44,13 +44,13 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || len(result.DisplaySegments) != len(display)+1 || !reflect.DeepEqual(result.DisplaySegments[1:], display) {
+	if calls != 1 || len(result.DisplaySegments) != 5 || result.DisplaySegments[1] != display[1] || result.DisplaySegments[3] != original[1] || share.SegmentsText(result.DisplaySegments) != result.Text {
 		t.Fatalf("display=%#v calls=%d", result.DisplaySegments, calls)
 	}
-	if result.Text != "[引用 h1：小明(id:1)]\n<forward_message>\nAB\n</forward_message>\n\n问题" {
+	if result.Text != "[引用 h1：小明(id:1)]\n<forward_message>\nAB\n</forward_message>\n问题" {
 		t.Fatalf("text=%q", result.Text)
 	}
-	if result.Reply.MessageID != "123" || result.Reply.Text != "[forward]" || !reflect.DeepEqual(result.Reply.Segments, original) || !reflect.DeepEqual(result.ReferenceSegments, original) {
+	if result.Reply.MessageID != "123" || result.Reply.Text != "[forward]" || !reflect.DeepEqual(result.Reply.Segments, original) {
 		t.Fatalf("source history positions changed: %#v", result)
 	}
 }
@@ -74,8 +74,8 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 		enrich            bool
 	}{
 		{name: "resume", actor: scope.Owner, reply: "latest-forward", text: "继续"},
-		{name: "fork", actor: scope.Owner, reply: "old-forward", text: "继续", enrich: true},
-		{name: "fork command", actor: scope.Owner, reply: "old-forward", text: "/fork"},
+		{name: "fork", actor: scope.Owner, reply: "old-forward", text: "继续"},
+		{name: "fork command", actor: scope.Owner, reply: "old-forward", text: "/fork", enrich: true},
 		{name: "other actor", actor: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "2"}, reply: "old-forward", text: "问题", enrich: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 					t.Fatalf("command=%#v", result)
 				}
 			case "other actor":
-				if result.Reply.Display != "[引用 h1：助手：old]" || result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "[引用 h1：助手]\n<forward_message>\nold\n</forward_message>\n\n问题" {
+				if result.Reply.Display+"\n问题" != result.Text || result.ResumeSessionID != "" || result.ForkFromMessageID != "" || result.Text != "[引用 h1：助手]\n<forward_message>\nold\n</forward_message>\n问题" {
 					t.Fatalf("ordinary reference=%#v", result)
 				}
 			}

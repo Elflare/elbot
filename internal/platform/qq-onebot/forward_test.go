@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -61,15 +62,16 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 					t.Cleanup(func() { _ = history.Close() })
 					repo = history.Repository()
 				}
-				original := Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 987654321, Sender: Sender{Nickname: "外层发送者"}, Message: json.RawMessage(`[{"type":"text","data":{"text":"外层前\n"}},{"type":"forward","data":{"id":"resource-secret"}},{"type":"text","data":{"text":"\n外层后"}},{"type":"image","data":{"file":"outside-image","url":"https://example.com/outside.png"}}]`)}
-				var forwardCalls atomic.Int32
+				original := Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 987654321, Sender: Sender{UserID: 1, Nickname: "外层发送者"}, Message: json.RawMessage(`[{"type":"text","data":{"text":"外层前\n"}},{"type":"forward","data":{"id":"resource-secret"}},{"type":"text","data":{"text":"\n外层后"}},{"type":"image","data":{"file":"outside-image","url":"https://example.com/outside.png"}}]`)}
+				var forwardCalls, getCalls atomic.Int32
 				transport := newTestTransport(t, func(req request) response {
 					switch req.Action {
 					case "get_msg":
+						getCalls.Add(1)
 						if req.Params["message_id"] != float64(original.MessageID) {
 							t.Errorf("outer message id=%#v", req.Params)
 						}
-						data, _ := json.Marshal(getMessageData{MessageID: original.MessageID, UserID: original.UserID, Sender: original.Sender, Message: original.Message})
+						data, _ := json.Marshal(getMessageData{MessageID: original.MessageID, Sender: original.Sender, Message: original.Message})
 						return response{Data: data}
 					case "get_forward_msg":
 						forwardCalls.Add(1)
@@ -83,10 +85,10 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 					}
 				})
 				a := newTestAdapter(t, Config{}, nil, repo)
-				a.referenceResolver = resolveFetchedReferenceForTest
+
 				a.transport = transport
 				if withHistory {
-					a.recordChatMessage(ctx, original, normalizeMessage(original.Message, "", original.SelfID), share.ReplyContext{})
+					share.RecordInboundMessage(ctx, repo, share.InboundMessage{Conversation: contextinfo.Conversation{Source: contextinfo.Source{Platform: a.Name(), ChatType: oneBotChatType(original), ChatID: scopeID(original)}, Identity: contextinfo.Identity{ID: "1", Name: "外层发送者"}, PlatformMessageID: "987654321"}, Segments: normalizeMessage(original.Message, "", original.SelfID).Segments}, share.ReplyContext{})
 				}
 				handler := &captureHandler{}
 				a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 222, Message: json.RawMessage(`[{"type":"reply","data":{"id":"987654321"}},{"type":"text","data":{"text":"问题前"}},{"type":"image","data":{"file":"current-image"}},{"type":"text","data":{"text":"问题后"}}]`)})
@@ -94,12 +96,16 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 				if !ok {
 					t.Fatal("missing message context")
 				}
-				want := "外层前\n<forward_message>\n小明：文字 A\n{image:inside-a}\n图片之后[forward][语音][视频][文件][表情]\n\n小红：{image:inside-b}尾部文字\n</forward_message>\n外层后{image:outside-image}\n\n问题前{image:current-image}问题后"
+				header := "[引用：外层发送者(id:1)]"
+				if withHistory {
+					header = "[引用 h1：外层发送者(id:1)]"
+				}
+				want := header + "\n外层前\n<forward_message>\n小明：文字 A\n{image:inside-a}\n图片之后[forward][语音][视频][文件][表情]\n\n小红：{image:inside-b}尾部文字\n</forward_message>\n外层后{image:outside-image}\n问题前{image:current-image}问题后"
 				if got := forwardSegmentsForTest(msg.ContextSegments); got != want {
 					t.Fatalf("display=%q, want %q", got, want)
 				}
-				if forwardCalls.Load() != 1 {
-					t.Fatalf("forward calls=%d", forwardCalls.Load())
+				if forwardCalls.Load() != 1 || getCalls.Load() != 1 {
+					t.Fatalf("forward calls=%d get_msg=%d", forwardCalls.Load(), getCalls.Load())
 				}
 				if msg.Reply.MessageID != "987654321" {
 					t.Fatalf("internal reply id=%q", msg.Reply.MessageID)
@@ -148,9 +154,9 @@ func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 				return response{Data: []byte(`{"messages":[]}`)}
 			})
 			ref := share.ReferencedMessage{Text: "前[forward]后", Segments: []share.MessageSegment{textSegment("前"), textSegment("[forward]"), textSegment("后")}}
-			segments, err := a.expandForwardReference(Event{})(context.Background(), "987654321", ref)
+			segments, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "987654321") })(context.Background(), "987654321", ref)
 			got := forwardSegmentsForTest(segments)
-			if failure != "empty" {
+			if failure != "empty" && failure != "get_msg" {
 				if err == nil || len(segments) != 0 {
 					t.Fatalf("failed expansion returned content: segments=%#v err=%v", segments, err)
 				}
@@ -184,7 +190,7 @@ func TestMultipleForwardsRejectPartialContent(t *testing.T) {
 		}
 		return response{Status: "failed", Retcode: 1}
 	})
-	got, err := a.expandForwardReference(Event{})(context.Background(), "123", share.ReferencedMessage{Text: "[forward]中间[forward]"})
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", share.ReferencedMessage{Text: "[forward]中间[forward]"})
 	if err == nil || len(got) != 0 || calls.Load() != 2 {
 		t.Fatalf("display=%#v err=%v calls=%d", got, err, calls.Load())
 	}
@@ -197,7 +203,7 @@ func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
 		return response{Status: "failed", Retcode: 1}
 	})
 	ref := share.ReferencedMessage{Text: "完整 assistant 正文", Segments: []share.MessageSegment{textSegment("[forward]")}, CanonicalContent: true}
-	got, err := a.expandForwardReference(Event{})(context.Background(), "123", ref)
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", ref)
 	if err != nil {
 		t.Fatal(err)
 	}

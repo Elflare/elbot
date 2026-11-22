@@ -47,20 +47,19 @@ func inboundReferencedMessage(msg inboundMessage, refIndex string) share.Referen
 	if (refIndex == "" && msg.MessageType != 103) || len(msg.MsgElements) == 0 {
 		return share.ReferencedMessage{}
 	}
-	var lines []string
 	var segments []share.MessageSegment
+	seenText := false
 	for _, element := range msg.MsgElements {
 		text := normalizedInboundText(element.Content)
 		if text != "" {
-			lines = append(lines, text)
+			if seenText {
+				text = "\n" + text
+			}
+			seenText = true
 		}
 		segments = append(segments, inboundSegments(text, inboundAttachmentSegments(element.Attachments))...)
 	}
-	text := strings.Join(lines, "\n")
-	if text == "" && len(segments) > 0 {
-		text = "[媒体消息]"
-	}
-	return share.ReferencedMessage{Text: text, Segments: segments}
+	return share.ReferencedMessage{Text: share.SegmentsText(segments), Segments: segments}
 }
 
 func (a *Adapter) recordMessageAlias(ctx context.Context, conversationKind contextinfo.ChatType, scopeID, alias, messageID, senderID string) {

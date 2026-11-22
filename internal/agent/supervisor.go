@@ -154,6 +154,6 @@ func (m *Supervisor) ObserveBindingChanged(handler func(BindingChangedEvent), op
 	}, options)
 }
 
-func (m *Supervisor) ResolveReference(ctx context.Context, scope session.Scope, message storage.Message) (resumeID, forkID string, omitReference bool, err error) {
+func (m *Supervisor) ResolveReference(ctx context.Context, scope session.Scope, message storage.Message) (resumeID, forkID string, err error) {
 	return m.sessions.ResolveReference(ctx, scope, message)
 }

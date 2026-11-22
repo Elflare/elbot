@@ -3,6 +3,7 @@
 package refcontext
 
 import (
+	"cmp"
 	"context"
 	"elbot/internal/contextinfo"
 	"errors"
@@ -16,139 +17,148 @@ import (
 )
 
 type Options struct {
-	ParseCommand          func(string) command.Parsed                                                                                   // 根部绑定配置前缀的命令解析能力。
-	FindByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 平台消息对应的会话消息。
-	ResolveContinuation   func(context.Context, share.ReferenceOptions, storage.Message) (string, string, bool, error)                  // 根部接入 Agent 的续接判定。
+	ParseCommand          func(string) command.Parsed                                                                   // 根部绑定配置前缀的命令解析能力。
+	FindByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) // 平台消息对应的会话消息。
+	PlatformMessageIDs    func(context.Context, string, contextinfo.ChatType, string, string) ([]string, error)
+	ResolveContinuation   func(context.Context, share.ReferenceOptions, storage.Message) (string, string, error)                        // 根部接入 Agent 的续接判定。
 	FindHistory           func(context.Context, string, contextinfo.ChatType, string, string) ([]storage.HistoryMedia, error)           // 历史消息的媒体关联。
 	GetMedia              func(context.Context, string) (*storage.Media, error)                                                         // 关联媒体的有效状态。
 	FindOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 尚未过期的发送媒体。
 	// ChatHistory 只用于按平台消息身份恢复引用事实。
 	ChatHistory interface {
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessages(context.Context, string, contextinfo.ChatType, string, []string) ([]storage.ChatMessage, error)
 	}
 }
 
 func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-	result := share.ReferenceResult{Text: opts.Text}
-	replyID := strings.TrimSpace(opts.ReplyID)
-	if replyID == "" {
+	result := share.ReferenceResult{Text: opts.Text, DisplaySegments: opts.Segments}
+	if len(opts.Segments) > 0 {
+		result.Text = share.SegmentsText(opts.Segments)
+	}
+	reply := &result.Reply
+	reply.MessageID = strings.TrimSpace(opts.ReplyID)
+	ref := opts.EventQuote
+	var stored *storage.Message
+	var row *storage.ChatMessage
+	var err error
+	if reply.MessageID != "" {
+		stored, err = deps.FindByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, reply.MessageID)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return result, err
+		}
+		row, err = deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, reply.MessageID)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return result, err
+		}
+	} else if len(ref.Segments) == 0 && ref.Text == "" {
 		return result, nil
 	}
-	result.Reply.MessageID = replyID
-
-	stored, hasStored, err := referencedMessage(ctx, deps, opts, replyID)
-	if err != nil {
-		return share.ReferenceResult{}, err
+	assistant := stored != nil && stored.Role == storage.RoleAssistant
+	parsed := deps.ParseCommand(opts.Text)
+	if assistant && !parsed.OK {
+		result.ResumeSessionID, result.ForkFromMessageID, err = deps.ResolveContinuation(ctx, opts, *stored)
+		if err != nil {
+			return result, err
+		}
+	} else if assistant && parsed.Name == "fork" && parsed.OK {
+		result.Text = parsed.Prefix + "fork " + stored.ID
+		result.DisplaySegments = []share.MessageSegment{{Type: share.SegmentText, Text: result.Text}}
 	}
-	result.Reply.IsAssistant = hasStored && stored.Role == storage.RoleAssistant
-	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return share.ReferenceResult{}, err
+	direct := result.ResumeSessionID != "" || result.ForkFromMessageID != ""
+	if !direct && reply.MessageID != "" {
+		source, ok, err := referenceSource(ctx, deps, opts, reply.MessageID, row)
+		if err != nil {
+			return result, err
+		}
+		if ok {
+			source.Text = cmp.Or(source.Text, ref.Text)
+			source.SenderID, source.SenderName = cmp.Or(source.SenderID, ref.SenderID), cmp.Or(source.SenderName, ref.SenderName)
+			if len(source.Segments) == 0 {
+				source.Segments = ref.Segments
+			}
+			ref = source
+		}
 	}
 	if row != nil {
-		reply := &result.Reply
-		reply.HistorySeq, reply.SenderID, reply.SenderName, reply.Text = row.Seq, row.SenderID, row.SenderName, row.Text
-		reply.IsAssistant = reply.IsAssistant || row.IsAssistant || (row.SenderID != "" && row.SenderID == opts.Bot.UserID)
-		if reply.IsAssistant && reply.SenderName == "" {
-			reply.SenderName = opts.Bot.Username
-		}
-		if reply.Text == "" && row.Segments != "" {
-			reply.Text = "[媒体消息]"
-		}
-		reply.Display = share.FormatReferenceText(*reply)
+		reply.HistorySeq = row.Seq
+		ref.Text = cmp.Or(row.Text, ref.Text)
+		ref.SenderID, ref.SenderName = cmp.Or(row.SenderID, ref.SenderID), cmp.Or(row.SenderName, ref.SenderName)
+		ref.IsAssistant = ref.IsAssistant || row.IsAssistant
 	}
-	if parsed := deps.ParseCommand(opts.Text); parsed.OK {
-		if hasStored && stored.Role == storage.RoleAssistant && parsed.Name == "fork" {
-			result.Text = parsed.Prefix + "fork " + stored.ID
+	reply.SenderID, reply.SenderName = ref.SenderID, ref.SenderName
+	reply.IsAssistant = assistant || ref.IsAssistant || (ref.SenderID != "" && ref.SenderID == opts.Bot.UserID)
+	if reply.IsAssistant {
+		reply.SenderName = cmp.Or(reply.SenderName, opts.Bot.Username)
+	}
+	reply.Text, reply.Segments = ref.Text, ref.Segments
+	if !direct && row != nil && assistant {
+		ids, err := deps.PlatformMessageIDs(ctx, opts.Platform, opts.ChatType, opts.ChatID, stored.ID)
+		if err != nil {
+			return result, err
 		}
+		ref.CanonicalContent = row.IsAssistant && row.Text != ""
+		if len(ids) > 1 {
+			pages, err := deps.ChatHistory.GetByPlatformMessages(ctx, opts.Platform, opts.ChatType, opts.ChatID, ids)
+			if err != nil {
+				return result, err
+			}
+			if len(pages) == len(ids) {
+				var body []share.MessageSegment
+				for _, page := range pages {
+					parts := historySegments(page)
+					if len(parts) == 0 {
+						parts = []share.MessageSegment{{Type: share.SegmentText, Text: page.Text}}
+					}
+					if len(body) > 0 {
+						body = append(body, share.MessageSegment{Type: share.SegmentText, Text: "\n"})
+					}
+					body = append(body, parts...)
+				}
+				ref.Segments, ref.Text = body, share.SegmentsText(body)
+			}
+		}
+	}
+	if reply.HistorySeq == 0 && ref.Text == "" && len(ref.Segments) == 0 {
 		return result, nil
 	}
-
-	if hasStored && stored.Role == storage.RoleAssistant {
-		var omitReference bool
-		result.ResumeSessionID, result.ForkFromMessageID, omitReference, err = deps.ResolveContinuation(ctx, opts, *stored)
+	body := ref.Segments
+	if len(body) == 0 || (ref.Text != "" && share.SegmentsText(body) == "") {
+		body = share.FinalMessageSegments(nil, ref.Text, body)
+	}
+	var expanded []share.MessageSegment
+	if !direct && opts.Enrich != nil {
+		expanded, err = opts.Enrich(ctx, reply.MessageID, ref)
 		if err != nil {
-			return share.ReferenceResult{}, err
-		}
-		if omitReference {
-			return result, nil
+			return result, err
 		}
 	}
-	text, segments, reply, display, err := fallbackReferenceText(ctx, deps, opts, row, result.Reply, stored, hasStored)
-	result.ReferenceSegments, result.Reply = segments, reply
-	if result.ResumeSessionID == "" && result.ForkFromMessageID == "" {
-		result.Text, result.DisplaySegments = text, display
+	if len(expanded) > 0 {
+		body = expanded
 	}
-	return result, err
-}
-
-func referencedMessage(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string) (*storage.Message, bool, error) {
-	msg, err := deps.FindByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil, false, nil
+	quote := share.FormatReferenceSegments(*reply, body, len(expanded) > 0)
+	reply.Display = share.SegmentsText(quote)
+	if direct {
+		reply.Segments = nil
+		return result, nil
 	}
-	return msg, err == nil, err
-}
-
-func fallbackReferenceText(ctx context.Context, deps Options, opts share.ReferenceOptions, row *storage.ChatMessage, reply share.ReplyContext, stored *storage.Message, hasStored bool) (string, []share.MessageSegment, share.ReplyContext, []share.MessageSegment, error) {
-	content := ""
-	var segments []share.MessageSegment
-	replyID := reply.MessageID
-	ref, ok, err := referenceSource(ctx, deps, opts, replyID, row)
-	if err != nil {
-		return "", nil, share.ReplyContext{}, nil, err
+	if parsed.OK {
+		return result, nil
 	}
-	if ok {
-		if reply.SenderID == "" {
-			reply.SenderID = ref.SenderID
-		}
-		reply.IsAssistant = reply.IsAssistant || ref.IsAssistant
-		content = ref.Text
-		segments = ref.Segments
+	current := opts.Segments
+	if len(current) == 0 && opts.Text != "" {
+		current = []share.MessageSegment{{Type: share.SegmentText, Text: opts.Text}}
 	}
-	if hasStored && strings.TrimSpace(stored.Content) != "" {
-		content = stored.Content
-	}
-	if row == nil { // 仍交付已恢复的引用媒体，但没有可展示的历史短号。
-		reply.Segments = segments
-		return opts.Text, segments, reply, nil, nil
-	}
-	content = strings.TrimSpace(content)
-	reply.Segments = append([]share.MessageSegment(nil), segments...)
-	if len(reply.Segments) == 0 && content != "" {
-		reply.Segments = []share.MessageSegment{{Type: share.SegmentText, Text: content}}
-	}
-	if content == "" && len(segments) > 0 {
-		content = "[媒体消息]"
-	}
-	// A mapped assistant already has its canonical content. In particular,
-	// enriching it must not duplicate the text of an automatic resume or fork.
-	if opts.Enrich != nil {
-		display, err := opts.Enrich(ctx, replyID, share.ReferencedMessage{
-			SenderID: reply.SenderID, SenderName: reply.SenderName, IsAssistant: reply.IsAssistant,
-			Text: content, Segments: reply.Segments,
-			CanonicalContent: hasStored && stored.Role == storage.RoleAssistant && strings.TrimSpace(stored.Content) != "",
-		})
-		if err != nil {
-			return "", nil, share.ReplyContext{}, nil, err
-		}
-		if len(display) > 0 {
-			header := reply
-			header.Text = "" // 展开片段已经携带正文，实时上下文只加来源。
-			display = append([]share.MessageSegment{{Type: share.SegmentText, Text: share.FormatReferenceText(header) + "\n"}}, display...)
-			var text strings.Builder
-			for _, segment := range display {
-				if segment.Type == share.SegmentText {
-					text.WriteString(segment.Text)
-				}
-			}
-			if strings.TrimSpace(opts.Text) != "" {
-				text.WriteString("\n\n" + opts.Text)
-			}
-			return strings.TrimSpace(text.String()), segments, reply, display, nil
+	sep := ""
+	if len(current) > 0 {
+		sep = "\n"
+		if info, _ := contextinfo.ConversationFromContext(ctx); info.Identity.Name != "" {
+			sep += info.Identity.Name + "："
 		}
 	}
-	return strings.TrimSpace(reply.Display + "\n\n" + opts.Text), segments, reply, nil, nil
+	result.DisplaySegments = share.FinalMessageSegments(quote, sep, current)
+	result.Text = share.SegmentsText(result.DisplaySegments)
+	return result, nil
 }
 
 func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) ([]share.MessageSegment, error) {
@@ -208,12 +218,7 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		return ref, true, nil
 	}
 	if row != nil {
-		storedSegments := storage.UnmarshalChatSegments(row.Segments)
-		sourceSegments := make([]share.MessageSegment, len(storedSegments))
-		for i, segment := range storedSegments {
-			sourceSegments[i] = share.MessageSegment{Type: share.MessageSegmentType(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
-		}
-		segments, err := restoreHistoryMedia(ctx, deps, *row, sourceSegments)
+		segments, err := restoreHistoryMedia(ctx, deps, *row, historySegments(*row))
 		if err != nil {
 			return share.ReferencedMessage{}, false, err
 		}
@@ -225,4 +230,13 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		return opts.Fetch(ctx, replyID)
 	}
 	return share.ReferencedMessage{}, false, nil
+}
+
+func historySegments(row storage.ChatMessage) []share.MessageSegment {
+	storedSegments := storage.UnmarshalChatSegments(row.Segments)
+	sourceSegments := make([]share.MessageSegment, len(storedSegments))
+	for i, segment := range storedSegments {
+		sourceSegments[i] = share.MessageSegment{Type: share.MessageSegmentType(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
+	}
+	return sourceSegments
 }

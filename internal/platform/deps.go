@@ -29,6 +29,7 @@ type SupervisorDeps struct {
 		MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
 		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (messageID, senderID string, err error)
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessages(context.Context, string, contextinfo.ChatType, string, []string) ([]storage.ChatMessage, error)
 	}
 	Media *media.MediaCenter // 由 dispatch 和远程 CLI 各自的消费接口裁剪媒体能力。
 }
@@ -37,7 +38,7 @@ type SupervisorDeps struct {
 // MessageRequest 由 Agent 根部定义，平台内部状态在根部转换。
 type AgentCapabilities interface {
 	ContinueControlInput(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)
-	ResolveReference(context.Context, session.Scope, storage.Message) (string, string, bool, error)
+	ResolveReference(context.Context, session.Scope, storage.Message) (string, string, error)
 	HandleMessage(context.Context, agent.MessageRequest) error
 	Complete(context.Context, completion.Request) ([]completion.Item, error)
 	Commands() []command.Info

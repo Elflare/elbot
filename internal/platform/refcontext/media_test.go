@@ -52,7 +52,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != imageID || got.ReferenceSegments[1].Type != share.SegmentFile || got.ReferenceSegments[2].MediaID != imageID {
+	if calls != 0 || len(got.Reply.Segments) != 3 || got.Reply.Segments[0].MediaID != imageID || got.Reply.Segments[1].Type != share.SegmentFile || got.Reply.Segments[2].MediaID != imageID {
 		t.Fatalf("output priority = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "history"
@@ -60,7 +60,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].PlatformFileID != "raw-image" || got.ReferenceSegments[1].PlatformFileID != "raw-file" || got.ReferenceSegments[2] != got.ReferenceSegments[0] {
+	if calls != 0 || len(got.Reply.Segments) != 3 || got.Reply.Segments[0].PlatformFileID != "raw-image" || got.Reply.Segments[1].PlatformFileID != "raw-file" || got.Reply.Segments[2] != got.Reply.Segments[0] {
 		t.Fatalf("history order = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "missing"
@@ -68,7 +68,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || len(got.ReferenceSegments) != 3 {
+	if calls != 1 || len(got.Reply.Segments) != 3 {
 		t.Fatalf("platform fallback = %#v, calls=%d", got, calls)
 	}
 }
@@ -91,7 +91,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || got.ResumeSessionID != latest.SessionID || got.Text != "继续" || len(got.ReferenceSegments) != 0 || len(got.Reply.Segments) != 0 || got.Reply.Text != "" {
+	if calls != 0 || got.ResumeSessionID != latest.SessionID || got.Text != "继续" || len(got.Reply.Segments) != 0 || got.Reply.Text != "" {
 		t.Fatalf("latest injected reference = %#v", got)
 	}
 	opts.ReplyID = "old"
@@ -99,7 +99,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || got.ForkFromMessageID != first.ID || got.ResumeSessionID != "" || len(got.ReferenceSegments) != 1 || got.Text != "继续" {
+	if calls != 0 || got.ForkFromMessageID != first.ID || got.ResumeSessionID != "" || len(got.Reply.Segments) != 0 || got.Text != "继续" {
 		t.Fatalf("older media fork = %#v", got)
 	}
 	opts.ReplyID = "latest"
@@ -107,7 +107,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || got.ResumeSessionID != latest.SessionID || got.ForkFromMessageID != "" || len(got.ReferenceSegments) != 0 || got.Text != "继续" {
+	if calls != 0 || got.ResumeSessionID != latest.SessionID || got.ForkFromMessageID != "" || len(got.Reply.Segments) != 0 || got.Text != "继续" {
 		t.Fatalf("same owner other session = %#v", got)
 	}
 }
@@ -180,19 +180,19 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	if fetchCalls != 0 {
 		t.Fatalf("platform fetch called %d times", fetchCalls)
 	}
-	if len(got.ReferenceSegments) != len(raw) {
-		t.Fatalf("segments = %#v", got.ReferenceSegments)
+	if len(got.Reply.Segments) != len(raw) {
+		t.Fatalf("segments = %#v", got.Reply.Segments)
 	}
-	if got.ReferenceSegments[0].Type != share.SegmentText ||
-		got.ReferenceSegments[1].MediaID != imageID ||
-		got.ReferenceSegments[2].MediaID != fileID ||
-		got.ReferenceSegments[3].MediaID != imageID {
-		t.Fatalf("restored segments = %#v", got.ReferenceSegments)
+	if got.Reply.Segments[0].Type != share.SegmentText ||
+		got.Reply.Segments[1].MediaID != imageID ||
+		got.Reply.Segments[2].MediaID != fileID ||
+		got.Reply.Segments[3].MediaID != imageID {
+		t.Fatalf("restored segments = %#v", got.Reply.Segments)
 	}
-	if got.ReferenceSegments[4].MediaID != "" || got.ReferenceSegments[4].PlatformFileID != "stale-file-id" {
-		t.Fatalf("stale association reused = %#v", got.ReferenceSegments[4])
+	if got.Reply.Segments[4].MediaID != "" || got.Reply.Segments[4].PlatformFileID != "stale-file-id" {
+		t.Fatalf("stale association reused = %#v", got.Reply.Segments[4])
 	}
-	if got.ReferenceSegments[1].URL != raw[1].URL || got.ReferenceSegments[3].URL != "" {
-		t.Fatalf("expected rkey URL to survive but token URL to be removed: %#v", got.ReferenceSegments)
+	if got.Reply.Segments[1].URL != raw[1].URL || got.Reply.Segments[3].URL != "" {
+		t.Fatalf("expected rkey URL to survive but token URL to be removed: %#v", got.Reply.Segments)
 	}
 }

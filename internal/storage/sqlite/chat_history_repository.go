@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"elbot/internal/contextinfo"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -280,6 +281,17 @@ const replyMessageSelect = chatMessageColumns + `, COALESCE((SELECT alias FROM p
 
 func (r *ChatHistoryRepository) GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*storage.ChatMessage, error) {
 	return r.getMessage(ctx, platform, conversationKind, scopeID, chatMessageSelect, "platform_message_id", platformMessageID)
+}
+
+// GetByPlatformMessages reads only delivered pages in the same chat, in receipt order.
+func (r *ChatHistoryRepository) GetByPlatformMessages(ctx context.Context, platform string, kind contextinfo.ChatType, chat string, ids []string) ([]storage.ChatMessage, error) {
+	encoded, _ := json.Marshal(ids)
+	rows, err := r.db.QueryContext(ctx, chatMessageSelect+`JOIN (SELECT key AS page, value AS requested FROM json_each(?)) p ON platform_message_id=p.requested WHERE platform=? AND chat_type=? AND chat_id=? ORDER BY p.page`, string(encoded), platform, kind, chat)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanChatMessages(rows)
 }
 func (r *ChatHistoryRepository) GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*storage.ChatMessage, error) {
 	selection := chatMessageSelect

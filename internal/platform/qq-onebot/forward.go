@@ -12,7 +12,7 @@ import (
 
 // expandForwardReference restores the original protocol segments for explicit
 // references. Private direct messages already have them and use expandForwardSegments.
-func (a *Adapter) expandForwardReference(event Event) func(context.Context, string, share.ReferencedMessage) ([]share.MessageSegment, error) {
+func (a *Adapter) expandForwardReference(event Event, getMessage func() (getMessageData, error)) func(context.Context, string, share.ReferencedMessage) ([]share.MessageSegment, error) {
 	return func(ctx context.Context, replyID string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 		hasForward := strings.Contains(ref.Text, "[forward]") || slices.ContainsFunc(ref.Segments, func(segment share.MessageSegment) bool {
 			return segment.Type == share.SegmentText && strings.Contains(segment.Text, "[forward]")
@@ -23,9 +23,13 @@ func (a *Adapter) expandForwardReference(event Event) func(context.Context, stri
 		if ref.CanonicalContent {
 			return []share.MessageSegment{textSegment("<forward_message>\n" + ref.Text + "\n</forward_message>")}, nil
 		}
-		message, err := a.transport.GetMessage(ctx, replyID)
+		message, err := getMessage()
 		if err != nil {
-			return nil, err
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			a.logContextFailure(ctx, err)
+			return nil, nil
 		}
 		segments, ok := decodeMessageSegments(message.Message)
 		if !ok || len(segments) == 0 {
@@ -100,24 +104,6 @@ func normalizeForwardNodes(nodes []forwardNode) []share.MessageSegment {
 			out = append(out, textSegment(name+"："))
 		}
 		out = append(out, content...)
-	}
-	return out
-}
-
-func forwardContextSegments(reference, current []share.MessageSegment, text string) []share.MessageSegment {
-	out := append([]share.MessageSegment(nil), reference...)
-	if len(current) > 0 {
-		if len(out) > 0 {
-			out = append(out, textSegment("\n\n"))
-		}
-		for _, segment := range current {
-			if segment.Type == share.SegmentAt {
-				segment = textSegment(segment.Text)
-			}
-			out = append(out, segment)
-		}
-	} else if text != "" {
-		out = append(out, textSegment("\n\n"+text))
 	}
 	return out
 }

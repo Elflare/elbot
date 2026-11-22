@@ -18,8 +18,8 @@ import (
 func TestNormalizeDocument(t *testing.T) {
 	msg := message{Document: &document{FileID: "file-id", FileName: "a.txt", MIMEType: "text/plain"}}
 	normalized := normalizeMessage(msg)
-	if normalized.Text != "[文件]" {
-		t.Fatalf("text = %q", normalized.Text)
+	if share.SegmentsText(normalized.Segments) != "" {
+		t.Fatalf("text = %q", share.SegmentsText(normalized.Segments))
 	}
 	if len(normalized.Segments) != 1 || normalized.Segments[0].Name != "a.txt" || normalized.Segments[0].MIMEType != "text/plain" || normalized.Segments[0].PlatformFileID != "file-id" || normalized.Segments[0].URL != "" {
 		t.Fatalf("segments = %#v", normalized.Segments)

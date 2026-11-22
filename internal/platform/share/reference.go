@@ -26,23 +26,28 @@ type ReferenceOptions struct {
 	ChatID   string                    // 聊天范围。
 	Owner    contextinfo.ActorIdentity // 当前行为者。
 
-	ReplyID string                                                                     // 被引用的消息 ID。
-	Text    string                                                                     // 当前输入正文。
-	Fetch   func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
-	Enrich  func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
+	Segments   []MessageSegment                                                           // 当前输入的有序展示片段。
+	EventQuote ReferencedMessage                                                          // 入站事件已携带的引用内容，不依赖消息 ID 或二次查询。
+	ReplyID    string                                                                     // 被引用的消息 ID。
+	Text       string                                                                     // 当前输入正文。
+	Fetch      func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
+	Enrich     func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
 }
 
 type ReferenceResult struct {
 	Text              string           // 处理后的当前正文。
 	ForkFromMessageID string           // 可选会话分叉来源。
 	ResumeSessionID   string           // 可选恢复会话。
-	ReferenceSegments []MessageSegment // 引用上下文片段。
-	DisplaySegments   []MessageSegment // 可选引用展示片段。
+	DisplaySegments   []MessageSegment // 给模型的完整有序输入。
 	Reply             ReplyContext     // 原始引用事实。
 }
 
-func FormatReferenceText(reply ReplyContext) string {
-	header := "引用 h" + strconv.FormatInt(reply.HistorySeq, 10)
+// FormatReferenceSegments 只加引用标记，保留正文、媒体和展开片段的顺序。
+func FormatReferenceSegments(reply ReplyContext, body []MessageSegment, expanded bool) []MessageSegment {
+	header := "引用"
+	if reply.HistorySeq != 0 {
+		header = "引用 h" + strconv.FormatInt(reply.HistorySeq, 10)
+	}
 	name := strings.TrimSpace(reply.SenderName)
 	id := strings.TrimSpace(reply.SenderID)
 	if reply.IsAssistant {
@@ -60,9 +65,17 @@ func FormatReferenceText(reply ReplyContext) string {
 	}
 	if name != "" {
 		header += "：" + name
+	} else if reply.HistorySeq == 0 {
+		header += " 未知用户"
 	}
-	if content := strings.TrimSpace(reply.Text); content != "" {
-		header += "：" + content
+	if expanded {
+		return FinalMessageSegments(nil, "["+header+"]\n", body)
 	}
-	return "[" + header + "]"
+	if len(body) > 0 {
+		header += "："
+		if SegmentsText(body) == "" {
+			header += "[媒体消息]"
+		}
+	}
+	return FinalMessageSegments(FinalMessageSegments(nil, "["+header, body), "]", nil)
 }

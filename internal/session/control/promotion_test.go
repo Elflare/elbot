@@ -115,7 +115,7 @@ func TestReferencePromotesElwispTaskForSuperadmin(t *testing.T) {
 	row := prepared.Data
 	message := storage.Message{SessionID: row.ID, Role: storage.RoleAssistant}
 	viewer := privateScope()
-	resume, _, _, err := f.s.ResolveReference(t.Context(), viewer, message)
+	resume, _, err := f.s.ResolveReference(t.Context(), viewer, message)
 	if err != nil || resume != "" {
 		t.Fatalf("user continuation: %q %v", resume, err)
 	}
@@ -123,7 +123,7 @@ func TestReferencePromotesElwispTaskForSuperadmin(t *testing.T) {
 		t.Fatal("unrelated user took over task")
 	}
 	viewer.Owner.ID = "admin"
-	resume, _, _, err = f.s.ResolveReference(t.Context(), viewer, message)
+	resume, _, err = f.s.ResolveReference(t.Context(), viewer, message)
 	if err != nil || resume != row.ID {
 		t.Fatalf("admin continuation: %q %v", resume, err)
 	}

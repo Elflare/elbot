@@ -26,7 +26,7 @@ const twoTextForwardDisplay = "<forward_message>\nElflare：第一条文本\n保
 
 func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil, nil)
-	a.referenceResolver = resolveFetchedReferenceForTest
+
 	a.transport = newTestTransport(t, func(req request) response {
 		switch req.Action {
 		case "get_msg":
@@ -38,7 +38,7 @@ func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 			return response{Status: "failed", Retcode: 1}
 		}
 	})
-	got, err := a.expandForwardReference(Event{})(context.Background(), "123", share.ReferencedMessage{Text: "[forward]"})
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", share.ReferencedMessage{Text: "[forward]"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 	for _, reference := range []string{"none", "ordinary", "forward"} {
 		t.Run(reference, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil, nil)
-			a.referenceResolver = resolveFetchedReferenceForTest
+
 			calls := map[string]int{}
 			a.transport = newTestTransport(t, func(req request) response {
 				if req.Action == "get_msg" && reference != "none" {
@@ -152,9 +152,9 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 			want := "外层前\n<forward_message>\n节点：节点前\n{image:inside}节点后[forward][语音]\n</forward_message>中间<forward_message>\n[forward]\n</forward_message>{image:outside}外层后"
 			switch reference {
 			case "ordinary":
-				want = "{image:quoted-image}\n\n" + want
+				want = "[引用：引用者(id:2)：引用正文{image:quoted-image}]\n" + want
 			case "forward":
-				want = "<forward_message>\n引用正文\n</forward_message>\n\n" + want
+				want = "[引用：引用者(id:2)]\n<forward_message>\n引用正文\n</forward_message>\n" + want
 			}
 			if got := forwardSegmentsForTest(msg.ContextSegments); got != want {
 				t.Fatalf("display=%q want=%q", got, want)
@@ -196,13 +196,13 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 	}
 	a := newTestAdapter(t, Config{}, store, nil)
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-		if opts.Text != "" || (opts.ChatType != "private" || opts.ChatID != "1") {
+		if opts.Text != "[forward]" || (opts.ChatType != "private" || opts.ChatID != "1") {
 			t.Fatalf("reference options = %#v", opts)
 		}
 		if opts.ReplyID == "41" {
-			return share.ReferenceResult{ForkFromMessageID: first.ID}, nil
+			return share.ReferenceResult{ForkFromMessageID: first.ID, Text: share.SegmentsText(opts.Segments), DisplaySegments: opts.Segments}, nil
 		}
-		return share.ReferenceResult{ResumeSessionID: session.ID}, nil
+		return share.ReferenceResult{ResumeSessionID: session.ID, Text: share.SegmentsText(opts.Segments), DisplaySegments: opts.Segments}, nil
 	}
 	a.transport = newTestTransport(t, func(req request) response {
 		if req.Action == "get_forward_msg" {
@@ -232,7 +232,7 @@ func TestPrivateForwardTextAndCommandsDoNotFetch(t *testing.T) {
 		`[{"type":"text","data":{"text":"/new "}},{"type":"forward","data":{"id":"resource"}}]`,
 	} {
 		a := newTestAdapter(t, Config{}, nil, nil)
-		a.referenceResolver = resolveFetchedReferenceForTest
+
 		a.transport = newTestTransport(t, func(req request) response {
 			t.Errorf("unexpected API %s", req.Action)
 			return response{Status: "failed", Retcode: 1}

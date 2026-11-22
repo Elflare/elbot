@@ -145,10 +145,10 @@ func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
 				{Type: "text", Data: map[string]any{"text": tc.text}},
 				{Type: "image", Data: map[string]any{"file": "a.png", "url": "https://example.com/a.png"}},
 			}, 1000, ordinaryInput)
-			if msg.Text != tc.text {
-				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.Text, tc.text)
+			if msg.text() != tc.text {
+				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.text(), tc.text)
 			}
-			segments := share.FinalMessageSegments(msg.Text, msg.Segments, nil)
+			segments := msg.Segments
 			if len(segments) == 0 || segments[len(segments)-1].Type != share.SegmentImage {
 				t.Fatalf("image lost: %#v", segments)
 			}
@@ -199,7 +199,7 @@ func TestNormalizeArrayMessage(t *testing.T) {
 		{"type":"reply","data":{"id":"42"}},
 		{"type":"image","data":{"file":"a.jpg"}}
 	]`), "", 1000)
-	if msg.ReplyID != "42" || msg.Text != "hello" {
+	if msg.ReplyID != "42" || msg.text() != "hello" {
 		t.Fatalf("message = %#v", msg)
 	}
 	if len(msg.Mentions) != 1 || msg.Mentions[0].UserID != "1000" {
@@ -223,8 +223,8 @@ func TestNormalizeArrayImageAndFileSegments(t *testing.T) {
 		{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}},
 		{"type":"record","data":{"file":"v.amr"}}
 	]`), "", 1000)
-	if msg.Text != "看[语音]" {
-		t.Fatalf("text = %q", msg.Text)
+	if msg.text() != "看" {
+		t.Fatalf("text = %q", msg.text())
 	}
 	if len(msg.Segments) != 3 || msg.Segments[1].Type != "image" || msg.Segments[1].URL != "https://example.com/a.jpg" || msg.Segments[2].Type != "file" || msg.Segments[2].Text != "语音" {
 		t.Fatalf("segments = %#v", msg.Segments)
@@ -234,8 +234,8 @@ func TestNormalizeArrayImageAndFileSegments(t *testing.T) {
 func TestNormalizeStringifiedArrayImageIgnoresRawMessage(t *testing.T) {
 	raw := []byte(`"[{\"type\":\"image\",\"data\":{\"file\":\"E50BAC9EAA237E638057A4C662990635.jpg\",\"subType\":1,\"url\":\"https://multimedia.nt.qq.com.cn/download?appid=1406&fileid=abc&spec=0&rkey=xyz\",\"file_size\":\"1349\"}}]"`)
 	msg := normalizeMessage(raw, `raw fallback must not be used`, 1000)
-	if msg.Text != "" {
-		t.Fatalf("text = %q", msg.Text)
+	if msg.text() != "" {
+		t.Fatalf("text = %q", msg.text())
 	}
 	if len(msg.Segments) != 1 || msg.Segments[0].Type != "image" {
 		t.Fatalf("segments = %#v", msg.Segments)
@@ -250,8 +250,8 @@ func TestNormalizeStringifiedArrayImageIgnoresRawMessage(t *testing.T) {
 
 func TestNormalizePlainTextDoesNotParseMarkup(t *testing.T) {
 	msg := normalizeMessage(nil, `[image file=a.jpg url=https://example.com/a.jpg]`, 1000)
-	if msg.Text != `[image file=a.jpg url=https://example.com/a.jpg]` {
-		t.Fatalf("text = %q", msg.Text)
+	if msg.text() != `[image file=a.jpg url=https://example.com/a.jpg]` {
+		t.Fatalf("text = %q", msg.text())
 	}
 	if len(msg.Segments) != 1 || msg.Segments[0].Type != "text" {
 		t.Fatalf("segments = %#v", msg.Segments)
@@ -456,11 +456,11 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 	current := []share.MessageSegment{{Type: share.SegmentText, Text: "看这个"}}
 	referenced := []share.MessageSegment{{Type: share.SegmentText, Text: "[图片]"}, {Type: share.SegmentImage, URL: "https://example.com/a.jpg", Name: "a.jpg"}}
 
-	segments := share.FinalMessageSegments("[引用：用户]：[图片]\n\n看这个", current, referenced)
-	if len(segments) != 2 {
+	segments := share.FinalMessageSegments(referenced, "\n", current)
+	if len(segments) != 3 || segments[2].Text != "\n看这个" {
 		t.Fatalf("segments = %#v", segments)
 	}
-	if segments[0].Type != share.SegmentText || !strings.Contains(segments[0].Text, "[引用：用户]：[图片]") {
+	if segments[0].Type != share.SegmentText || segments[0].Text != "[图片]" {
 		t.Fatalf("text segment = %#v", segments[0])
 	}
 	if segments[1].Type != share.SegmentImage || segments[1].URL != "https://example.com/a.jpg" || segments[1].Name != "a.jpg" {
@@ -506,7 +506,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 			t.Fatalf("reply ID = %q", opts.ReplyID)
 		}
 		reply := share.ReplyContext{HistorySeq: 1, MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"}
-		reply.Display = share.FormatReferenceText(reply)
+		reply.Display = share.SegmentsText(share.FormatReferenceSegments(reply, []share.MessageSegment{textSegment(reply.Text)}, false))
 		return share.ReferenceResult{Text: reply.Display + "\n\n" + opts.Text, Reply: reply}, nil
 	}
 	handler := &captureHandler{}
@@ -564,7 +564,7 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	transport := newTestTransport(t, func(req request) response {
 		switch req.Action {
 		case "get_msg":
-			return response{Status: "ok", Data: []byte(`{"user_id":1000,"message":[]}`), Echo: req.Echo}
+			return response{Status: "ok", Data: []byte(`{"sender":{"user_id":1000},"message":[]}`), Echo: req.Echo}
 		default:
 			t.Fatalf("action = %q", req.Action)
 		}
@@ -606,12 +606,12 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	}
 
 	transport := newTestTransport(t, func(req request) response {
-		return response{Status: "ok", Data: []byte(`{"user_id":2,"sender":{"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
+		return response{Status: "ok", Data: []byte(`{"sender":{"user_id":2,"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
 	})
 	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, store, nil)
 	adapter.transport = transport
 
-	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9})(ctx, "77")
+	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9}, func() (getMessageData, error) { return adapter.transport.GetMessage(ctx, "77") })(ctx, "77")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,7 +694,7 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		history = db.Repository()
 	}
 	parseCommand := func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }
-	refs := refcontext.Options{ParseCommand: parseCommand, ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage, FindOutputs: store.Media().FindOutputs, FindHistory: store.Media().FindHistory, GetMedia: store.Media().Get}
+	refs := refcontext.Options{ParseCommand: parseCommand, ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage, PlatformMessageIDs: store.Messages().PlatformMessageIDs, FindOutputs: store.Media().FindOutputs, FindHistory: store.Media().FindHistory, GetMedia: store.Media().Get}
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled": cfg.Enabled, "ws_url": cfg.URL, "access_token": cfg.AccessToken, "access_token_env": cfg.AccessTokenEnv,
 		"reconnect_interval_seconds": cfg.ReconnectIntervalSeconds, "api_timeout_seconds": cfg.APITimeoutSeconds,

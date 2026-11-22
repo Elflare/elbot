@@ -69,7 +69,6 @@ type getMessageData struct {
 	Time        int64           `json:"time"`
 	MessageType string          `json:"message_type"`
 	MessageID   int64           `json:"message_id"`
-	UserID      int64           `json:"user_id"`
 	GroupID     int64           `json:"group_id"`
 	Message     json.RawMessage `json:"message"`
 	RawMessage  string          `json:"raw_message"`

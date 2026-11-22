@@ -238,6 +238,23 @@ WHERE p.platform = ? AND p.chat_type = ? AND p.chat_id = ? AND p.platform_messag
 	return message, nil
 }
 
+// PlatformMessageIDs returns the receipts for one assistant reply in this chat, in commit order.
+func (r *MessageRepository) PlatformMessageIDs(ctx context.Context, platform string, kind contextinfo.ChatType, chat, message string) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT platform_message_id FROM platform_message_map WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? ORDER BY rowid`, platform, kind, chat, message)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
 func (r *MessageRepository) messagePosition(ctx context.Context, sessionID, messageID string) (string, int64, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT created_at, rowid

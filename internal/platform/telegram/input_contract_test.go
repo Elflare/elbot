@@ -129,9 +129,8 @@ func TestCallbackUsesInjectedReferenceAndWritesHistory(t *testing.T) {
 		if opts.Platform != config.PlatformTelegram || (opts.ChatType != "private" || opts.ChatID != "9") || opts.ReplyID != "6" || opts.Text != "/confirm" {
 			t.Errorf("reference options=%#v", opts)
 		}
-		ref, ok, err := opts.Fetch(ctx, "6")
-		if err != nil || !ok || ref.Text != "original" {
-			t.Errorf("reference=%#v ok=%v err=%v", ref, ok, err)
+		if ref := opts.EventQuote; ref.Text != "original" || opts.Fetch != nil {
+			t.Errorf("reference=%#v", ref)
 		}
 		return share.ReferenceResult{Text: "context", ForkFromMessageID: "fork", ResumeSessionID: "resume", Reply: share.ReplyContext{MessageID: "6", Text: "original"}}, nil
 	}

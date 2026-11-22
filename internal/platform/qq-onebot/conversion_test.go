@@ -24,19 +24,19 @@ func TestMessageConversionScenes(t *testing.T) {
 		{
 			name:     "text keeps segment whitespace",
 			raw:      `[{"type":"text","data":{"text":"  前\n\n后  "}}]`,
-			ordinary: NormalizedMessage{Text: "前 后", Segments: []share.MessageSegment{text("  前\n\n后  ")}},
+			ordinary: NormalizedMessage{Segments: []share.MessageSegment{text("  前\n\n后  ")}},
 			forward:  []share.MessageSegment{text("  前\n\n后  ")},
 		},
 		{
 			name:     "image source fields and interleaving",
 			raw:      `[{"type":"text","data":{"text":"前"}},{"type":"image","data":{"file":"a.png","url":"https://example.com/a.png","mime_type":"image/png","file_size":"123"}},{"type":"text","data":{"text":"后"}}]`,
-			ordinary: NormalizedMessage{Text: "前后", Segments: []share.MessageSegment{text("前"), image, text("后")}},
+			ordinary: NormalizedMessage{Segments: []share.MessageSegment{text("前"), image, text("后")}},
 			forward:  []share.MessageSegment{text("前"), image, text("后")},
 		},
 		{
 			name:     "mention another user",
 			raw:      `[{"type":"at","data":{"qq":"2000"}}]`,
-			ordinary: NormalizedMessage{Text: "[at qq:2000]", Mentions: []share.Mention{{UserID: "2000"}}, Segments: []share.MessageSegment{{Type: share.SegmentAt, Text: "[at qq:2000]", UserID: "2000"}}},
+			ordinary: NormalizedMessage{Mentions: []share.Mention{{UserID: "2000"}}, Segments: []share.MessageSegment{{Type: share.SegmentAt, Text: "[at qq:2000]", UserID: "2000"}}},
 			forward:  []share.MessageSegment{text("[at]")},
 		},
 		{
@@ -59,19 +59,19 @@ func TestMessageConversionScenes(t *testing.T) {
 		{
 			name:     "forward resource remains hidden",
 			raw:      `[{"type":"forward","data":{"id":"secret-forward"}}]`,
-			ordinary: NormalizedMessage{Text: "[forward]", Segments: []share.MessageSegment{text("[forward]")}},
+			ordinary: NormalizedMessage{Segments: []share.MessageSegment{text("[forward]")}},
 			forward:  []share.MessageSegment{text("[forward]")},
 		},
 		{
 			name:     "face",
 			raw:      `[{"type":"face","data":{"id":"123"}}]`,
-			ordinary: NormalizedMessage{Text: "[表情]", Segments: []share.MessageSegment{text("[表情]")}},
+			ordinary: NormalizedMessage{Segments: []share.MessageSegment{text("[表情]")}},
 			forward:  []share.MessageSegment{text("[表情]")},
 		},
 		{
 			name:     "unknown type",
 			raw:      `[{"type":"unknown","data":{"id":"secret"}}]`,
-			ordinary: NormalizedMessage{Text: "[unknown]", Segments: []share.MessageSegment{text("[unknown]")}},
+			ordinary: NormalizedMessage{Segments: []share.MessageSegment{text("[unknown]")}},
 			forward:  []share.MessageSegment{text("[unknown]")},
 		},
 		{name: "empty type and empty text", raw: `[{"type":""},{"type":"text","data":{"text":""}}]`},
@@ -96,7 +96,7 @@ func TestMessageConversionNumericFields(t *testing.T) {
 		t.Fatalf("numeric file size = %#v", msg.Segments)
 	}
 	self := normalizeMessage(json.RawMessage(`[{"type":"at","data":{"qq":1000}}]`), "", 1000)
-	if self.Text != "" || len(self.Segments) != 0 {
+	if self.text() != "" || len(self.Segments) != 0 {
 		t.Fatalf("numeric self mention = %#v", self)
 	}
 	if got := segmentDataString(map[string]any{"id": 42.5}, "id"); got != "42.5" {
@@ -119,7 +119,7 @@ func TestMessageConversionMediaPolicy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := NormalizedMessage{Text: "[" + tc.label + "]", Segments: []share.MessageSegment{{
+			want := NormalizedMessage{Segments: []share.MessageSegment{{
 				Type: share.SegmentFile, Text: tc.label, PlatformFileID: "source-id", Name: "media-name",
 				URL: "https://example.com/media", MIMEType: "application/octet-stream", Size: 123,
 			}}}
@@ -140,8 +140,8 @@ func TestMessageConversionWireForms(t *testing.T) {
 	plain, _ := json.Marshal("  原文\n\n结尾  ")
 	for _, raw := range []json.RawMessage{json.RawMessage(array), encodedArray, plain} {
 		got := normalizeMessage(raw, "unused fallback", 1000)
-		if got.Text != "原文 结尾" {
-			t.Fatalf("ordinary text = %q", got.Text)
+		if got.text() != "原文 结尾" {
+			t.Fatalf("ordinary text = %q", got.text())
 		}
 		want := []share.MessageSegment{{Type: share.SegmentText, Text: "  原文\n\n结尾  "}}
 		if forward := normalizeForwardContent(raw); !reflect.DeepEqual(forward, want) {
@@ -155,7 +155,7 @@ func TestForwardConversionDoesNotCarryMessageMetadata(t *testing.T) {
 		{Type: "at", Data: map[string]any{"qq": "1000"}},
 		{Type: "reply", Data: map[string]any{"id": "secret-reply"}},
 	}, 1000, forwardContent)
-	if got.ReplyID != "" || len(got.Mentions) != 0 || got.Text != "[at][reply]" {
+	if got.ReplyID != "" || len(got.Mentions) != 0 || got.text() != "[at][reply]" {
 		t.Fatalf("forward metadata = %#v", got)
 	}
 }

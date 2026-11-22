@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -36,15 +37,33 @@ func RecordAssistantMessage(ctx context.Context, w ChatHistoryWriter, m storage.
 	appendHistory(context.WithoutCancel(ctx), w, &m)
 }
 
-// RecordInboundMessage 将三个平台归一化的入站片段和引用快照写入历史。
-func RecordInboundMessage(ctx context.Context, w ChatHistoryWriter, m storage.ChatMessage, parts []MessageSegment, reply ReplyContext) {
-	segments := make([]storage.ChatSegment, len(parts))
-	for i, s := range parts {
+// InboundMessage 只携带当前消息的历史事实，正文来自有序片段。
+type InboundMessage struct {
+	contextinfo.Conversation
+	Segments             []MessageSegment
+	CreatedAt            time.Time
+	Raw, SenderAvatarURL string
+}
+
+// RecordInboundMessage 将当前消息和已解析的引用快照一次写入历史。
+func RecordInboundMessage(ctx context.Context, w ChatHistoryWriter, m InboundMessage, reply ReplyContext) {
+	if m.PlatformMessageID == "" || len(m.Segments) == 0 {
+		return
+	}
+	var text strings.Builder
+	segments := make([]storage.ChatSegment, len(m.Segments))
+	for i, s := range m.Segments {
+		if s.Type == SegmentText || s.Type == SegmentAt {
+			text.WriteString(s.Text)
+		}
 		segments[i] = storage.ChatSegment{Type: string(s.Type), Text: s.Text, UserID: s.UserID, URL: s.URL, MediaID: s.MediaID, PlatformFileID: s.PlatformFileID, MIMEType: s.MIMEType, Name: s.Name, Size: s.Size}
 	}
-	m.Segments = storage.MarshalChatSegments(segments)
-	m.Metadata = storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text, Display: reply.Display})
-	appendHistory(ctx, w, &m)
+	appendHistory(ctx, w, &storage.ChatMessage{
+		Platform: m.Source.Platform, ChatType: m.Source.ChatType, ChatID: m.Source.ChatID, PlatformMessageID: m.PlatformMessageID,
+		SenderID: m.Identity.ID, SenderName: m.Identity.Name, SenderAvatarURL: m.SenderAvatarURL, CreatedAt: m.CreatedAt,
+		Text: text.String(), Raw: m.Raw, Segments: storage.MarshalChatSegments(segments), ReplyToPlatformMessageID: m.ReplyToMessageID,
+		Metadata: storage.MarshalChatMetadata(storage.ChatReply{SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text, Display: reply.Display}),
+	})
 }
 
 func appendHistory(ctx context.Context, w ChatHistoryWriter, m *storage.ChatMessage) {

@@ -34,7 +34,7 @@ type chatMetadata struct {
 }
 
 func MarshalChatMetadata(reply ChatReply) string {
-	if reply.MessageID == "" {
+	if reply.SenderID == "" && reply.SenderName == "" && reply.Text == "" && reply.Display == "" {
 		return ""
 	}
 	data, _ := json.Marshal(chatMetadata{Reply: reply})
@@ -52,7 +52,7 @@ func ChatMessageReply(message ChatMessage) ChatReply {
 func MarshalChatSegments(segments []ChatSegment) string {
 	stored := make([]ChatSegment, 0, len(segments))
 	for _, segment := range segments {
-		if segment.Type != "text" && segment.Type != "image" && segment.Type != "file" {
+		if segment.Type != "text" && segment.Type != "at" && segment.Type != "image" && segment.Type != "file" {
 			continue
 		}
 		segment.MediaID = ""

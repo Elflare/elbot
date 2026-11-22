@@ -503,6 +503,7 @@ type MessageRepository interface {
 	ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]Message, error)
 	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]Message, error)
 	FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*Message, error)
+	PlatformMessageIDs(context.Context, string, contextinfo.ChatType, string, string) ([]string, error)
 }
 
 type MediaOutput struct {
@@ -593,6 +594,7 @@ type ChatHistoryRepository interface {
 	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
 	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (messageID, senderID string, err error)
 	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*ChatMessage, error)
+	GetByPlatformMessages(context.Context, string, contextinfo.ChatType, string, []string) ([]ChatMessage, error)
 	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
 	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
 	DeleteBefore(ctx context.Context, cutoff time.Time) (int, error)

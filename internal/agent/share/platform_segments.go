@@ -11,7 +11,7 @@ func PlatformSegmentsToLLM(segments []MessageSegment, fallbackText string) []llm
 	out := make([]llm.MessageSegment, 0, len(segments))
 	for _, segment := range segments {
 		switch segment.Type {
-		case "text":
+		case "text", "at":
 			if segment.Text != "" {
 				out = append(out, llm.MessageSegment{Type: llm.SegmentText, Text: segment.Text})
 			}

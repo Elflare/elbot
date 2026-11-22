@@ -16,11 +16,9 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage"
 )
 
 type normalizedMessage struct {
-	Text         string
 	ReplyID      string
 	ReplyMessage *message
 	Mentions     []share.Mention
@@ -31,21 +29,18 @@ func normalizeMessage(msg message) normalizedMessage {
 	var out normalizedMessage
 	text := strings.TrimSpace(firstNonEmpty(msg.Text, msg.Caption))
 	out.Mentions = mentionsFromText(text)
-	out.Text = cleanText(text)
+	text = cleanText(text)
 	if msg.ReplyToMessage != nil {
 		out.ReplyID = formatMessageID(msg.ReplyToMessage.MessageID)
 		out.ReplyMessage = msg.ReplyToMessage
 	}
-	if out.Text != "" {
-		out.Segments = append(out.Segments, share.MessageSegment{Type: share.SegmentText, Text: out.Text})
+	if text != "" {
+		out.Segments = append(out.Segments, share.MessageSegment{Type: share.SegmentText, Text: text})
 	}
 	if len(msg.Photo) > 0 {
 		photo := largestPhoto(msg.Photo)
 		segment := share.MessageSegment{Type: share.SegmentImage, Name: photo.FileID, PlatformFileID: photo.FileID, MIMEType: "image/jpeg", Size: photo.FileSize}
 		out.Segments = append(out.Segments, segment)
-		if out.Text == "" {
-			out.Text = "[图片]"
-		}
 	}
 	if msg.Document != nil {
 		segment := share.MessageSegment{Type: share.SegmentFile, Name: msg.Document.FileName, MIMEType: msg.Document.MIMEType, PlatformFileID: msg.Document.FileID, Size: msg.Document.FileSize}
@@ -53,9 +48,6 @@ func normalizeMessage(msg message) normalizedMessage {
 			segment.Name = msg.Document.FileID
 		}
 		out.Segments = append(out.Segments, segment)
-		if out.Text == "" {
-			out.Text = "[文件]"
-		}
 	}
 	return out
 }
@@ -96,59 +88,11 @@ func mentionsFromText(text string) []share.Mention {
 	return mentions
 }
 
-func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) func(context.Context, string) (share.ReferencedMessage, bool, error) {
-	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
-		if normalized.ReplyMessage == nil || normalized.ReplyID != strings.TrimSpace(replyID) {
-			return share.ReferencedMessage{}, false, nil
-		}
-		ref := normalizeMessage(*normalized.ReplyMessage)
-		senderName := ""
-		if normalized.ReplyMessage.From != nil {
-			senderName = displayName(*normalized.ReplyMessage.From)
-		}
-		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Text: ref.Text, Segments: share.AppendNonTextSegments(nil, ref.Segments)}, true, nil
-	}
-}
-
-func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized normalizedMessage, reply share.ReplyContext) {
-	if (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || msg.MessageID == 0 {
-		return
-	}
-	createdAt := storage.Now()
-	if msg.Date > 0 {
-		createdAt = time.Unix(msg.Date, 0)
-	}
-	senderID := userIDString(msg.From)
-	chatMessage := storage.ChatMessage{
-		Platform:                 a.Name(),
-		ChatID:                   scopeID(msg.Chat),
-		ChatType:                 telegramChatType(msg.Chat),
-		PlatformMessageID:        formatMessageID(msg.MessageID),
-		SenderID:                 senderID,
-		SenderName:               displayNamePtr(msg.From, ""),
-		Text:                     normalized.Text,
-		Raw:                      firstNonEmpty(msg.Text, msg.Caption),
-		ReplyToPlatformMessageID: normalized.ReplyID,
-
-		CreatedAt: createdAt,
-	}
-	share.RecordInboundMessage(ctx, a.chatHistory, chatMessage, normalized.Segments, reply)
-}
-
-func scopeID(c chat) string { return strconv.FormatInt(c.ID, 10) }
-
 func userIDString(u *user) string {
 	if u == nil {
 		return ""
 	}
 	return strconv.FormatInt(u.ID, 10)
-}
-
-func replySender(msg *message) *user {
-	if msg == nil {
-		return nil
-	}
-	return msg.From
 }
 
 func formatMessageID(id int64) string {
@@ -295,11 +239,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 
 func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandler, msg message, bot share.Identity) {
 	normalized := normalizeMessage(msg)
-	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
-		a.recordChatMessage(ctx, msg, normalized, share.ReplyContext{})
-		return
-	}
-	text := normalized.Text
+	text := share.SegmentsText(normalized.Segments)
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	chatName := msg.Chat.Title
@@ -323,14 +263,13 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			},
 			PlatformMessageID: formatMessageID(msg.MessageID),
 			ReplyToMessageID:  normalized.ReplyID,
-			ReplyToSenderID:   userIDString(replySender(normalized.ReplyMessage)),
 		},
 		GroupRole: groupRole,
 
 		Sender:          a,
 		MediaResolver:   a,
-		Segments:        share.FinalMessageSegments(text, normalized.Segments, nil),
-		RawText:         normalized.Text,
+		Segments:        normalized.Segments,
+		RawText:         text,
 		Bot:             bot,
 		Mentions:        append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords: append([]string(nil), a.cfg.TriggerKeywords...),
@@ -339,10 +278,19 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),
 		},
 	}
-	msgCtx := share.WithMessageContext(ctx, messageCtx)
+	history := share.InboundMessage{Conversation: messageCtx.Conversation, Segments: normalized.Segments, Raw: firstNonEmpty(msg.Text, msg.Caption)}
+	if msg.Date > 0 {
+		history.CreatedAt = time.Unix(msg.Date, 0)
+	}
+	if msg.Chat.Type != "private" && msg.Chat.Type != "group" && msg.Chat.Type != "supergroup" {
+		share.RecordInboundMessage(ctx, a.chatHistory, history, share.ReplyContext{})
+		return
+	}
 
-	var referenceSegments []share.MessageSegment
-	if normalized.ReplyID != "" {
+	if original := normalized.ReplyMessage; original != nil {
+		quote := normalizeMessage(*original)
+		messageCtx.ReplyToSenderID = userIDString(original.From)
+		msgCtx := share.WithMessageContext(ctx, messageCtx)
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Bot:      messageCtx.Bot,
 			Platform: a.Name(),
@@ -350,8 +298,8 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			ChatType: messageCtx.Conversation.Source.ChatType,
 			Owner:    contextinfo.ActorIdentity{Platform: a.Name(), ID: platformUserID},
 			ReplyID:  normalized.ReplyID,
-			Text:     text,
-			Fetch:    a.referenceFetcher(msg, normalized),
+			Text:     text, Segments: normalized.Segments,
+			EventQuote: share.ReferencedMessage{SenderID: messageCtx.ReplyToSenderID, SenderName: displayNamePtr(original.From, ""), Text: share.SegmentsText(quote.Segments), Segments: quote.Segments},
 		})
 		if err != nil {
 			record := globalevents.LogRecord{
@@ -371,15 +319,11 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
-		referenceSegments = ref.ReferenceSegments
-		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
-			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
-		}
+		messageCtx.ContextSegments = ref.DisplaySegments
 	}
-	a.recordChatMessage(ctx, msg, normalized, messageCtx.Reply)
+	share.RecordInboundMessage(ctx, a.chatHistory, history, messageCtx.Reply)
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {
 		return
 	}
-	messageCtx.Segments = share.FinalMessageSegments(text, normalized.Segments, nil)
 	_ = handler(ctx, text, messageCtx)
 }

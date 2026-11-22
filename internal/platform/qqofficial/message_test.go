@@ -250,7 +250,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := storage.ChatMessageReply(*quote).Display
-	if snapshot != fmt.Sprintf("[引用 h%d：芙蕾娅（助手）：assistant reply]", mc.Reply.HistorySeq) || mc.ContextText != snapshot+"\n\n"+quote.Text {
+	if snapshot != fmt.Sprintf("[引用 h%d：芙蕾娅（助手）：assistant reply]", mc.Reply.HistorySeq) || mc.ContextText != snapshot+"\n"+quote.Text {
 		t.Fatalf("snapshot=%q live=%q", snapshot, mc.ContextText)
 	}
 	mapTestReference(t, a, "group", "g", "displayOnly", "cmd")

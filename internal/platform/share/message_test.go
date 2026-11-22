@@ -51,8 +51,8 @@ func TestFinalMessageSegmentsPreservesOrderAndInputs(t *testing.T) {
 	}
 	beforeCurrent, beforeReferenced := slices.Clone(current), slices.Clone(referenced)
 	text := "  final text\n"
-	got := FinalMessageSegments(text, current, referenced)
-	want := []MessageSegment{{Type: SegmentText, Text: text}, current[1], current[2], referenced[1], referenced[2]}
+	got := FinalMessageSegments(current, text, referenced)
+	want := []MessageSegment{current[0], current[1], current[2], {Type: SegmentText, Text: text + referenced[0].Text}, referenced[1], referenced[2]}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("segments=%+v want=%+v", got, want)
 	}
@@ -60,28 +60,18 @@ func TestFinalMessageSegmentsPreservesOrderAndInputs(t *testing.T) {
 		t.Fatal("input slices changed")
 	}
 	got[1].MediaID = "changed"
-	got[3].Name = "changed"
+	got[4].Name = "changed"
 	if !reflect.DeepEqual(current, beforeCurrent) || !reflect.DeepEqual(referenced, beforeReferenced) {
 		t.Fatal("result shares input storage")
 	}
 }
 
 func TestMessageSegmentsWithBlankText(t *testing.T) {
-	for _, text := range []string{"", " \t\n"} {
-		if got := FinalMessageSegments(text, nil, nil); got == nil || len(got) != 0 {
-			t.Fatalf("empty result=%#v", got)
-		}
-		input := []MessageSegment{{Type: SegmentText, Text: "ignored"}, {Type: SegmentImage, MediaID: "image"}}
-		if got := FinalMessageSegments(text, input, nil); !reflect.DeepEqual(got, input[1:]) {
-			t.Fatalf("blank text result=%+v", got)
-		}
+	input := []MessageSegment{{Type: SegmentImage, MediaID: "image"}}
+	if got := FinalMessageSegments(nil, "", input); !reflect.DeepEqual(got, input) {
+		t.Fatalf("blank text added a segment: %#v", got)
 	}
-	if got := AppendNonTextSegments(nil, []MessageSegment{{Type: SegmentText, Text: "ignored"}}); got != nil {
-		t.Fatalf("text-only append=%#v", got)
-	}
-	prefix := []MessageSegment{{Type: SegmentFile, MediaID: "prefix"}}
-	got := AppendNonTextSegments(prefix, []MessageSegment{{Type: SegmentText}, {Type: SegmentAt, UserID: "user"}})
-	if want := []MessageSegment{prefix[0], {Type: SegmentAt, UserID: "user"}}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("append=%+v want=%+v", got, want)
+	if got := FinalMessageSegments(nil, " \t\n", input); len(got) != 2 || got[0].Text != " \t\n" {
+		t.Fatalf("literal whitespace lost: %#v", got)
 	}
 }

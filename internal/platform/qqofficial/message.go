@@ -14,7 +14,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage"
 )
 
 const (
@@ -91,7 +90,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 
 	text := normalizedInboundText(content)
 	segments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
-	if text == "" && len(segments) == 0 {
+	if len(segments) == 0 {
 		return
 	}
 
@@ -152,7 +151,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	}
 	msgCtx := share.WithMessageContext(ctx, messageCtx)
 	var ref share.ReferenceResult
-	if err == nil && replyID != "" {
+	if err == nil && (replyID != "" || len(referenced.Segments) > 0) {
 		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Bot:      messageCtx.Bot,
 			Platform: a.Name(),
@@ -160,11 +159,9 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			ChatType: conversation,
 			Owner:    actorID,
 
-			ReplyID: replyID,
-			Text:    text,
-			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
-				return referenced, len(referenced.Segments) > 0, nil
-			},
+			ReplyID:    replyID,
+			Text:       text,
+			EventQuote: referenced, Segments: segments,
 		})
 	}
 	if err != nil {
@@ -181,18 +178,16 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		globalevents.Log(context.WithoutCancel(msgCtx), record)
 		return
 	}
-	if replyID != "" || len(ref.ReferenceSegments) > 0 {
+	if replyID != "" || ref.Reply.Display != "" {
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
-		if strings.TrimSpace(ref.Text) != "" || len(ref.ReferenceSegments) > 0 {
-			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
-		}
-		messageCtx.Segments = share.FinalMessageSegments(text, segments, nil)
+		messageCtx.ContextSegments = ref.DisplaySegments
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
-	a.recordChatMessage(ctx, msg, conversation, senderID, name, scopeID, text, replyID, segments, messageCtx.Reply)
+	createdAt, _ := time.Parse(time.RFC3339Nano, strings.TrimSpace(msg.Timestamp))
+	share.RecordInboundMessage(ctx, a.chatHistory, share.InboundMessage{Conversation: messageCtx.Conversation, Segments: segments, CreatedAt: createdAt, Raw: msg.Content, SenderAvatarURL: strings.TrimSpace(msg.Author.Avatar)}, messageCtx.Reply)
 	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID, senderID)
 	_ = handler(msgCtx, text, messageCtx)
 }
@@ -209,32 +204,6 @@ func inboundRoute(msg inboundMessage, conversation contextinfo.ChatType) (sender
 
 func normalizedInboundText(content string) string {
 	return strings.TrimSpace(qqOfficialFaceFallbackPattern.ReplaceAllString(content, ""))
-}
-
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, name, scopeID, text, replyID string, sourceSegments []share.MessageSegment, reply share.ReplyContext) {
-	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
-		return
-	}
-	createdAt := storage.Now()
-	if value := strings.TrimSpace(msg.Timestamp); value != "" {
-		if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
-			createdAt = parsed
-		}
-	}
-	history := storage.ChatMessage{
-		Platform:                 a.Name(),
-		ChatID:                   scopeID,
-		ChatType:                 conversation,
-		PlatformMessageID:        strings.TrimSpace(msg.ID),
-		SenderID:                 senderID,
-		SenderName:               name,
-		SenderAvatarURL:          strings.TrimSpace(msg.Author.Avatar),
-		Text:                     strings.TrimSpace(text),
-		Raw:                      msg.Content,
-		ReplyToPlatformMessageID: strings.TrimSpace(replyID),
-		CreatedAt:                createdAt,
-	}
-	share.RecordInboundMessage(ctx, a.chatHistory, history, sourceSegments, reply)
 }
 
 type messageData struct {

@@ -33,7 +33,7 @@ func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	segments := storage.UnmarshalChatSegments(row.Segments)
-	if len(segments) != 3 || segments[0].Type != "image" || segments[1].Type != "file" || segments[2] != segments[0] || segments[0].PlatformFileID != "image-id" {
+	if row.Text != "" || len(segments) != 3 || segments[0].Type != "image" || segments[1].Type != "file" || segments[2] != segments[0] || segments[0].PlatformFileID != "image-id" {
 		t.Fatalf("ordered history = %#v", segments)
 	}
 	if strings.Contains(row.Segments+row.Raw, "secret") {
@@ -65,7 +65,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 2, Message: []byte(`[{"type":"reply","data":{"id":"sent"}},{"type":"text","data":{"text":"看看"}}]`)})
 	msg, ok := share.MessageContextFrom(handler.ctx)
-	if !ok || msg.ReplyToSenderID != "1000" || len(msg.ContextSegments) != 2 || msg.ContextSegments[1].MediaID != item.Data.ID {
+	if !ok || msg.ReplyToSenderID != "1000" || len(msg.ContextSegments) != 3 || msg.ContextSegments[2].Text != "]\n看看" || msg.ContextSegments[1].MediaID != item.Data.ID {
 		t.Fatalf("output reference = %#v", msg)
 	}
 }

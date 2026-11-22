@@ -7,13 +7,13 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -44,7 +44,6 @@ type Segment struct {
 }
 
 type NormalizedMessage struct {
-	Text     string
 	ReplyID  string
 	Mentions []share.Mention
 	Segments []share.MessageSegment
@@ -115,12 +114,8 @@ func senderName(sender Sender) string { return firstNonEmpty(sender.Card, sender
 func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler, event Event) {
 	normalized := normalizeMessage(event.Message, event.RawMessage, event.SelfID)
 	normalized = a.resolveAtSegments(ctx, event, normalized)
-	text := normalized.Text
+	text := normalized.text()
 	currentSegments := normalized.Segments
-	conversationID := strconv.FormatInt(event.UserID, 10)
-	if event.MessageType == "group" {
-		conversationID = strconv.FormatInt(event.GroupID, 10)
-	}
 	chatName := ""
 	if event.MessageType == "private" {
 		chatName = senderName(event.Sender)
@@ -132,7 +127,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 				Platform: a.Name(),
 
 				ChatType: oneBotChatType(event),
-				ChatID:   conversationID, Name: chatName,
+				ChatID:   scopeID(event), Name: chatName,
 			},
 			Identity: contextinfo.Identity{
 
@@ -148,8 +143,8 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		MediaResolver:         a,
 		Sender:                a,
 		BufferAssistantOutput: true,
-		Segments:              share.FinalMessageSegments(text, currentSegments, nil),
-		RawText:               normalized.Text,
+		Segments:              currentSegments,
+		RawText:               text,
 		PlatformMessage:       append(json.RawMessage(nil), event.Message...),
 		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10), Username: a.botIdentity().Username},
 		Mentions:              append([]share.Mention(nil), normalized.Mentions...),
@@ -160,6 +155,13 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			"qq_onebot.group_id":     strconv.FormatInt(event.GroupID, 10),
 			"qq_onebot.user_id":      strconv.FormatInt(event.UserID, 10),
 		},
+	}
+	history := share.InboundMessage{Conversation: messageCtx.Conversation, Segments: currentSegments, Raw: text}
+	if event.Time > 0 {
+		history.CreatedAt = time.Unix(event.Time, 0)
+	}
+	if event.MessageID == 0 {
+		history.PlatformMessageID = ""
 	}
 	msgCtx := share.WithMessageContext(ctx, messageCtx)
 
@@ -174,14 +176,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			}
 		}
 	}
-	// An expanded current message is composed after the reference view. Commands
-	// keep the original path so refcontext can still interpret /fork and others.
-	referenceInputText, referenceInputSegments := text, currentSegments
+	input := currentSegments
 	if len(currentDisplay) > 0 {
-		referenceInputText, referenceInputSegments = "", nil
+		input = currentDisplay
+		messageCtx.ContextSegments = input
+		messageCtx.ContextText = share.SegmentsText(input)
 	}
-	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
+		getMessage := sync.OnceValues(func() (getMessageData, error) { return a.transport.GetMessage(msgCtx, normalized.ReplyID) })
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
 			Bot:      messageCtx.Bot,
 			Platform: a.Name(),
@@ -189,13 +191,13 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			ChatType: messageCtx.Conversation.Source.ChatType,
 			Owner:    contextinfo.ActorIdentity{Platform: a.Name(), ID: strconv.FormatInt(event.UserID, 10)},
 			ReplyID:  normalized.ReplyID,
-			Text:     referenceInputText,
-			Fetch:    a.referenceFetcher(event),
-			Enrich:   a.expandForwardReference(event),
+			Text:     text, Segments: input,
+			Fetch:  a.referenceFetcher(event, getMessage),
+			Enrich: a.expandForwardReference(event, getMessage),
 		})
 		if err != nil {
 			a.logContextFailure(msgCtx, err)
-			a.recordChatMessage(ctx, event, normalized, share.ReplyContext{})
+			share.RecordInboundMessage(ctx, a.chatHistory, history, share.ReplyContext{})
 			return
 		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
@@ -206,26 +208,11 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		if ref.Reply.IsAssistant {
 			messageCtx.ReplyToSenderID = messageCtx.Bot.UserID
 		}
-		referenceSegments = ref.ReferenceSegments
-		if len(ref.DisplaySegments) > 0 {
-			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, referenceInputSegments, referenceInputText)
-		} else if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
-			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, referenceInputSegments, referenceSegments)
-		}
+		messageCtx.ContextSegments = ref.DisplaySegments
 	}
-	if len(currentDisplay) > 0 {
-		messageCtx.ContextSegments = forwardContextSegments(messageCtx.ContextSegments, currentDisplay, "")
-		var displayText strings.Builder
-		for _, segment := range messageCtx.ContextSegments {
-			if segment.Type == share.SegmentText {
-				displayText.WriteString(segment.Text)
-			}
-		}
-		messageCtx.ContextText = displayText.String()
-	}
-	a.recordChatMessage(ctx, event, normalized, messageCtx.Reply)
+	share.RecordInboundMessage(ctx, a.chatHistory, history, messageCtx.Reply)
 	msgCtx = share.WithMessageContext(ctx, messageCtx)
-	if strings.TrimSpace(text) == "" && len(currentSegments) == 0 {
+	if len(currentSegments) == 0 {
 		return
 	}
 	_ = handler(msgCtx, text, messageCtx)
@@ -235,14 +222,11 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 	if event.MessageType != "group" || event.GroupID == 0 || len(msg.Segments) == 0 {
 		return msg
 	}
-	updated := append([]share.MessageSegment(nil), msg.Segments...)
-	replacements := map[string]string{}
-	changed := false
-	for i := range updated {
-		if updated[i].Type != share.SegmentAt || updated[i].UserID == "" {
+	for i := range msg.Segments {
+		if msg.Segments[i].Type != share.SegmentAt || msg.Segments[i].UserID == "" {
 			continue
 		}
-		userID, err := strconv.ParseInt(updated[i].UserID, 10, 64)
+		userID, err := strconv.ParseInt(msg.Segments[i].UserID, 10, 64)
 		if err != nil || userID == event.SelfID {
 			continue
 		}
@@ -268,21 +252,8 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 			}
 			continue
 		}
-		text := atText(updated[i].UserID, senderName(sender))
-		if text == updated[i].Text {
-			continue
-		}
-		replacements[updated[i].Text] = text
-		updated[i].Text = text
-		changed = true
+		msg.Segments[i].Text = atText(msg.Segments[i].UserID, senderName(sender))
 	}
-	if !changed {
-		return msg
-	}
-	for oldText, newText := range replacements {
-		msg.Text = strings.ReplaceAll(msg.Text, oldText, newText)
-	}
-	msg.Segments = updated
 	return msg
 }
 
@@ -313,9 +284,9 @@ func oneBotChatType(event Event) contextinfo.ChatType {
 	}
 }
 
-func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (share.ReferencedMessage, bool, error) {
+func (a *Adapter) referenceFetcher(event Event, getMessage func() (getMessageData, error)) func(context.Context, string) (share.ReferencedMessage, bool, error) {
 	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
-		data, err := a.transport.GetMessage(ctx, replyID)
+		data, err := getMessage()
 		if err != nil {
 			if ctx.Err() != nil {
 				return share.ReferencedMessage{}, false, ctx.Err()
@@ -325,35 +296,11 @@ func (a *Adapter) referenceFetcher(event Event) func(context.Context, string) (s
 		}
 		ref := normalizeMessage(data.Message, data.RawMessage, event.SelfID)
 		var id string
-		if data.UserID != 0 {
-			id = strconv.FormatInt(data.UserID, 10)
+		if data.Sender.UserID != 0 {
+			id = strconv.FormatInt(data.Sender.UserID, 10)
 		}
-		return share.ReferencedMessage{SenderID: id, IsAssistant: data.UserID != 0 && data.UserID == event.SelfID, SenderName: senderName(data.Sender), Text: ref.Text, Segments: ref.Segments}, true, nil
+		return share.ReferencedMessage{SenderID: id, IsAssistant: data.Sender.UserID != 0 && data.Sender.UserID == event.SelfID, SenderName: senderName(data.Sender), Text: ref.text(), Segments: ref.Segments}, true, nil
 	}
-}
-
-func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized NormalizedMessage, reply share.ReplyContext) {
-	if (strings.TrimSpace(normalized.Text) == "" && len(normalized.Segments) == 0) || event.MessageID == 0 {
-		return
-	}
-	createdAt := storage.Now()
-	if event.Time > 0 {
-		createdAt = time.Unix(event.Time, 0)
-	}
-	message := storage.ChatMessage{
-		Platform:                 a.Name(),
-		ChatID:                   scopeID(event),
-		ChatType:                 oneBotChatType(event),
-		PlatformMessageID:        strconv.FormatInt(event.MessageID, 10),
-		SenderID:                 strconv.FormatInt(event.UserID, 10),
-		SenderName:               senderName(event.Sender),
-		Text:                     normalized.Text,
-		Raw:                      normalized.Text,
-		ReplyToPlatformMessageID: normalized.ReplyID,
-
-		CreatedAt: createdAt,
-	}
-	share.RecordInboundMessage(ctx, a.chatHistory, message, normalized.Segments, reply)
 }
 
 func (a *Adapter) isMessageEvent(event Event) bool {

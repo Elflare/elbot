@@ -3,6 +3,7 @@ package refcontext
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -37,7 +38,7 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 		{"qqofficial", "self", "昨日昵称", "Atri", "[引用 h1：昨日昵称（助手）：正文]", true},
 		{"qqofficial", "self", "", "", "[引用 h1：助手：正文]", true},
 		{"qqofficial", "other", "bot", "Atri", "[引用 h1：bot(id:other)：正文]", true},
-		{"qqonebot", "self", "亚托莉", "", "", false},
+		{"qqonebot", "self", "亚托莉", "", "[引用：亚托莉（助手）：正文]", false},
 		{"telegram", "other", "Atri", "Atri", "[引用 h1：Atri(id:other)：正文]", true},
 	} {
 		ctx := t.Context()
@@ -70,19 +71,61 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 		}
 	}
 }
-func TestUnrecordedReferenceKeepsInput(t *testing.T) {
-	result, err := Apply(context.Background(), newRefTestOptions(newRefTestStore(t), newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice-1", Text: "说：收到", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
-		return share.ReferencedMessage{Text: "可读正文但无短号"}, true, nil
-	}})
-	if err != nil {
-		t.Fatal(err)
+func TestUnrecordedReferenceUsesFetchedContent(t *testing.T) {
+	deps := newRefTestOptions(newRefTestStore(t), newRefTestHistory(t))
+	calls := 0
+	for _, input := range []string{"说：收到", "/help"} {
+		got, err := Apply(t.Context(), deps, share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice", Text: input, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			calls++
+			return share.ReferencedMessage{Text: "可读正文但无短号"}, true, nil
+		}})
+		want := "[引用 未知用户：可读正文但无短号]"
+		live := want + "\n" + input
+		if input == "/help" {
+			live = input
+		}
+		if err != nil || got.Text != live || got.Reply.Display != want || got.ForkFromMessageID != "" {
+			t.Fatalf("%s: %+v, %v", input, got, err)
+		}
 	}
-	want := "说：收到"
-	if result.Text != want {
-		t.Fatalf("text = %q, want %q", result.Text, want)
+	if calls != 2 {
+		t.Fatalf("fetches=%d", calls)
 	}
-	if result.ForkFromMessageID != "" {
-		t.Fatalf("fork = %q, want empty", result.ForkFromMessageID)
+}
+
+func TestExplicitAssistantPagesUseOnlyDeliveredChatContent(t *testing.T) {
+	ctx := t.Context()
+	store, history := newRefTestStore(t), newRefTestHistory(t)
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "owner"}, Platform: "telegram", ChatType: "group", ChatID: "room"}
+	original, _ := createAssistantMessages(t, ctx, store, scope)
+	for _, p := range []struct {
+		id, text, chat string
+		assistant      bool
+	}{{"p1", "公开上页", "room", true}, {"unrelated", "群友插话", "room", false}, {"p2", "公开下页", "room", true}, {"other", "另一个群", "elsewhere", true}} {
+		target := scope
+		target.ChatID = p.chat
+		if p.assistant {
+			mapPlatformMessage(t, ctx, store, target, p.id, original)
+		}
+		if err := history.Append(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: p.chat, PlatformMessageID: p.id, Text: p.text, IsAssistant: p.assistant}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deps := newRefTestOptions(store, history)
+	for _, id := range []string{"p1", "p2"} {
+		got, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "someone-else"}, ReplyID: id, Text: "说明"})
+		seq := 1
+		if id == "p2" {
+			seq = 3
+		}
+		want := fmt.Sprintf("[引用 h%d：助手：公开上页\n公开下页]", seq)
+		if err != nil || got.Reply.Display != want || got.Text != want+"\n说明" || share.SegmentsText(got.DisplaySegments) != got.Text {
+			t.Fatalf("%s: %+v, %v", id, got, err)
+		}
+	}
+	rows, err := history.Search(ctx, storage.ChatHistorySearchRequest{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, IncludeAssistant: true, QueryTerms: []string{"公开"}})
+	if err != nil || len(rows) != 2 || rows[0].Text != "公开上页" || rows[1].Text != "公开下页" {
+		t.Fatalf("search=%+v, %v", rows, err)
 	}
 }
 
@@ -277,8 +320,8 @@ func newRefTestOptions(store storage.Store, history storage.ChatHistoryRepositor
 	service := control.NewService(control.Config{}, control.ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), IsSuperadmin: func(scope sessionshare.Scope) bool { return scope.Owner.ID == "admin" }})
 	return Options{
 		ParseCommand:          func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
-		FindByPlatformMessage: store.Messages().FindByPlatformMessage,
-		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, bool, error) {
+		FindByPlatformMessage: store.Messages().FindByPlatformMessage, PlatformMessageIDs: store.Messages().PlatformMessageIDs,
+		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, error) {
 			return service.ResolveReference(ctx, sessionshare.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
 		},
 		FindHistory: store.Media().FindHistory,

@@ -22,7 +22,6 @@ const (
 // whether files and message-level metadata are retained; conversion never fetches media.
 func convertSegments(segments []Segment, selfID int64, scene conversionScene) NormalizedMessage {
 	var out NormalizedMessage
-	var parts []string
 	self := strconv.FormatInt(selfID, 10)
 	for _, seg := range segments {
 		label := segmentLabel(seg.Type)
@@ -60,7 +59,6 @@ func convertSegments(segments []Segment, selfID int64, scene conversionScene) No
 				part = fileSegment(label, seg.Data)
 			}
 		}
-		parts = append(parts, text)
 		if part.Type == "" && text != "" {
 			part = textSegment(text)
 		}
@@ -68,13 +66,10 @@ func convertSegments(segments []Segment, selfID int64, scene conversionScene) No
 			out.Segments = append(out.Segments, part)
 		}
 	}
-	text := strings.Join(parts, "")
-	if scene == ordinaryInput {
-		text = cleanText(text)
-	}
-	out.Text = text
 	return out
 }
+
+func (m NormalizedMessage) text() string { return cleanText(share.SegmentsText(m.Segments)) }
 
 func segmentLabel(kind string) string {
 	switch kind {
@@ -106,7 +101,7 @@ func normalizePlainText(text string) NormalizedMessage {
 	if text == "" {
 		return NormalizedMessage{}
 	}
-	return NormalizedMessage{Text: text, Segments: []share.MessageSegment{textSegment(text)}}
+	return NormalizedMessage{Segments: []share.MessageSegment{textSegment(text)}}
 }
 
 func textSegment(text string) share.MessageSegment {
