@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/request"
@@ -35,11 +36,11 @@ func (c *ExecutionCoordinator) StartAsyncTool(ctx context.Context, sid, name str
 		finish()
 		return tool.AsyncJob{}, err
 	}
-	return tool.AsyncJob{ID: req.ID, Context: job, Done: func() { done(); finish() }, Deliver: func(call llm.ToolCallRequest, msg llm.LLMMessage) error {
-		return c.deliverAsyncTool(parent, sid, req.ID, done, call, msg)
+	return tool.AsyncJob{ID: req.ID, Context: job, Done: func() { done(); finish() }, Deliver: func(call llm.ToolCallRequest, outcome delivery.ToolResult) error {
+		return c.deliverAsyncTool(parent, sid, req.ID, done, call, outcome)
 	}}, nil
 }
-func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id string, retire func(), call llm.ToolCallRequest, msg llm.LLMMessage) error {
+func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id string, retire func(), call llm.ToolCallRequest, outcome delivery.ToolResult) error {
 	binding, _ := session.BindingFromContext(ctx)
 	locked, release, err := c.deps.Sessions.EnterBinding(ctx, binding)
 	if err != nil {
@@ -52,7 +53,8 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 		return nil
 	}
 	if active.Stopping {
-		msg.Segments = llm.TextSegments("异步任务 " + id + " 被用户取消；不是新的执行。")
+		outcome.Success = false
+		outcome.Segments = llm.TextSegments("异步任务 " + id + " 被用户取消；不是新的执行。")
 	}
 	retire()
 	row, err := c.deps.SessionRows.Get(locked, sid)
@@ -61,7 +63,7 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 		return err
 	}
 	head := agentshare.ToolCallStorageMessage(sid, "", "", []llm.ToolCallRequest{call}, "")
-	result := agentshare.ToolResultStorageMessage(sid, msg)
+	result := agentshare.ToolResultStorageMessage(sid, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: outcome.Segments})
 	in := turn.Input{Reports: []*storage.Message{&head, &result}}
 	admitted, err := c.admitReport(locked, row, in)
 	release()
@@ -71,6 +73,9 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 	if admitted.Status != operationresult.Success {
 		return fmt.Errorf("异步结果投递: %s", admitted.Message)
 	}
+	stream := c.deps.Output.StartStream(ctx)
+	_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolCall, ToolCallID: call.ID, ToolCall: &delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}})
+	_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolResult, ToolCallID: call.ID, ToolResult: &outcome})
 	if admitted.Data == nil {
 		return nil
 	}

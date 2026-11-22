@@ -201,7 +201,7 @@ func TestAsyncReportAcrossModelFailure(t *testing.T) {
 	}
 	defer job.Done()
 	report := llm.ToolCallRequest{ID: "B", Name: "shell", Arguments: `{"cmd":"true","async":true}`}
-	if err := job.Deliver(report, llm.LLMMessage{Role: llm.RoleTool, Name: report.Name, ToolCallID: report.ID, Segments: llm.TextSegments("result")}); err != nil {
+	if err := job.Deliver(report, delivery.ToolResult{Success: true, Segments: llm.TextSegments("result")}); err != nil {
 		t.Fatal(err)
 	}
 	first.reply <- chatcompletions.Chunk{Error: fmt.Errorf("upstream failure")}

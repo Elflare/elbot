@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -71,16 +72,14 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 	if err := m.RecordToolCall(auditCtx, result.record(sessionID, call, actor, risk, start, storage.Now())); err != nil {
 		m.Log(auditCtx, newRunRecord(auditCtx, sessionID, "async_tool_record_failed", err))
 	}
-	msg := result.Message
 	report := call
 	report.ID = "call_" + storage.NewID()
-	msg.ToolCallID = report.ID
 	state := string(result.Result.Status)
 	if result.Error != nil {
 		state = "error"
 	}
-	msg.Segments = append(llm.TextSegments(fmt.Sprintf("任务 %s 回报（%s），非新执行。\n", job.ID, state)), msg.Segments...)
-	if err := job.Deliver(report, msg); err != nil {
+	segments := append(llm.TextSegments(fmt.Sprintf("任务 %s 回报（%s），非新执行。\n", job.ID, state)), result.Message.Segments...)
+	if err := job.Deliver(report, delivery.ToolResult{Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: segments}); err != nil {
 		m.Log(ctx, newRunRecord(ctx, sessionID, "async_tool_delivery_failed", err))
 	}
 }
