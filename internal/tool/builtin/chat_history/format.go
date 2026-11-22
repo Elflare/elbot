@@ -11,10 +11,13 @@ const (
 
 // Keep participant IDs in a single roster, for history rows.
 func formatHistoryRows(messages []Message, target int64, full, avatars bool) []string {
-	type person struct{ id, name, url string }
+	type person struct {
+		id, name, url string
+		isAssistant   bool
+	}
 	var people []person
 	users := make(map[string]int)
-	user := func(id, name, url string) string {
+	user := func(id, name, url string, isAssistant bool) string {
 		if id == "" {
 			return name
 		}
@@ -22,7 +25,7 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 		if !ok {
 			i = len(people)
 			users[id] = i
-			people = append(people, person{id: id})
+			people = append(people, person{id: id, isAssistant: isAssistant})
 		}
 		p := &people[i]
 		if name != "" {
@@ -41,10 +44,7 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 			lines = append(lines, d)
 			day = d
 		}
-		who := user(m.SenderID, m.SenderName, m.SenderAvatarURL)
-		if m.IsAssistant {
-			who = strings.TrimSpace("助手 " + who)
-		}
+		who := user(m.SenderID, m.SenderName, m.SenderAvatarURL, m.IsAssistant)
 		body := m.Text
 		marker := "...[单条消息过长，已截断]"
 		if m.Quote != "" {
@@ -68,7 +68,13 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 	}
 	for i, p := range people {
 		parts := []string{fmt.Sprintf("u%d", i+1)}
-		if p.name != "" && p.name != p.id {
+		if p.name == p.id {
+			p.name = ""
+		}
+		if p.isAssistant {
+			p.name += "（助手）"
+		}
+		if p.name != "" {
 			parts = append(parts, p.name)
 		}
 		parts = append(parts, p.id)
