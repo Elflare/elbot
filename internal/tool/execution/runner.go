@@ -45,13 +45,13 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		result     executionResult
 		finishedAt time.Time
 	}, len(req.Calls))
-	toolCallStarted := make([]bool, len(req.Calls))
+	callsPublished := false
 	toolCallFinished := make([]bool, len(req.Calls))
 	defer func() {
 		cancel()
 		workers.Wait()
 		for i, call := range preparedCalls {
-			if !toolCallStarted[i] || toolCallFinished[i] {
+			if !callsPublished || toolCallFinished[i] {
 				continue
 			}
 			segments := tasks[i].result.Message.Segments
@@ -77,15 +77,12 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	// The coordinator owns session state; workers return independent outcomes
 	// through a shared completion queue.
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.ReasoningContent, req.Calls)
-	err = req.Committer.Begin(ctx, &head)
-
-	if err != nil {
+	if err := req.Committer.Begin(ctx, &head); err != nil {
 		return toolshare.RunResult{Err: err}
 	}
 	ready := make(chan int, len(req.Calls))
 	completed := 0
 	complete := func(index int, receipt bool) error {
-		defer func() { completed++ }()
 		task := &tasks[index]
 		result := task.result
 		if ctx.Err() != nil {
@@ -121,23 +118,23 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			if len(parts) > 0 {
 				result.Message.Segments = append(llm.TextSegments(strings.Join(parts, "\n\n")+"\n\n"), result.Message.Segments...)
 			}
-		}
-		if call.Name == "discover_tool" && result.Result.Status == operationresult.Success && result.Result.Data != nil {
-			update, err := m.DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), result.Result.Data)
-			if err != nil {
-				return err
-			}
-			var discovered []toolshare.DiscoveredTool
-			metadata, discovered, err = m.PrepareUpdate(req.Session.Metadata, update)
-			if err != nil {
-				return err
-			}
-			description, err := m.WeaveDescription(ctx, discovered)
-			if err != nil {
-				return err
-			}
-			if description != "" {
-				result.Message.Segments = llm.AppendSegmentText(result.Message.Segments, "\n\n"+description)
+			if call.Name == "discover_tool" {
+				update, err := m.DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), toolResult)
+				if err != nil {
+					return err
+				}
+				var discovered []toolshare.DiscoveredTool
+				metadata, discovered, err = m.PrepareUpdate(req.Session.Metadata, update)
+				if err != nil {
+					return err
+				}
+				description, err := m.WeaveDescription(ctx, discovered)
+				if err != nil {
+					return err
+				}
+				if description != "" {
+					result.Message.Segments = llm.AppendSegmentText(result.Message.Segments, "\n\n"+description)
+				}
 			}
 		}
 		stored := deps.ToolResultMessage(sessionID, result.Message)
@@ -150,9 +147,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			stored.Metadata, _ = fields.Encode()
 			_ = metadata.Set("elyph_rules_shown", true)
 		}
-		err = req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata})
-
-		if err != nil {
+		if err := req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata}); err != nil {
 			return err
 		}
 		publishResult(index, call, delivery.ToolResult{
@@ -171,6 +166,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 			req.Session.Metadata, _ = fields.Encode()
 		}
+		completed++
 		return nil
 	}
 	// Blocking preparation receives a detached snapshot; completed tools can be
@@ -205,9 +201,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		ctx = updated
 		if index == 0 {
 			deps.PublishToolCalls(ctx, req.Calls, strings.TrimSpace(req.AssistantText) != "")
-			for i := range toolCallStarted {
-				toolCallStarted[i] = true
-			}
+			callsPublished = true
 		}
 		actor := req.Actor
 		if current, ok := contextinfo.ActorFromContext(ctx); ok {
@@ -227,9 +221,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			return toolshare.RunResult{Err: err}
 		}
 		preparedCalls[index] = call
-		err = req.Committer.Prepared(ctx, index, call)
-
-		if err != nil {
+		if err := req.Committer.Prepared(ctx, index, call); err != nil {
 			return toolshare.RunResult{Err: err}
 		}
 		resolved, err := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
@@ -240,32 +232,40 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		if snapshot.Mode == storage.SessionModeBackground {
 			runSource = snapshot.TaskType
 		}
-		if resolved.Status != operationresult.Success {
-			startedAt := time.Now()
-			task.result = executionResult{Message: toolMessage(call.Name, call.ID, resolved.Message), Result: operationresult.Result[*toolshare.Result]{Status: resolved.Status, Message: resolved.Message}, Summary: resolved.Message}
+		auditStart := task.startedAt
+		finish := func(result executionResult, auditSource toolshare.SourceKind) {
+			task.result = result
 			task.finishedAt = storage.Now()
-			m.recordCallCompleted(ctx, sessionID, call, toolshare.SourceKindNative, actor, "", runSource, startedAt, task.result)
+			if auditSource != "" {
+				m.recordCallCompleted(ctx, sessionID, call, auditSource, actor, task.risk, runSource, auditStart, result)
+			}
 			ready <- index
+		}
+		if resolved.Status != operationresult.Success {
+			auditStart = time.Now()
+			finish(executionResult{
+				Message: toolMessage(call.Name, call.ID, resolved.Message),
+				Result:  operationresult.Result[*toolshare.Result]{Status: resolved.Status, Message: resolved.Message},
+				Summary: resolved.Message,
+			}, toolshare.SourceKindNative)
 			continue
 		}
 		resolvedTool := resolved.Data
 		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
 		var prepared operationresult.Result[*toolshare.PreparedCall]
-		if waitErr := await(func() { prepared, err = m.prepareCall(toolCtx, resolvedTool, call) }); waitErr != nil {
+		if waitErr := await(func() { prepared, err = prepareCall(toolCtx, resolvedTool, call) }); waitErr != nil {
 			return toolshare.RunResult{Err: waitErr}
 		}
 		if err != nil {
-			task.result = executionError(call, err)
-			task.finishedAt = storage.Now()
-			m.recordCallCompleted(ctx, sessionID, call, resolvedTool.Source, actor, "", runSource, task.startedAt, task.result)
-			ready <- index
+			finish(executionError(call, err), resolvedTool.Source)
 			continue
 		}
 		if prepared.Status != operationresult.Success {
-			task.result = executionResult{Message: toolMessage(call.Name, call.ID, prepared.Message), Result: operationresult.Result[*toolshare.Result]{Status: prepared.Status, Message: prepared.Message}, Summary: prepared.Message}
-			task.finishedAt = storage.Now()
-			m.recordCallCompleted(ctx, sessionID, call, resolvedTool.Source, actor, "", runSource, task.startedAt, task.result)
-			ready <- index
+			finish(executionResult{
+				Message: toolMessage(call.Name, call.ID, prepared.Message),
+				Result:  operationresult.Result[*toolshare.Result]{Status: prepared.Status, Message: prepared.Message},
+				Summary: prepared.Message,
+			}, resolvedTool.Source)
 			continue
 		}
 		async := false
@@ -273,9 +273,11 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			var reason string
 			async, reason = asyncMode(resolvedTool.Native.Definition, json.RawMessage(call.Arguments), snapshot.Mode == storage.SessionModeWork)
 			if reason != "" {
-				task.result = executionResult{Message: toolMessage(call.Name, call.ID, reason), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: reason}, Summary: reason}
-				task.finishedAt = storage.Now()
-				ready <- index
+				finish(executionResult{
+					Message: toolMessage(call.Name, call.ID, reason),
+					Result:  operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: reason},
+					Summary: reason,
+				}, "")
 				continue
 			}
 		}
@@ -302,30 +304,30 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		if confirmation.Status != operationresult.Success {
 			message := toolMessage(call.Name, call.ID, confirmation.Message)
-			task.result = executionResult{Message: message, Result: operationresult.Result[*toolshare.Result]{Status: confirmation.Status, Message: confirmation.Message}, Summary: confirmation.Message}
-			task.finishedAt = storage.Now()
-			m.recordCallCompleted(ctx, sessionID, call, resolvedTool.Source, actor, riskText, runSource, task.startedAt, task.result)
-			ready <- index
+			finish(executionResult{
+				Message: message,
+				Result:  operationresult.Result[*toolshare.Result]{Status: confirmation.Status, Message: confirmation.Message},
+				Summary: confirmation.Message,
+			}, resolvedTool.Source)
 			continue
 		}
 		if rejected := m.checkMediaArguments(toolCtx, call); rejected != nil {
-			task.result = *rejected
-			task.finishedAt = storage.Now()
-			ready <- index
+			finish(*rejected, "")
 			continue
 		}
 		var withdraw func()
 		if prompt := preparedCall.Prompt; prompt != nil {
 			output, publish, cancelPrompt := prompt(sessionID)
 			sent, err := deps.SendOutputs(toolCtx, []delivery.Output{output})
-			if err != nil || sent.Status != operationresult.Success {
-				if err != nil {
-					task.result = executionError(call, err)
-				} else {
-					task.result = executionResult{Message: toolMessage(call.Name, call.ID, sent.Message), Result: operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message}}
-				}
-				task.finishedAt = storage.Now()
-				ready <- index
+			if err != nil {
+				finish(executionError(call, err), "")
+				continue
+			}
+			if sent.Status != operationresult.Success {
+				finish(executionResult{
+					Message: toolMessage(call.Name, call.ID, sent.Message),
+					Result:  operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message},
+				}, "")
 				continue
 			}
 			publish()
@@ -394,9 +396,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
 		}
 	}
-	err = req.Committer.Flush(ctx)
-
-	return toolshare.RunResult{Err: err}
+	return toolshare.RunResult{Err: req.Committer.Flush(ctx)}
 }
 
 func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
@@ -404,9 +404,9 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 	}
 	info := resolvedTool.Native.Definition
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, toolshare.PolicyFromContext(ctx).AutoConfirmShell)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		scope, _ := workspace.PathScopeFromContext(ctx)
 		content := map[string]string{"task_type": facts.TaskType, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
 		for key, value := range content {

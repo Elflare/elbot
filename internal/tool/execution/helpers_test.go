@@ -61,14 +61,14 @@ func executeTestCall(catalog *registry.Registry, call llm.ToolCallRequest) execu
 	if resolved.Status != operationresult.Success {
 		return executionResult{Message: toolMessage(call.Name, call.ID, resolved.Message), Result: operationresult.Result[*share.Result]{Status: resolved.Status, Message: resolved.Message}}
 	}
-	prepared, err := m.prepareCall(ctx, resolved.Data, call)
+	prepared, err := prepareCall(ctx, resolved.Data, call)
 	if err != nil {
 		return executionError(call, err)
 	}
 	if prepared.Status != operationresult.Success {
 		return executionResult{Message: toolMessage(call.Name, call.ID, prepared.Message), Result: operationresult.Result[*share.Result]{Status: prepared.Status, Message: prepared.Message}}
 	}
-	return m.executePrepared(ctx, call, resolved.Data, prepared.Data, nil)
+	return m.executePrepared(ctx, call, resolved.Data, prepared.Data, func() {})
 }
 
 // 测试夹具使用空参数对象，只保留各场景的执行与权限行为。

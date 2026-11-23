@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 )
 
-func (m *Manager) prepareCall(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (operationresult.Result[*share.PreparedCall], error) {
+func prepareCall(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (operationresult.Result[*share.PreparedCall], error) {
 	if resolved.Source == share.SourceKindELwisp {
 		return prepareELwispTool(call, resolved)
 	}

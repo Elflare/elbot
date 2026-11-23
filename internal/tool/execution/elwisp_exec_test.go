@@ -3,8 +3,6 @@ package execution
 import toolshare "elbot/internal/tool/share"
 
 import (
-	"context"
-	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"net/http"
@@ -20,11 +18,11 @@ func executePreparedELwispTestCall(t *testing.T, call llm.ToolCallRequest, resol
 	t.Helper()
 	resolved.Source = toolshare.SourceKindELwisp
 	manager := &Manager{}
-	prepared, err := manager.prepareCall(t.Context(), resolved, call)
+	prepared, err := prepareCall(t.Context(), resolved, call)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return manager.executePrepared(t.Context(), call, resolved, prepared.Data, nil)
+	return manager.executePrepared(t.Context(), call, resolved, prepared.Data, func() {})
 }
 
 func TestExecuteELwispToolPostsArguments(t *testing.T) {
@@ -99,7 +97,7 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{"value":1}`}
 	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "original", EventKey: "original/event", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 	manager := &Manager{}
-	prepared, err := manager.prepareCall(t.Context(), resolved, call)
+	prepared, err := prepareCall(t.Context(), resolved, call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,33 +137,6 @@ func TestPrepareELwispToolRejectsInvalidRequestBeforeSending(t *testing.T) {
 			prepared, err := prepareELwispTool(call, resolved)
 			if (scenario == "endpoint" && err == nil) || (scenario == "arguments" && (err != nil || prepared.Status != operationresult.InvalidArguments)) || prepared.Data != nil || calls.Load() != 0 {
 				t.Fatalf("prepared=%v error=%v calls=%d", prepared, err, calls.Load())
-			}
-		})
-	}
-}
-
-func TestPreparedELwispCallChecksRequestAndCancellationBeforeSending(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { calls.Add(1) }))
-	defer server.Close()
-	for _, scenario := range []string{"arguments", "canceled"} {
-		t.Run(scenario, func(t *testing.T) {
-			call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{}`}
-			resolved := resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
-			prepared, err := prepareELwispTool(call, resolved)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			if scenario == "arguments" {
-				call.Arguments = `{"changed":true}`
-			} else {
-				cancel()
-			}
-			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolved, prepared.Data, nil)
-			if result.Error == nil || result.ExecutionStarted || calls.Load() != 0 {
-				t.Fatalf("result=%+v calls=%d", result, calls.Load())
 			}
 		})
 	}

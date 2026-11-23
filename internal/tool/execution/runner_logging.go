@@ -57,7 +57,6 @@ func (m *Manager) recordCallCompleted(ctx context.Context, sessionID string, cal
 		Actor:      actor,
 		ElapsedMS:  time.Since(startedAt).Milliseconds(),
 		Summary:    result.Summary,
-		Result:     "",
 		Risk:       toolshare.TruncateLogContent(risk, 2048),
 		RunSource:  toolshare.TruncateLogContent(runSource, 2048),
 		Source:     toolshare.TruncateLogContent(string(source), 2048),

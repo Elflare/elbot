@@ -110,7 +110,7 @@ func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session 
 		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: reason}, nil
 	}
 	ctx = deps.PrepareToolContext(ctx, session, call)
-	prepared, err := m.prepareCall(ctx, target, call)
+	prepared, err := prepareCall(ctx, target, call)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}

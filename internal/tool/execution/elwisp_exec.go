@@ -37,12 +37,9 @@ func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (operati
 	if len(arguments) == 0 {
 		arguments = json.RawMessage(`{}`)
 	}
-	if !json.Valid(arguments) {
-		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "ELwisp tool arguments must be valid JSON"}, nil
-	}
 	payload, err := json.Marshal(elwispToolRequest{Tool: discovered.Name, EventKey: discovered.EventKey, Arguments: arguments})
 	if err != nil {
-		return operationresult.Result[*toolshare.PreparedCall]{}, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "ELwisp tool arguments must be valid JSON"}, nil
 	}
 	req, err := http.NewRequest(http.MethodPost, discovered.Endpoint, bytes.NewReader(payload))
 	if err != nil {

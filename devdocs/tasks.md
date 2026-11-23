@@ -26,7 +26,7 @@
         - [x] builtin/weave
         - [x] builtin/web
     - [x] discovery
-    - [ ] execution
+    - [x] execution
     - [ ] media
     - [ ] preload
     - [ ] registry

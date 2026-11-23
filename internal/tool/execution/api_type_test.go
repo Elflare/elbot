@@ -96,11 +96,11 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			if !want {
 				return
 			}
-			preparedCall, err := manager.prepareCall(ctx, resolved.Data, call)
+			preparedCall, err := prepareCall(ctx, resolved.Data, call)
 			if err != nil || preparedCall.Status != operationresult.Success {
 				t.Fatalf("prepare=%+v err=%v", preparedCall, err)
 			}
-			executed := manager.executePrepared(ctx, call, resolved.Data, preparedCall.Data, nil)
+			executed := manager.executePrepared(ctx, call, resolved.Data, preparedCall.Data, func() {})
 			if executed.Error != nil || executed.Result.Status != operationresult.Success {
 				t.Fatalf("execute=%+v", executed)
 			}

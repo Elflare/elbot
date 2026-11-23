@@ -40,7 +40,7 @@ func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
 			if tc.remote {
 				resolved.Source, resolved.Native = share.SourceKindELwisp, nil
 			}
-			result := (&Manager{}).executePrepared(t.Context(), call, resolved, prepared, nil)
+			result := (&Manager{}).executePrepared(t.Context(), call, resolved, prepared, func() {})
 			if result.Result.Status != operationresult.Success || result.Result.Data != body || result.Error != nil || !result.ExecutionStarted {
 				t.Fatalf("execution result changed: %+v", result)
 			}

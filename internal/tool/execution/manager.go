@@ -52,6 +52,7 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 	if name == "" {
 		return operationresult.Result[resolvedTool]{Status: operationresult.InvalidArguments, Message: "tool name is empty"}, nil
 	}
+	var matched *toolshare.DiscoveredTool
 	for _, discoveredTool := range discovered {
 		modelName := discoveredTool.CanonicalName
 		if modelName == "" {
@@ -66,29 +67,27 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredTool.ForegroundOnly}) {
 			return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: "tool is unavailable in this context"}, nil
 		}
-		source := discoveredTool.Source
-		if source == toolshare.SourceKindELwisp {
+		if discoveredTool.Source == toolshare.SourceKindELwisp {
 			if discoveredTool.Endpoint == "" {
 				return operationresult.Result[resolvedTool]{}, fmt.Errorf("ELwisp tool endpoint is missing")
 			}
-			return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: source, Discovered: &discoveredTool}}, nil
+			return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &discoveredTool}}, nil
 		}
-		if nativeTool, ok := m.Registry.Get(discoveredTool.Name); ok {
-			if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-				return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: reason}, nil
-			}
-			return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool}}, nil
-		}
-		return operationresult.Result[resolvedTool]{Status: operationresult.Unavailable, Message: "native tool is no longer available"}, nil
+		matched = &discoveredTool
+		name = discoveredTool.Name
+		break
 	}
-	if mode == storage.SessionModeBackground {
+	if matched == nil && mode == storage.SessionModeBackground {
 		return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: "tool is not allowed in this background task"}, nil
 	}
 	if nativeTool, ok := m.Registry.Get(name); ok {
 		if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
 			return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: reason}, nil
 		}
-		return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool}}, nil
+		return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: matched}}, nil
+	}
+	if matched != nil {
+		return operationresult.Result[resolvedTool]{Status: operationresult.Unavailable, Message: "native tool is no longer available"}, nil
 	}
 	return operationresult.Result[resolvedTool]{Status: operationresult.NotFound, Message: fmt.Sprintf("tool %q not found", name)}, nil
 }

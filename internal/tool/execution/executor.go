@@ -44,9 +44,7 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 		m.Log(ctx, record)
 		return executionError(call, err)
 	}
-	if onStarted != nil {
-		onStarted()
-	}
+	onStarted()
 	result, logContent, err := prepared.Call(ctx)
 	if err != nil {
 		message.Segments = llm.TextSegments(err.Error())

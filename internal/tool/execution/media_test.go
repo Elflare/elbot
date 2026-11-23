@@ -142,11 +142,11 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
 	definition := target.Definition()
 	resolved := resolvedTool{Native: &definition}
-	prepared, err := manager.prepareCall(context.Background(), resolved, call)
+	prepared, err := prepareCall(context.Background(), resolved, call)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := manager.executePrepared(context.Background(), call, resolved, prepared.Data, nil)
+	result := manager.executePrepared(context.Background(), call, resolved, prepared.Data, func() {})
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
