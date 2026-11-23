@@ -19,12 +19,12 @@
 - [x] platform包
 - [ ] tool包
     - [x] tool 根部（不含子包）
-    - [ ] builtin
+    - [x] builtin
         - [x] builtin 根部（不含子包）
         - [x] builtin/chat_history
         - [x] builtin/long_memory
         - [x] builtin/weave
-        - [ ] builtin/web
+        - [x] builtin/web
     - [ ] discovery
     - [ ] execution
     - [ ] media

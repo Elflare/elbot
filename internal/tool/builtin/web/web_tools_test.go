@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -515,15 +514,6 @@ func TestWebExtractRejectsInvalidProxyURL(t *testing.T) {
 
 func TestWebExtractToolExtractsDirectHTML(t *testing.T) {
 	t.Setenv(jinaAPIKeyEnv, "")
-	oldWD, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldWD) })
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`<!doctype html><html><head><title>测试页</title><style>.x{}</style><script>alert(1)</script></head><body><h1>标题</h1><!-- hidden --><p>甲&nbsp;&amp;&nbsp;乙</p></body></html>`))
@@ -536,9 +526,6 @@ func TestWebExtractToolExtractsDirectHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.Data.Content != "测试页 标题 甲 & 乙" {
-		t.Fatalf("content = %q", result.Data.Content)
-	}
-	if strings.Contains(result.Data.Content, "alert") || strings.Contains(result.Data.Content, "hidden") || !strings.Contains(result.Data.Content, "甲 & 乙") {
 		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
@@ -580,15 +567,15 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 }
 
 func TestWebExtractToolSlicesPreparedMaxChars(t *testing.T) {
-	data := sliceExtract(cachedExtract{url: "u", content: strings.Repeat("x", maxExtractChars+100)}, 0, maxExtractChars, true)
-	if data.ReturnedChars != maxExtractChars || data.TotalChars != maxExtractChars+100 {
-		t.Fatalf("data = %#v", data)
+	_, start, end, total := sliceExtract(strings.Repeat("x", maxExtractChars+100), 0, maxExtractChars)
+	if start != 0 || end != maxExtractChars || total != maxExtractChars+100 {
+		t.Fatalf("range=%d-%d/%d", start, end, total)
 	}
 }
 
 func TestWebExtractToolSlicesRunes(t *testing.T) {
-	data := sliceExtract(cachedExtract{url: "u", content: "甲乙丙丁"}, 1, 2, true)
-	if data.Content != "乙丙" || data.TotalChars != 4 || data.ReturnedChars != 2 {
-		t.Fatalf("data = %#v", data)
+	page, start, end, total := sliceExtract("甲乙丙丁", 1, 2)
+	if page != "乙丙" || start != 1 || end != 3 || total != 4 {
+		t.Fatalf("page=%q range=%d-%d/%d", page, start, end, total)
 	}
 }

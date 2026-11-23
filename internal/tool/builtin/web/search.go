@@ -77,10 +77,6 @@ func NewWebSearchTool(environment processenv.Environment) WebSearchTool {
 }
 
 func (t WebSearchTool) Definition() toolshare.ToolDefinition {
-	return webSearchBuilder().Build(t.PrepareCall)
-}
-
-func webSearchBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("web_search").Weavable().
 		Description("网页搜索→答案+来源链接+摘要；正文→web_extract。").
 		Risk(toolshare.RiskLow).
@@ -94,7 +90,7 @@ func webSearchBuilder() *toolshare.Builder {
 		StringArray("include_domains", "仅这些域名。").
 		StringArray("exclude_domains", "排除这些域名。").
 		String("country", "仅general；区域偏好，如china、united states。").
-		Boolean("exact_match", "true→精确匹配query中的引号短语。")
+		Boolean("exact_match", "true→精确匹配query中的引号短语。").Build(t.PrepareCall)
 }
 
 func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
@@ -130,22 +126,19 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {
-			callErr := fmt.Errorf("create Tavily request: %w", err)
-			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, fmt.Errorf("create Tavily request: %w", err)
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 
 		resp, err := t.client.Do(httpReq)
 		if err != nil {
-			callErr := fmt.Errorf("Tavily request: %w", err)
-			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, fmt.Errorf("Tavily request: %w", err)
 		}
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			callErr := fmt.Errorf("read Tavily response: %w", err)
-			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, fmt.Errorf("read Tavily response: %w", err)
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			message := fmt.Sprintf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
@@ -153,8 +146,7 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		}
 		var data tavilyResponse
 		if err := json.Unmarshal(respBody, &data); err != nil {
-			callErr := fmt.Errorf("parse Tavily response: %w", err)
-			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, fmt.Errorf("parse Tavily response: %w", err)
 		}
 		result := &toolshare.Result{Content: formatTavilyContent(data)}
 		logContent = fmt.Sprintf("query=%q results=%d", query, len(data.Results))
@@ -175,22 +167,16 @@ func normalizeTavilyRequest(args webSearchArgs, query string) tavilyRequest {
 		depth = defaultSearchDepth
 	}
 	return tavilyRequest{
-		Query:                    query,
-		SearchDepth:              depth,
-		MaxResults:               maxResults,
-		Topic:                    strings.TrimSpace(args.Topic),
-		TimeRange:                strings.TrimSpace(args.TimeRange),
-		IncludeAnswer:            true,
-		IncludeRawContent:        false,
-		IncludeImages:            false,
-		IncludeImageDescriptions: false,
-		IncludeFavicon:           false,
-		IncludeUsage:             false,
-		AutoParameters:           false,
-		IncludeDomains:           trimStringList(args.IncludeDomains),
-		ExcludeDomains:           trimStringList(args.ExcludeDomains),
-		Country:                  strings.TrimSpace(args.Country),
-		ExactMatch:               args.ExactMatch,
+		Query:          query,
+		SearchDepth:    depth,
+		MaxResults:     maxResults,
+		Topic:          strings.TrimSpace(args.Topic),
+		TimeRange:      strings.TrimSpace(args.TimeRange),
+		IncludeAnswer:  true,
+		IncludeDomains: trimStringList(args.IncludeDomains),
+		ExcludeDomains: trimStringList(args.ExcludeDomains),
+		Country:        strings.TrimSpace(args.Country),
+		ExactMatch:     args.ExactMatch,
 	}
 }
 

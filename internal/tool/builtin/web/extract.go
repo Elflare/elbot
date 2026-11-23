@@ -39,26 +39,11 @@ type webExtractArgs struct {
 	ForceRefresh   bool   `json:"force_refresh"`
 }
 
-type webExtractData struct {
-	URL           string
-	Title         string
-	Source        string
-	TotalChars    int
-	Offset        int
-	ReturnedChars int
-	Cached        bool
-	Content       string
-}
-
 func NewWebExtractTool(environment processenv.Environment) *WebExtractTool {
 	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache(), processEnv: environment}
 }
 
 func (t *WebExtractTool) Definition() toolshare.ToolDefinition {
-	return webExtractBuilder().Build(t.PrepareCall)
-}
-
-func webExtractBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("web_extract").Weavable().
 		Description("提取网页正文；同URL+offset→续读。").
 		Risk(toolshare.RiskLow).
@@ -71,7 +56,7 @@ func webExtractBuilder() *toolshare.Builder {
 		Integer("timeout_ms", "请求超时，ms；≤0/省略→15000。").
 		String("proxy", "省略→配置/系统代理；disabled→直连；URL→指定代理。").
 		String("method", "默认jina；direct：快速读取静态页；jina：清理杂项、提取正文；markdownnew：保留整页结构和链接。", toolshare.Enum("direct", "jina", "markdownnew")).
-		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。")
+		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。").Build(t.PrepareCall)
 }
 
 func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
@@ -94,18 +79,28 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if method == "" {
 		method = "jina"
 	}
-	apiKey := ""
+	var fetch func(context.Context) (operationresult.Result[cachedExtract], error)
 	selector := ""
 	switch method {
-	case "direct", "markdownnew":
+	case "direct":
+		fetch = func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
+			return t.fetchDirect(fetchCtx, url, proxy)
+		}
+	case "markdownnew":
+		fetch = func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
+			return t.fetchMarkdownNew(fetchCtx, url, proxy)
+		}
 	case "jina":
 		selector = strings.TrimSpace(args.RemoveSelector)
 		if selector == "" {
 			selector = defaultRemoveSelector
 		}
-		apiKey, _ = t.processEnv.Lookup(jinaAPIKeyEnv)
+		apiKey, _ := t.processEnv.Lookup(jinaAPIKeyEnv)
 		if strings.TrimSpace(apiKey) == "" {
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s is required for method=jina; set it in environment or config .env", jinaAPIKeyEnv)}, nil
+		}
+		fetch = func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
+			return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
 		}
 	default:
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid web_extract method: %s; expected direct, jina, or markdownnew", method)}, nil
@@ -132,48 +127,23 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
-			switch method {
-			case "jina":
-				return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
-			case "markdownnew":
-				return t.fetchMarkdownNew(fetchCtx, url, proxy)
-			default:
-				return t.fetchDirect(fetchCtx, url, proxy)
-			}
-		})
+		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, fetch)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, fmt.Sprintf("url=%s source=%s status=failed", url, method), err
 		}
 		if entry.Status != operationresult.Success {
 			return operationresult.Result[*toolshare.Result]{Status: entry.Status, Message: entry.Message}, fmt.Sprintf("url=%s source=%s status=%s", url, method, entry.Status), nil
 		}
-		data := sliceExtract(entry.Data, args.Offset, args.MaxChars, cached)
-		summary := fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s title=%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, strings.Join(strings.Fields(data.Title), " "))
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Summary: summary, Content: data.Content}}, summary, nil
+		page, start, end, total := sliceExtract(entry.Data.content, args.Offset, args.MaxChars)
+		summary := fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s title=%s", entry.Data.url, start, end, total, cached, entry.Data.source, strings.Join(strings.Fields(entry.Data.title), " "))
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Summary: summary, Content: page}}, summary, nil
 	})}, nil
 }
 
-func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExtractData {
-	contentRunes := []rune(entry.content)
-	total := len(contentRunes)
-	if offset > total {
-		offset = total
-	}
-	end := offset + maxChars
-	if end > total {
-		end = total
-	}
-	content := string(contentRunes[offset:end])
-	returned := end - offset
-	return webExtractData{
-		URL:           entry.url,
-		Title:         entry.title,
-		Source:        entry.source,
-		TotalChars:    total,
-		Offset:        offset,
-		ReturnedChars: returned,
-		Cached:        cached,
-		Content:       content,
-	}
+func sliceExtract(content string, offset, maxChars int) (page string, start, end, total int) {
+	contentRunes := []rune(content)
+	total = len(contentRunes)
+	start = min(offset, total)
+	end = min(start+maxChars, total)
+	return string(contentRunes[start:end]), start, end, total
 }

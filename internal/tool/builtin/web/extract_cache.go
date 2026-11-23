@@ -89,16 +89,13 @@ func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh 
 }
 
 func (c *extractCache) setLocked(key string, entry cachedExtract) {
-	if _, exists := c.values[key]; exists {
-		c.values[key] = entry
-		return
+	if _, exists := c.values[key]; !exists {
+		if len(c.order) >= maxExtractCacheEntries {
+			delete(c.values, c.order[0])
+			c.order = c.order[1:]
+		}
+		c.order = append(c.order, key)
 	}
-	if len(c.order) >= maxExtractCacheEntries {
-		oldest := c.order[0]
-		c.order = c.order[1:]
-		delete(c.values, oldest)
-	}
-	c.order = append(c.order, key)
 	c.values[key] = entry
 }
 
