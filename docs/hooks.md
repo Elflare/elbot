@@ -13,7 +13,7 @@
 - `mode = "once"` 不创建 Worker，仍按规则 Hook 运行；只有规则配了 `type = "exec"` 才会启动一次性 exec Hook。
 - 所有产生 outputs 的入口使用同一套 segment。
 
-示例见 [Hook Showcase](https://github.com/Elfreese/elbot-showcase/blob/main/hooks/README.md)。
+示例见 [Hook Showcase](https://github.com/Elfreese/elbot-showcase/tree/main/hooks)。
 
 ## 配置位置
 
