@@ -19,10 +19,9 @@ import (
 )
 
 type normalizedMessage struct {
-	ReplyID      string
-	ReplyMessage *message
-	Mentions     []share.Mention
-	Segments     []share.MessageSegment
+	ReplyID  string
+	Mentions []share.Mention
+	Segments []share.MessageSegment
 }
 
 func normalizeMessage(msg message) normalizedMessage {
@@ -32,7 +31,6 @@ func normalizeMessage(msg message) normalizedMessage {
 	text = cleanText(text)
 	if msg.ReplyToMessage != nil {
 		out.ReplyID = formatMessageID(msg.ReplyToMessage.MessageID)
-		out.ReplyMessage = msg.ReplyToMessage
 	}
 	if text != "" {
 		out.Segments = append(out.Segments, share.MessageSegment{Type: share.SegmentText, Text: text})
@@ -102,9 +100,9 @@ func formatMessageID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-func displayNamePtr(u *user, fallback string) string {
+func displayNamePtr(u *user) string {
 	if u == nil {
-		return fallback
+		return ""
 	}
 	return displayName(*u)
 }
@@ -241,6 +239,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 	normalized := normalizeMessage(msg)
 	text := share.SegmentsText(normalized.Segments)
 	platformUserID := userIDString(msg.From)
+	name := displayNamePtr(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
 	chatName := msg.Chat.Title
 	if msg.Chat.Type == "private" {
@@ -258,8 +257,8 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			Identity: contextinfo.Identity{
 
 				ID:       platformUserID,
-				Nickname: displayNamePtr(msg.From, ""),
-				Name:     displayNamePtr(msg.From, ""),
+				Nickname: name,
+				Name:     name,
 			},
 			PlatformMessageID: formatMessageID(msg.MessageID),
 			ReplyToMessageID:  normalized.ReplyID,
@@ -287,7 +286,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		return
 	}
 
-	if original := normalized.ReplyMessage; original != nil {
+	if original := msg.ReplyToMessage; original != nil {
 		quote := normalizeMessage(*original)
 		messageCtx.ReplyToSenderID = userIDString(original.From)
 		msgCtx := share.WithMessageContext(ctx, messageCtx)
@@ -299,7 +298,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			Owner:    contextinfo.ActorIdentity{Platform: a.Name(), ID: platformUserID},
 			ReplyID:  normalized.ReplyID,
 			Text:     text, Segments: normalized.Segments,
-			EventQuote: share.ReferencedMessage{SenderID: messageCtx.ReplyToSenderID, SenderName: displayNamePtr(original.From, ""), Text: share.SegmentsText(quote.Segments), Segments: quote.Segments},
+			EventQuote: share.ReferencedMessage{SenderID: messageCtx.ReplyToSenderID, SenderName: displayNamePtr(original.From), Text: share.SegmentsText(quote.Segments), Segments: quote.Segments},
 		})
 		if err != nil {
 			record := globalevents.LogRecord{

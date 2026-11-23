@@ -107,12 +107,12 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 		}
 		return a.sendText(ctx, t, out.Text, replyID, out.Actions)
 	case delivery.KindEmoticon:
-		msg, err = a.client.sendSticker(ctx, t.NativeChatID, out.EmoticonID, 0)
+		msg, err = a.client.sendSticker(ctx, t.NativeChatID, out.EmoticonID)
 		seg = storage.ChatSegment{Type: "text", Text: delivery.FallbackText(out)}
 	case delivery.KindImage:
-		msg, err = a.client.sendPhoto(ctx, t.NativeChatID, sourceFromOutput(out), 0)
+		msg, err = a.client.sendPhoto(ctx, t.NativeChatID, sourceFromOutput(out))
 	case delivery.KindFile:
-		msg, err = a.client.sendDocument(ctx, t.NativeChatID, sourceFromOutput(out), 0)
+		msg, err = a.client.sendDocument(ctx, t.NativeChatID, sourceFromOutput(out))
 	default:
 		return a.sendText(ctx, t, delivery.FallbackText(out), 0, nil)
 	}
@@ -134,9 +134,9 @@ func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo i
 	case "rich":
 		return a.sendRichText(ctx, t, text, replyTo, actions)
 	case "plain":
-		return a.sendPlainText(ctx, t, text, replyTo, actions)
+		return a.sendFormattedText(ctx, t, text, "", replyTo, actions)
 	default:
-		return a.sendHTMLText(ctx, t, text, replyTo, actions)
+		return a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, actions)
 	}
 }
 
@@ -162,14 +162,6 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 		a.recordOutput(ctx, t, &receipt, msg, pageReply, storage.ChatSegment{Type: "text", Text: page})
 	}
 	return receipt, nil
-}
-
-func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, error) {
-	return a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, actions)
-}
-
-func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, error) {
-	return a.sendFormattedText(ctx, t, plainTextFromMarkdown(text), "", replyTo, actions)
 }
 
 func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMode string, replyTo int64, actions []delivery.Action) (delivery.Receipt, error) {

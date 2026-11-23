@@ -360,7 +360,7 @@ func TestSendMediaUsesURLAsReference(t *testing.T) {
 	defer server.Close()
 
 	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
-	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{URL: "https://example.com/a.png"}, 0); err != nil {
+	if _, err := client.sendPhoto(context.Background(), 1, mediaSource{URL: "https://example.com/a.png"}); err != nil {
 		t.Fatal(err)
 	}
 	if got["photo"] != "https://example.com/a.png" {
@@ -380,7 +380,7 @@ func TestSendStickerUsesNativeEmoticonID(t *testing.T) {
 	}))
 	defer server.Close()
 	client := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL}, nil).client
-	if _, err := client.sendSticker(context.Background(), 1, "sticker-file-id", 0); err != nil {
+	if _, err := client.sendSticker(context.Background(), 1, "sticker-file-id"); err != nil {
 		t.Fatal(err)
 	}
 	if got["sticker"] != "sticker-file-id" {
@@ -420,7 +420,7 @@ func TestMultipartMediaBodyReadsStructuredSources(t *testing.T) {
 		{name: "file", source: mediaSource{Name: "chosen.txt", Path: path}, want: "from-file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body, contentType, err := multipartMediaBody(1, "document", tc.source, 0)
+			body, contentType, err := multipartMediaBody(1, "document", tc.source)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -164,7 +164,7 @@ func (s *messageStream) sendFinal(ctx context.Context, text string, actions []de
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {
 	switch a.cfg.Format {
 	case "plain", "rich":
-		return plainTextFromMarkdown(text), ""
+		return text, ""
 	default:
 		return telegramHTMLFromMarkdown(text), "HTML"
 	}

@@ -138,35 +138,31 @@ func (c *apiClient) downloadFile(ctx context.Context, filePath string, maxBytes 
 	return operationresult.Result[[]byte]{Status: operationresult.Success, Data: data}, nil
 }
 
-func (c *apiClient) sendPhoto(ctx context.Context, chatID int64, source mediaSource, replyTo int64) (sentMessage, error) {
-	return c.sendMedia(ctx, "sendPhoto", chatID, "photo", source, replyTo)
+func (c *apiClient) sendPhoto(ctx context.Context, chatID int64, source mediaSource) (sentMessage, error) {
+	return c.sendMedia(ctx, "sendPhoto", chatID, "photo", source)
 }
 
-func (c *apiClient) sendDocument(ctx context.Context, chatID int64, source mediaSource, replyTo int64) (sentMessage, error) {
-	return c.sendMedia(ctx, "sendDocument", chatID, "document", source, replyTo)
+func (c *apiClient) sendDocument(ctx context.Context, chatID int64, source mediaSource) (sentMessage, error) {
+	return c.sendMedia(ctx, "sendDocument", chatID, "document", source)
 }
 
-func (c *apiClient) sendSticker(ctx context.Context, chatID int64, stickerID string, replyTo int64) (sentMessage, error) {
-	return c.sendMediaByReference(ctx, "sendSticker", chatID, "sticker", strings.TrimSpace(stickerID), replyTo)
+func (c *apiClient) sendSticker(ctx context.Context, chatID int64, stickerID string) (sentMessage, error) {
+	return c.sendMediaByReference(ctx, "sendSticker", chatID, "sticker", strings.TrimSpace(stickerID))
 }
 
-func (c *apiClient) sendMedia(ctx context.Context, method string, chatID int64, field string, source mediaSource, replyTo int64) (sentMessage, error) {
+func (c *apiClient) sendMedia(ctx context.Context, method string, chatID int64, field string, source mediaSource) (sentMessage, error) {
 	if value := strings.TrimSpace(source.URL); value != "" {
-		return c.sendMediaByReference(ctx, method, chatID, field, value, replyTo)
+		return c.sendMediaByReference(ctx, method, chatID, field, value)
 	}
-	body, contentType, err := multipartMediaBody(chatID, field, source, replyTo)
+	body, contentType, err := multipartMediaBody(chatID, field, source)
 	if err != nil {
 		return sentMessage{}, err
 	}
 	return c.doMultipart(ctx, method, body, contentType)
 }
 
-func (c *apiClient) sendMediaByReference(ctx context.Context, method string, chatID int64, field string, value string, replyTo int64) (sentMessage, error) {
-	body := map[string]any{"chat_id": chatID, field: value}
-	if replyTo != 0 {
-		body["reply_to_message_id"] = replyTo
-	}
-	return callTelegram[sentMessage](c, ctx, method, body, c.cfg.apiTimeout())
+func (c *apiClient) sendMediaByReference(ctx context.Context, method string, chatID int64, field string, value string) (sentMessage, error) {
+	return callTelegram[sentMessage](c, ctx, method, map[string]any{"chat_id": chatID, field: value}, c.cfg.apiTimeout())
 }
 
 func callTelegram[T any](c *apiClient, ctx context.Context, method string, in any, timeout time.Duration) (T, error) {
@@ -274,16 +270,11 @@ func isTelegramParseError(err error) bool {
 	return strings.Contains(text, "parse") || strings.Contains(text, "can't parse") || strings.Contains(text, "entities")
 }
 
-func multipartMediaBody(chatID int64, field string, source mediaSource, replyTo int64) (*bytes.Buffer, string, error) {
+func multipartMediaBody(chatID int64, field string, source mediaSource) (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 		return nil, "", err
-	}
-	if replyTo != 0 {
-		if err := writer.WriteField("reply_to_message_id", strconv.FormatInt(replyTo, 10)); err != nil {
-			return nil, "", err
-		}
 	}
 	part, err := writer.CreateFormFile(field, source.Name)
 	if err != nil {

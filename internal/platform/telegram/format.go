@@ -63,10 +63,6 @@ func telegramHTMLFromMarkdown(text string) string {
 	return strings.Join(out, "\n")
 }
 
-func plainTextFromMarkdown(text string) string {
-	return text
-}
-
 func codeFenceStart(line string) (string, bool) {
 	matches := codeFenceStartRegexp.FindStringSubmatch(strings.TrimSpace(line))
 	if matches == nil {
