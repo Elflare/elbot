@@ -134,11 +134,7 @@ func (s *cronService) prepareUpdate(ctx context.Context, patch CronUpdateRequest
 	return prepared, nil
 }
 
-func (s *cronService) GetCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[CronInfo], error) {
-	return s.repo.GetByName(ctx, name)
-}
-
-func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCompleted bool, _ contextinfo.Actor) (operationresult.Result[[]CronInfo], error) {
+func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCompleted bool) (operationresult.Result[[]CronInfo], error) {
 	jobs, err := s.repo.List(ctx, includeDisabled)
 	if err != nil || jobs.Status != operationresult.Success {
 		return jobs, err
@@ -150,14 +146,6 @@ func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCom
 		}
 	}
 	return operationresult.Result[[]CronInfo]{Status: operationresult.Success, Data: result}, nil
-}
-
-func (s *cronService) DisableCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[struct{}], error) {
-	return s.repo.DisableByName(ctx, name)
-}
-
-func (s *cronService) DeleteCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[struct{}], error) {
-	return s.repo.DeleteByName(ctx, name)
 }
 
 func (s *cronService) prepare(req CronCreateRequest, reset bool) operationresult.Result[CronSaveRequest] {
@@ -304,7 +292,7 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		toolshare.ConfirmationField{Key: "include_completed", Label: "包含已完成", Value: args.IncludeCompleted},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if strings.TrimSpace(args.Name) != "" {
-			queried, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
+			queried, err := t.service.repo.GetByName(ctx, args.Name)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
@@ -316,7 +304,7 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 		}
-		listed, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
+		listed, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
@@ -431,7 +419,7 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				result.Data = &toolshare.Result{Content: action + "定时任务：" + job.Data.Name + "\n" + formatCronInfo(job.Data)}
 			}
 		case "disable":
-			disabled, err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx))
+			disabled, err := t.service.repo.DisableByName(ctx, args.Name)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
@@ -440,7 +428,7 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			}
 			result = operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: fmt.Sprintf("已停用定时任务：%s", args.Name)}}
 		case "delete":
-			deleted, err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx))
+			deleted, err := t.service.repo.DeleteByName(ctx, args.Name)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
@@ -489,7 +477,7 @@ func (t CronWriteTool) prepareUpdate(ctx context.Context, args cronWriteArgs) (o
 	if err != nil {
 		return operationresult.Result[CronSaveRequest]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, TargetID: args.TargetID, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, TargetID: args.TargetID, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled}
 	if args.ScheduleMode != "" {
 		patch.ScheduleMode = &args.ScheduleMode
 	}

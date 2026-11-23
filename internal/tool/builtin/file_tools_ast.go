@@ -43,19 +43,19 @@ func normalizeReadFileMode(value string) (string, error) {
 	}
 }
 
-func readFileASTResult(file fileops.File, index readFileIndex, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+func readFileASTResult(file fileops.File, index readFileIndex, warnings []string) operationresult.Result[*toolshare.Result] {
 	if !strings.EqualFold(filepath.Ext(file.Path), ".go") {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: "ast mode only supports Go files; use read or grep mode"}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: "ast mode only supports Go files; use read or grep mode"}
 	}
 	entries, warning, err := buildGoFileIndex(file.Path, file.Text)
 	if err != nil {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}
 	}
 	if warning != "" {
 		warnings = append(warnings, warning)
 	}
 	if index.outOfRange(len(entries)) {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d entries", index.start, len(entries))}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d entries", index.start, len(entries))}
 	}
 	start, end := index.start-1, min(index.end, len(entries))
 	var b strings.Builder
@@ -79,7 +79,7 @@ func readFileASTResult(file fileops.File, index readFileIndex, warnings []string
 			fmt.Fprintf(&b, "    [%d more members; use index=%d to expand]\n", len(entry.Members)-memberCount, i+1)
 		}
 	}
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
 }
 
 func buildGoFileIndex(path, source string) ([]fileIndexEntry, string, error) {

@@ -291,7 +291,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			case readFileModeGrep:
 				result, err = readFileGrepResult(ctx, file, args.Query, args.ContextLines, args.Index, warnings)
 			case readFileModeAST:
-				result, err = readFileASTResult(file, args.Index, warnings)
+				result = readFileASTResult(file, args.Index, warnings)
 			case readFileModeRead:
 				lines := fileops.SplitLines(file.Text)
 				start, end, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)

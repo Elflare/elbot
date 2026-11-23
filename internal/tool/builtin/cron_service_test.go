@@ -25,10 +25,7 @@ type cronRepositoryStub struct {
 func (s *cronRepositoryStub) Upsert(_ context.Context, req CronSaveRequest) (operationresult.Result[CronInfo], error) {
 	s.saved = append(s.saved, req)
 	if s.err != nil {
-		if s.err != nil {
-			return operationresult.Result[CronInfo]{}, s.err
-		}
-		return operationresult.Result[CronInfo]{Status: operationresult.Success, Data: s.info}, nil
+		return operationresult.Result[CronInfo]{}, s.err
 	}
 	return operationresult.Result[CronInfo]{Status: operationresult.Success, Data: s.info}, nil
 }

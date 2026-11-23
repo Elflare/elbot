@@ -51,7 +51,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	source := args.source()
+	source := strings.TrimSpace(args.Source)
 	if source == "" {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "source is required"}, nil
 	}
@@ -199,10 +199,6 @@ func localSourcePath(source string) (string, error) {
 		return "", fmt.Errorf("invalid file URI")
 	}
 	return filepath.FromSlash(path), nil
-}
-
-func (args sendFileArgs) source() string {
-	return strings.TrimSpace(args.Source)
 }
 
 func parseSendFileArgs(req toolshare.CallRequest) (sendFileArgs, error) {

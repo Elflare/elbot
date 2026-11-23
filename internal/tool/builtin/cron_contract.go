@@ -48,20 +48,19 @@ type CronCreateRequest struct {
 
 // CronUpdateRequest 的 nil 字段表示不修改；非 nil 的零值或空切片表示显式清空。
 type CronUpdateRequest struct {
-	Name                string            // 要修改的任务短名。
-	Title               *string           // 可选的新标题。
-	ScheduleMode        *string           // 可选的新计划模式。
-	RunAt               *string           // 可选的已换算绝对时间。
-	CronExpr            *string           // 可选的新 Cron 表达式。
-	TriggerMode         *string           // 可选的新触发模式。
-	Message             *string           // 可选的新任务文本。
-	ToolListNames       *[]string         // 可选的工具名单；空切片清空名单。
-	ModelProvider       *string           // 可选模型提供方；与 Model 配对清空以恢复默认。
-	Model               *string           // 可选模型名称。
-	TargetID            *string           // 可选的私聊接收人 ID；空字符串恢复默认接收人。
-	AllEnabledPlatforms *bool             // 可选的广播设置。
-	Enabled             *bool             // 可选的启用状态。
-	Actor               contextinfo.Actor // 发起管理操作的公共身份。
+	Name                string    // 要修改的任务短名。
+	Title               *string   // 可选的新标题。
+	ScheduleMode        *string   // 可选的新计划模式。
+	RunAt               *string   // 可选的已换算绝对时间。
+	CronExpr            *string   // 可选的新 Cron 表达式。
+	TriggerMode         *string   // 可选的新触发模式。
+	Message             *string   // 可选的新任务文本。
+	ToolListNames       *[]string // 可选的工具名单；空切片清空名单。
+	ModelProvider       *string   // 可选模型提供方；与 Model 配对清空以恢复默认。
+	Model               *string   // 可选模型名称。
+	TargetID            *string   // 可选的私聊接收人 ID；空字符串恢复默认接收人。
+	AllEnabledPlatforms *bool     // 可选的广播设置。
+	Enabled             *bool     // 可选的启用状态。
 }
 
 // CronInfo 只承载任务管理信息，不包含内部执行、投递或存储状态。
