@@ -4,15 +4,15 @@
 
 Slash commands are handled uniformly by Agent Core, and platforms such as CLI and QQ share the same semantics. The default prefix is `/`, which can be configured in `[commands]` of `app.toml`.
 
-## Help and Diagnostics
+## Help & Diagnostics
 
-| Command | Function |
+| Command | Description |
 | --- | --- |
 | `/help` | List of available commands. |
-| `/help <command>` | Detailed help for a specific command, for example `/help model`. |
-| `/doctor` | Read-only check of the current configuration and built-in Skills (superadmin only). |
+| `/help <command>` | Detailed help for a specific command, e.g., `/help model`. |
+| `/doctor` | Read-only check of current configuration and built-in Skills (superadmin only). |
 
-`/doctor` uses the main configuration path selected during service startup; separated configurations are located according to `config_files`. When issues occur, it lists the actual file paths, specific issues, descriptions, and GitHub raw addresses of default templates, and generates a processing request that can be copied to ElBot; Copy and provide it to an ElBot that has access to these files for processing. The check itself does not modify files or perform automatic repairs; if there are no issues, it only returns `Everything is OK`. See [Configuration Diagnosis](configuration.md#配置诊断) for the scope.
+See [Configuration Diagnostics](configuration.md#配置诊断) for the check scope.
 
 ## Model
 
