@@ -30,7 +30,7 @@
     - [x] dispatch、notification、headless
     - [x] refcontext（结合平台适配器核对引用恢复）
     - [x] qq-onebot
-    - [ ] qqofficial
+    - [x] qqofficial
     - [ ] telegram
     - [ ] cli
         - [ ] cli 根部（不含子包）

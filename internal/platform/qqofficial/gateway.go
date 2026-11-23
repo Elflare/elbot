@@ -42,7 +42,6 @@ type reconnectReason struct {
 type gatewayState struct {
 	sessionID string
 	seq       atomic.Int64 // 网关读取与心跳并发访问的最新序号。
-	resume    bool
 }
 
 func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandler, state *gatewayState) (reconnectReason, error) {
@@ -71,7 +70,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 	if interval <= 0 {
 		interval = 45 * time.Second
 	}
-	if state.resume && state.sessionID != "" {
+	if state.sessionID != "" {
 		if err := a.sendResume(ctx, conn, state); err != nil {
 			return reconnectReason{mode: reconnectIdentify}, err
 		}
@@ -119,11 +118,8 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 		case opHeartbeatACK:
 			// a.logDebug(ctx, "qqofficial heartbeat ack")
 		case opReconnect:
-			state.resume = true
 			return reconnectReason{mode: reconnectResume}, nil
 		case opInvalidSession:
-			state.resume = false
-			state.sessionID = ""
 			return reconnectReason{mode: reconnectIdentify}, fmt.Errorf("qqofficial invalid session")
 		default:
 			{
@@ -216,7 +212,6 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 		a.username = strings.TrimSpace(ready.User.Username)
 		a.mu.Unlock()
 		state.sessionID = ready.SessionID
-		state.resume = true
 		{
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogCategoryLog,
@@ -233,8 +228,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 		}
 		a.notifyConnected(ctx)
 	case eventResumed:
-		state.resume = true
-		// a.logDebug(ctx, "qqofficial gateway resumed")
+		return nil
 	case eventC2CMessageCreate:
 		var msg inboundMessage
 		if err := json.Unmarshal(p.Data, &msg); err != nil {

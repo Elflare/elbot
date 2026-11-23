@@ -183,17 +183,13 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 			backoff.Reset()
 		}
 		if reason.fatal {
-			if err == nil {
-				err = fmt.Errorf("qqofficial gateway stopped")
-			}
 			a.mu.Lock()
 			a.runErr = err
 			a.mu.Unlock()
 			a.BeginClose()
 			return
 		}
-		state.resume = reason.mode == reconnectResume
-		if !state.resume {
+		if reason.mode == reconnectIdentify {
 			state.sessionID = ""
 			state.seq.Store(0)
 		}
