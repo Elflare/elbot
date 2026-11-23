@@ -271,9 +271,46 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 }
 
 func TestRejectBashShellDirectoryChangeCommand(t *testing.T) {
-	err := rejectBashShellDirectoryChange(parseBashForTest(t, "echo ok && cd internal && pwd"))
+	err := rejectBashShellCommand(parseBashForTest(t, "echo ok && cd internal && pwd"))
 	if err == nil || !strings.Contains(err.Error(), "workspace") {
 		t.Fatalf("expected cd rejection, got %v", err)
+	}
+}
+
+func TestShellToolInlinePython3(t *testing.T) {
+	if isPowerShellEnv() {
+		t.Skip("Bash AST policy")
+	}
+	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: t.TempDir()})
+	for _, tc := range []struct {
+		cmd     string
+		blocked bool
+	}{
+		{"python3 - <<'PY'\nprint(1)\nPY", true},
+		{"python3 <<'PY'\nprint(1)\nPY", true},
+		{"echo before && python3 -c 'print(1)'", true},
+		{"python3 script.py -c arg", false},
+		{"python3 -m pytest", false},
+		{"echo 'print(1)' | python3", false},
+		{"echo \"python3 -c 'print(1)'\"", false},
+		{"python -c 'print(1)'", false},
+		{"python3 script.py <<'PY'\ninput\nPY", false},
+		{"python3 3<<'PY'\ninput\nPY", false},
+	} {
+		t.Run(tc.cmd, func(t *testing.T) {
+			args, _ := json.Marshal(shellArgs{Cmd: tc.cmd})
+			res, err := (ShellTool{}).PrepareCall(ctx, toolshare.CallRequest{Arguments: args}, toolshare.Info{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.blocked {
+				if res.Status != operationresult.Forbidden || res.Message != "shell禁止py，用tool_weave" || res.Data != nil {
+					t.Fatalf("expected inline Python rejection, got %+v", res)
+				}
+			} else if res.Status != operationresult.Success {
+				t.Fatalf("unexpected rejection: %+v", res)
+			}
+		})
 	}
 }
 

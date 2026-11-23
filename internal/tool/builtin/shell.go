@@ -109,7 +109,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 	if !powerShell {
 		file, parseErr = syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(cmdText), "")
 		if parseErr == nil {
-			if err := rejectBashShellDirectoryChange(file); err != nil {
+			if err := rejectBashShellCommand(file); err != nil {
 				return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Forbidden, Message: err.Error()}, nil
 			}
 		}
@@ -233,13 +233,17 @@ func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {
 	return args, cmdText, nil
 }
 
-func rejectBashShellDirectoryChange(file *syntax.File) error {
-	var blocked string
+func rejectBashShellCommand(file *syntax.File) error {
+	var blocked error
 	syntax.Walk(file, func(node syntax.Node) bool {
-		if blocked != "" {
+		if blocked != nil {
 			return false
 		}
-		call, ok := node.(*syntax.CallExpr)
+		stmt, ok := node.(*syntax.Stmt)
+		if !ok {
+			return true
+		}
+		call, ok := stmt.Cmd.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
 			return true
 		}
@@ -249,14 +253,30 @@ func rejectBashShellDirectoryChange(file *syntax.File) error {
 		}
 		switch commandBase(name) {
 		case "cd", "chdir", "pushd", "popd", "set-location", "sl":
-			blocked = commandBase(name)
+			blocked = fmt.Errorf("shell command %q is not allowed; use the workspace tool to set the working directory", commandBase(name))
+		}
+		if name != "python3" {
+			return true
+		}
+		const message = "shell禁止py，用tool_weave"
+		if len(call.Args) > 1 {
+			arg, _ := literalWord(call.Args[1])
+			if arg == "-c" && len(call.Args) >= 3 {
+				blocked = errors.New(message)
+			}
+			if arg != "-" || len(call.Args) != 2 {
+				return true
+			}
+		}
+		for _, r := range stmt.Redirs {
+			if delimiter, _ := literalWord(r.Word); r.Op == syntax.Hdoc && (r.N == nil || r.N.Value == "0") && delimiter == "PY" {
+				blocked = errors.New(message)
+				return false
+			}
 		}
 		return true
 	})
-	if blocked != "" {
-		return fmt.Errorf("shell command %q is not allowed; use the workspace tool to set the working directory", blocked)
-	}
-	return nil
+	return blocked
 }
 
 func shellCommand(ctx context.Context, environment processenv.Environment, cmdText string) *exec.Cmd {
