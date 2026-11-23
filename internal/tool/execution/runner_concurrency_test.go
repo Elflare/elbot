@@ -16,6 +16,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	toolregistry "elbot/internal/tool/registry"
+	"elbot/internal/workspace"
 )
 
 type concurrentTool struct {
@@ -216,12 +217,42 @@ func (c *notifyingCommitter) Result(ctx context.Context, index int, call llm.Too
 	return err
 }
 
+type handoffPreparationDeps struct{ blockedPreparationDeps }
+
+func (d *handoffPreparationDeps) RefreshExecution(ctx context.Context, _ *storage.Session) (context.Context, error) {
+	select {
+	case <-d.waiting:
+		ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+		return workspace.WithoutPathScope(ctx), nil
+	default:
+		return ctx, nil
+	}
+}
+
 func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	deps := &blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}
+	ctx = workspace.WithPathScope(contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser}), workspace.PathScope{Dir: "/sandbox"})
+	deps := &handoffPreparationDeps{blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}}
+	checkContext := func(ctx context.Context, id string) {
+		t.Helper()
+		actor, _ := contextinfo.ActorFromContext(ctx)
+		scope, scoped := workspace.PathScopeFromContext(ctx)
+		if id == "C" {
+			if actor.Role != contextinfo.RoleSuperadmin || scoped {
+				t.Errorf("call C missed handoff: actor=%v scope=%v", actor, scope)
+			}
+		} else if actor.Role != contextinfo.RoleUser || scope.Dir != "/sandbox" {
+			t.Errorf("call %s lost its original context: actor=%v scope=%v", id, actor, scope)
+		}
+	}
+	deps.prepareContext = func(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) context.Context {
+		checkContext(ctx, call.ID)
+		return ctx
+	}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	_ = registerTestTools(registry, (concurrentTool{run: func(ctx context.Context, call toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
+		checkContext(ctx, call.ID)
 		if call.ID == "A" {
 			select {
 			case <-deps.waiting:

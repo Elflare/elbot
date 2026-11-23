@@ -3,12 +3,12 @@ package execution
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"testing"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/security"
-	"elbot/internal/storage"
 	"elbot/internal/tool/discovery"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/tool/registry"
@@ -24,7 +24,7 @@ func newTestManager(catalog *registry.Registry, permission *security.Permission,
 	if len(centers) > 0 {
 		center = centers[0]
 	}
-	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
+	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundToolAllowed: registry.BackgroundToolAllowed, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 		events.Log(context.WithoutCancel(ctx), record)
 	}})
 }
@@ -51,24 +51,15 @@ func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (opera
 	})}, nil
 }
 
-func executeTestCall(catalog *registry.Registry, call llm.ToolCallRequest) executionResult {
-	m := newTestManager(catalog, nil)
-	ctx := context.Background()
-	resolved, err := m.resolve(ctx, call.Name, nil, storage.SessionModeWork)
-	if err != nil {
-		return executionError(call, err)
+func executeTestCall(t *testing.T, def share.ToolDefinition) executionResult {
+	t.Helper()
+	call := llm.ToolCallRequest{ID: "call_1", Name: def.Definition.Name, Arguments: "{}"}
+	target := resolvedTool{Source: share.SourceKindNative, Native: &def}
+	prepared, err := prepareCall(t.Context(), target, call)
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare: %+v, err=%v", prepared, err)
 	}
-	if resolved.Status != operationresult.Success {
-		return executionResult{Message: toolMessage(call.Name, call.ID, resolved.Message), Result: operationresult.Result[*share.Result]{Status: resolved.Status, Message: resolved.Message}}
-	}
-	prepared, err := prepareCall(ctx, resolved.Data, call)
-	if err != nil {
-		return executionError(call, err)
-	}
-	if prepared.Status != operationresult.Success {
-		return executionResult{Message: toolMessage(call.Name, call.ID, prepared.Message), Result: operationresult.Result[*share.Result]{Status: prepared.Status, Message: prepared.Message}}
-	}
-	return m.executePrepared(ctx, call, resolved.Data, prepared.Data, func() {})
+	return (&Manager{}).executePrepared(t.Context(), call, target, prepared.Data, func() {})
 }
 
 // 测试夹具使用空参数对象，只保留各场景的执行与权限行为。

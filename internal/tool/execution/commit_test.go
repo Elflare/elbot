@@ -5,12 +5,14 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	toolregistry "elbot/internal/tool/registry"
 	"errors"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,6 +22,50 @@ type failingToolCommitter struct {
 	testToolCommitter
 	failure error
 	phase   string
+}
+
+type receiptTestJobs struct {
+	released int
+}
+
+func (j *receiptTestJobs) StartAsyncTool(ctx context.Context, _, _ string) (toolshare.AsyncJob, error) {
+	return toolshare.AsyncJob{ID: "job", Context: ctx, Done: func() { j.released++ }}, nil
+}
+
+func TestAsyncReceiptCommitFailureWithdrawsPromptAndReleasesJob(t *testing.T) {
+	var calls atomic.Int32
+	published, withdrawn := 0, 0
+	tool := countingCommitTool{count: &calls}
+	def := tool.Definition()
+	def.Definition.Async = toolshare.SyncByDefault
+	def.Parameters["properties"].(map[string]any)["async"] = map[string]any{"type": "boolean", "default": false}
+	def.Prepare = func(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+		result, err := tool.PrepareCall(ctx, req)
+		result.Data.Prompt = func(string) (delivery.Output, func(), func()) {
+			return delivery.Output{}, func() { published++ }, func() { withdrawn++ }
+		}
+		return result, err
+	}
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	if err := registerTestTools(registry, def); err != nil {
+		t.Fatal(err)
+	}
+	manager := newTestManager(registry, security.DefaultPermission())
+	failure := errors.New("receipt commit failed")
+	jobs := &receiptTestJobs{}
+	deps := &runnerTestDeps{}
+	result := manager.Run(t.Context(), deps, toolshare.RunRequest{
+		Jobs: jobs, Committer: &failingToolCommitter{failure: failure, phase: "result"},
+		Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork},
+		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
+		Calls:   []llm.ToolCallRequest{{ID: "A", Name: tool.Name(), Arguments: `{"async":true}`}},
+	})
+	if !errors.Is(result.Err, failure) || calls.Load() != 0 || published != 1 || withdrawn != 1 || jobs.released != 1 {
+		t.Fatalf("err=%v calls=%d published=%d withdrawn=%d released=%d", result.Err, calls.Load(), published, withdrawn, jobs.released)
+	}
+	if !slices.Equal(deps.eventOrder, []string{"call:A", "result:A"}) || deps.toolResult.Success || llm.SegmentsTextOnly(deps.toolResult.Segments) != "tool call was not executed" {
+		t.Fatalf("events=%v terminal result=%+v", deps.eventOrder, deps.toolResult)
+	}
 }
 
 func (c *failingToolCommitter) Prepared(_ context.Context, index int, _ llm.ToolCallRequest) error {

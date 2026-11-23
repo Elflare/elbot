@@ -126,7 +126,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/agent/dialogue/tool_execution.go`：公共 ToolRun 入口。
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态适配。
-- `internal/tool/execution/`：`runner.go` 批次编排；`manager.go` 直接调用；`prepared.go` 准备；`executor.go` 原生执行；`elwisp_exec.go` 远端执行；`schema.go` 工具声明。
+- `internal/tool/execution/`：`runner.go` 批次协调；`runner_call.go` 单次调用准备与启动；`runner_commit.go` 结果提交；`manager.go` 直接调用；`prepared.go` 准备；`executor.go` 原生执行；`elwisp_exec.go` 远端执行；`schema.go` 工具声明。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：结果提交、原生持久化。
 - `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`：批次契约、批次存储。
 - `internal/tool/logging.go`：工具日志发布。

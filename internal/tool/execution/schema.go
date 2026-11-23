@@ -44,11 +44,12 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 			appendSchema(candidate.Schema())
 		}
 	}
-	if view.Mode == storage.SessionModeBackground {
-		discovered = m.BackgroundDiscoveredTools(discovered)
-	}
 	for _, item := range discovered {
-		if view.Mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
+		if view.Mode == storage.SessionModeBackground {
+			if !m.BackgroundToolAllowed(item) {
+				continue
+			}
+		} else if !m.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
 			continue
 		}
 		appendSchema(item.Schema)

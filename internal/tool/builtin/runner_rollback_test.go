@@ -147,7 +147,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(RollbackFileTool{Service: service}).Definition()}); err != nil {
 				t.Fatal(err)
 			}
-			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
+			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundToolAllowed: toolregistry.BackgroundToolAllowed, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				events.Log(context.WithoutCancel(ctx), record)
 			}})
 			actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}}
@@ -202,7 +202,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{editor.Definition()}); err != nil {
 				t.Fatal(err)
 			}
-			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
+			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundToolAllowed: toolregistry.BackgroundToolAllowed, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				events.Log(context.WithoutCancel(ctx), record)
 			}})
 			actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}}

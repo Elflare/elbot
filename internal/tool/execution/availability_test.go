@@ -136,6 +136,9 @@ func TestBackgroundSchemaHidesAsyncOption(t *testing.T) {
 			t.Fatalf("mode %v: async visible = %v", mode, ok)
 		}
 	}
+	if _, ok := discovered[0].Schema.Parameters["properties"].(map[string]any)["async"]; !ok {
+		t.Fatal("background filtering mutated the discovered schema")
+	}
 }
 
 func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {

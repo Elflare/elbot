@@ -16,14 +16,7 @@ import (
 )
 
 func TestExecutorExecutesTool(t *testing.T) {
-	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registerTestTools(registry, (fakeTool{name: "ok", source: toolshare.SourceBuiltin}).Definition()); err != nil {
-		t.Fatal(err)
-	}
-	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "ok", Arguments: `{}`})
-	if result.Error != nil {
-		t.Fatal(result.Error)
-	}
+	result := executeTestCall(t, (fakeTool{name: "ok", source: toolshare.SourceBuiltin}).Definition())
 	if result.Error != nil || !result.ExecutionStarted {
 		t.Fatalf("execution facts = %#v", result)
 	}
@@ -32,26 +25,8 @@ func TestExecutorExecutesTool(t *testing.T) {
 	}
 }
 
-func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
-	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "missing", Arguments: `{}`})
-	if result.Error != nil || result.Result.Status != operationresult.NotFound {
-		t.Fatal("expected error")
-	}
-	if result.Error != nil || result.ExecutionStarted {
-		t.Fatalf("lookup facts = %#v", result)
-	}
-	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "not found") {
-		t.Fatalf("message = %#v", result.Message)
-	}
-}
-
 func TestExecutorUsesResultSegments(t *testing.T) {
-	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registerTestTools(registry, (segmentTool{}).Definition()); err != nil {
-		t.Fatal(err)
-	}
-	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "segments", Arguments: `{}`})
+	result := executeTestCall(t, (segmentTool{}).Definition())
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

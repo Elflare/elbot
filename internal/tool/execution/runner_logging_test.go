@@ -263,9 +263,18 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	}
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
-	manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
+	sink := &testToolCommitter{}
+	result := manager.Run(t.Context(), deps, toolshare.RunRequest{Committer: sink, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
+	message := sink.messages[0]
+	if result.Err != nil || message.Role != llm.RoleTool || message.Name != "missing" || message.ToolCallID != "call" || llm.SegmentsTextOnly(message.Segments) != `tool "missing" not found` {
+		t.Fatalf("result=%+v message=%+v", result, message)
+	}
 	if len(calls) != 1 || calls[0].ResultStatus != events.ResultRejected || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
+	}
+	var audit struct{ Source string }
+	if err := json.Unmarshal([]byte(calls[0].Content), &audit); err != nil || audit.Source != "" {
+		t.Fatalf("unresolved tool audit=%s err=%v", calls[0].Content, err)
 	}
 }
 
@@ -332,44 +341,6 @@ func (c *loggingCommitter) Result(ctx context.Context, index int, call llm.ToolC
 	return c.testToolCommitter.Result(ctx, index, call, message, row)
 }
 
-func TestRunnerUsesSourceSaveResult(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		status events.ResultStatus
-		err    error
-	}{
-		{"failed_without_error", events.ResultFailed, nil},
-		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("storage: %w", context.Canceled)},
-		{"mixed_failure", events.ResultFailed, errors.New("independent storage failure")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}}).Definition()); err != nil {
-				t.Fatal(err)
-			}
-			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
-			deps := &loggingDeps{}
-			committer := &loggingCommitter{err: tc.err}
-			var saves []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-				if record.Module == "toolrun" && record.EventName == "tool_transcript_save" {
-					saves = append(saves, record)
-				}
-
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
-			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-			if !errors.Is(result.Err, tc.err) || len(saves) != 0 {
-				t.Fatalf("business result=%#v logs=%#v", result, saves)
-			}
-
-		})
-	}
-}
-
 func TestRunnerLogsOutcomeBeforePersistence(t *testing.T) {
 	for _, tc := range []struct {
 		name                                               string
@@ -377,6 +348,7 @@ func TestRunnerLogsOutcomeBeforePersistence(t *testing.T) {
 		reject                                             bool
 	}{
 		{name: "success"},
+		{name: "save canceled", saveErr: fmt.Errorf("storage: %w", context.Canceled)},
 		{name: "tool business failure", callErr: errors.New("execution failed")},
 		{name: "tool and save failure", callErr: errors.New("execution failed"), saveErr: errors.New("transcript failed")},
 		{name: "tool preparation failure", prepareErr: errors.New("parse tool arguments: invalid JSON")},
@@ -403,6 +375,9 @@ func TestRunnerLogsOutcomeBeforePersistence(t *testing.T) {
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
+				if r.Module == "toolrun" && r.EventName == "tool_transcript_save" {
+					t.Errorf("runner duplicated the persistence log: %+v", r)
+				}
 				if r.Module != "toolrun" || r.Identity.SessionID != "session-log" {
 					return
 				}
@@ -480,7 +455,7 @@ func TestRunnerLogsOutcomeBeforePersistence(t *testing.T) {
 					t.Fatalf("tool preparation duplicated outside invocation audit: %#v", r)
 				}
 			}
-			if tc.saveErr != nil && !errors.Is(result.Err, tc.saveErr) {
+			if tc.confirmErr == nil && tc.startErr == nil && !errors.Is(result.Err, tc.saveErr) {
 				t.Fatalf("save error lost: %+v", result)
 			}
 

@@ -76,6 +76,14 @@ func executionError(call llm.ToolCallRequest, err error) executionResult {
 	return executionResult{Message: toolMessage(call.Name, call.ID, content), Error: err, Summary: content}
 }
 
+func executionRejected(call llm.ToolCallRequest, status operationresult.Status, reason string) executionResult {
+	return executionResult{
+		Message: toolMessage(call.Name, call.ID, reason),
+		Result:  operationresult.Result[*toolshare.Result]{Status: status, Message: reason},
+		Summary: reason,
+	}
+}
+
 // 校验媒体引用时不打开额外的写事务。返回值只在需要结束本次调用时存在。
 func (m *Manager) checkMediaArguments(ctx context.Context, call llm.ToolCallRequest) *executionResult {
 	for _, id := range media.ArgumentMediaIDs(call.Arguments) {
@@ -85,7 +93,8 @@ func (m *Manager) checkMediaArguments(ctx context.Context, call llm.ToolCallRequ
 			return &executionResult{Message: toolMessage(call.Name, call.ID, message), Error: err}
 		}
 		if ref.Status != operationresult.Success {
-			return &executionResult{Message: toolMessage(call.Name, call.ID, ref.Message), Result: operationresult.Result[*toolshare.Result]{Status: ref.Status, Message: ref.Message}, Summary: ref.Message}
+			result := executionRejected(call, ref.Status, ref.Message)
+			return &result
 		}
 	}
 	return nil

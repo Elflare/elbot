@@ -331,13 +331,6 @@ func TestAsyncAdmission(t *testing.T) {
 	}
 	m := newTestManager(registry, security.NewPermission("high", "high", nil))
 	discovered := []toolshare.DiscoveredTool{{Name: "shell", Schema: def.Schema()}}
-	schemas, err := m.Schemas(t.Context(), toolshare.Context{Mode: storage.SessionModeBackground}, discovered)
-	if err != nil || len(schemas) != 1 {
-		t.Fatal(schemas, err)
-	}
-	if schemas[0].Parameters["properties"].(map[string]any)["async"] != nil || discovered[0].Schema.Parameters["properties"].(map[string]any)["async"] == nil {
-		t.Fatal("background schema leaked async or mutated the foreground schema")
-	}
 	for _, tc := range []struct {
 		args    string
 		bg      bool

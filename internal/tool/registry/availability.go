@@ -93,21 +93,23 @@ func (r *Registry) Query(ctx context.Context, query share.ToolQuery) ([]share.To
 	return tools, nil
 }
 
-// BackgroundDiscoveredTools applies background restrictions to executable discovery metadata.
+// BackgroundToolAllowed 根据已发现声明判断工具能否用于后台任务。
+func BackgroundToolAllowed(item share.DiscoveredTool) bool {
+	if item.ForegroundOnly {
+		return false
+	}
+	for _, name := range []string{item.Name, item.CanonicalName, item.Schema.Name} {
+		if name == "discover_tool" || name == "workspace" {
+			return false
+		}
+	}
+	return true
+}
+
 func BackgroundDiscoveredTools(items []share.DiscoveredTool) []share.DiscoveredTool {
 	var result []share.DiscoveredTool
 	for _, item := range items {
-		if item.ForegroundOnly {
-			continue
-		}
-		allowed := true
-		for _, name := range []string{item.Name, item.CanonicalName, item.Schema.Name} {
-			if name == "discover_tool" || name == "workspace" {
-				allowed = false
-				break
-			}
-		}
-		if allowed {
+		if BackgroundToolAllowed(item) {
 			result = append(result, item)
 		}
 	}

@@ -1,489 +1,141 @@
-// 编排工具批次的准备、确认、执行和结果处理。
 package execution
-
-import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/elyph"
-	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"elbot/internal/workspace"
+	toolshare "elbot/internal/tool/share"
 )
+
+// runBatch 由协调器持有，worker 只写自己的调用槽，完成后通过 ready 交回。
+type runBatch struct {
+	manager           *Manager
+	deps              toolshare.RunnerDeps
+	req               toolshare.RunRequest
+	sessionID         string
+	ctx               context.Context // 当前协调器上下文，接管后随 RefreshExecution 刷新。
+	cancel            context.CancelFunc
+	workers           sync.WaitGroup // 只等待归批次所有的同步调用。
+	calls             []batchCall
+	ready             chan int // 已完成调用的原始位置，决定提交顺序。
+	completed         int
+	callsPublished    bool
+	elyphRulesShown   bool
+	confirmationExtra []string
+}
+
+type batchCall struct {
+	call       llm.ToolCallRequest // 准备 Hook 成功后替换为实际调用。
+	actor      contextinfo.Actor
+	risk       string
+	startedAt  time.Time
+	finishedAt time.Time
+	result     executionResult
+	published  bool // 结果已经提交并发布，退出时无需补发。
+}
 
 // Run 顺序准备与确认、并发执行，并由单一协调器提交结果。
 func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) (out toolshare.RunResult) {
 	if req.Session.Mode == storage.SessionModeChat {
 		return toolshare.RunResult{}
 	}
-	sessionID := req.Session.ID
-	var confirmationExtra string
-	defer func() { out.ConfirmationExtra = confirmationExtra }()
 	state, err := m.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return toolshare.RunResult{Err: err}
 	}
-	elyphRulesShown := state.ElyphRulesShown
-	preparedCalls := append([]llm.ToolCallRequest(nil), req.Calls...)
 	ctx, cancel := context.WithCancel(ctx)
-	var workers sync.WaitGroup
-	tasks := make([]struct {
-		risk       string
-		actor      contextinfo.Actor
-		startedAt  time.Time
-		result     executionResult
-		finishedAt time.Time
-	}, len(req.Calls))
-	callsPublished := false
-	toolCallFinished := make([]bool, len(req.Calls))
-	defer func() {
-		cancel()
-		workers.Wait()
-		for i, call := range preparedCalls {
-			if !callsPublished || toolCallFinished[i] {
-				continue
-			}
-			segments := tasks[i].result.Message.Segments
-			if tasks[i].result.ExecutionStarted {
-				segments = llm.TextSegments("tool outcome is unknown: result has not been saved")
-			} else if len(segments) == 0 {
-				message := tasks[i].result.Result.Message
-				if message == "" {
-					message = "tool call was not executed"
-				}
-				segments = llm.TextSegments(message)
-			}
-			deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, delivery.ToolResult{
-				Success:  false,
-				Segments: segments,
-			})
-		}
-	}()
-	publishResult := func(index int, call llm.ToolCallRequest, result delivery.ToolResult) {
-		deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, result)
-		toolCallFinished[index] = true
+	b := runBatch{
+		manager: m, deps: deps, req: req, sessionID: req.Session.ID,
+		ctx: ctx, cancel: cancel, elyphRulesShown: state.ElyphRulesShown,
+		calls: make([]batchCall, len(req.Calls)), ready: make(chan int, len(req.Calls)),
 	}
-	// The coordinator owns session state; workers return independent outcomes
-	// through a shared completion queue.
-	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.ReasoningContent, req.Calls)
+	for i, call := range req.Calls {
+		b.calls[i].call = call
+	}
+	defer func() {
+		b.close()
+		out.ConfirmationExtra = strings.Join(b.confirmationExtra, "\n\n")
+	}()
+	head := deps.ToolCallMessage(b.sessionID, req.AssistantText, req.AssistantRawText, req.ReasoningContent, req.Calls)
 	if err := req.Committer.Begin(ctx, &head); err != nil {
 		return toolshare.RunResult{Err: err}
 	}
-	ready := make(chan int, len(req.Calls))
-	completed := 0
-	complete := func(index int, receipt bool) error {
-		task := &tasks[index]
-		result := task.result
-		if ctx.Err() != nil {
-			return ctx.Err()
+	for index := range b.calls {
+		if err := b.ctx.Err(); err != nil {
+			return toolshare.RunResult{Stopped: true, Err: err}
 		}
-		updated, err := deps.RefreshExecution(ctx, req.Session)
-		if err != nil {
-			return err
-		}
-		ctx = updated
-		call := preparedCalls[index]
-		actor := task.actor
-
-		metadata := storage.SessionMetadata{}
-		if err := result.complete(ctx, deps, req.Session, call, task.risk); err != nil {
-			return err
-		}
-		var rawRecord *storage.ToolCallRecord
-		if !receipt {
-			rawRecord = result.record(sessionID, call, actor, task.risk, task.startedAt, task.finishedAt)
-		}
-		ruleCard := ""
-		if result.Result.Status == operationresult.Success && result.Result.Data != nil {
-			toolResult := result.Result.Data
-			ruleCard = elyph.RuleCardIfNeeded(toolResult.NeedsElyphRules, elyphRulesShown)
-			var parts []string
-			if toolResult.DiscoveryText != nil && toolResult.DiscoveryText.Summary != "" {
-				parts = append(parts, toolResult.DiscoveryText.Summary)
-			}
-			if ruleCard != "" {
-				parts = append(parts, ruleCard)
-			}
-			if len(parts) > 0 {
-				result.Message.Segments = append(llm.TextSegments(strings.Join(parts, "\n\n")+"\n\n"), result.Message.Segments...)
-			}
-			if call.Name == "discover_tool" {
-				update, err := m.DiscoveryStateUpdate(contextinfo.WithActor(ctx, actor), toolResult)
-				if err != nil {
-					return err
-				}
-				var discovered []toolshare.DiscoveredTool
-				metadata, discovered, err = m.PrepareUpdate(req.Session.Metadata, update)
-				if err != nil {
-					return err
-				}
-				description, err := m.WeaveDescription(ctx, discovered)
-				if err != nil {
-					return err
-				}
-				if description != "" {
-					result.Message.Segments = llm.AppendSegmentText(result.Message.Segments, "\n\n"+description)
-				}
-			}
-		}
-		stored := deps.ToolResultMessage(sessionID, result.Message)
-		if ruleCard != "" {
-			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
-			if err != nil {
-				return err
-			}
-			_ = fields.Set("elyph_rules_shown", true)
-			stored.Metadata, _ = fields.Encode()
-			_ = metadata.Set("elyph_rules_shown", true)
-		}
-		if err := req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata}); err != nil {
-			return err
-		}
-		publishResult(index, call, delivery.ToolResult{
-			Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: result.Message.Segments,
-		})
-		if ruleCard != "" {
-			elyphRulesShown = true
-		}
-		if len(metadata) != 0 {
-			fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)
-			if err != nil {
-				return err
-			}
-			for key, value := range metadata {
-				fields[key] = value
-			}
-			req.Session.Metadata, _ = fields.Encode()
-		}
-		completed++
-		return nil
-	}
-	// Blocking preparation receives a detached snapshot; completed tools can be
-	// persisted while a later Hook or confirmation is waiting.
-	await := func(run func()) error {
-		done := make(chan struct{})
-		go func() { defer close(done); run() }()
-		for {
-			select {
-			case <-done:
-				return nil
-			case index := <-ready:
-				if err := complete(index, false); err != nil {
-					cancel()
-					<-done
-					return err
-				}
-			case <-ctx.Done():
-				<-done
-				return ctx.Err()
-			}
-		}
-	}
-	for index, original := range req.Calls {
-		if ctx.Err() != nil {
-			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
-		}
-		updated, err := deps.RefreshExecution(ctx, req.Session)
+		ctx, err := deps.RefreshExecution(b.ctx, req.Session)
 		if err != nil {
 			return toolshare.RunResult{Err: err}
 		}
-		ctx = updated
+		b.ctx = ctx
 		if index == 0 {
 			deps.PublishToolCalls(ctx, req.Calls, strings.TrimSpace(req.AssistantText) != "")
-			callsPublished = true
+			b.callsPublished = true
 		}
-		actor := req.Actor
-		if current, ok := contextinfo.ActorFromContext(ctx); ok {
-			actor = current
+		if result := b.startCall(index); result.Stopped || result.Err != nil {
+			return result
 		}
-		// Session snapshots keep later handoffs and discovery writes out of workers.
-		snapshot := *req.Session
-		task := &tasks[index]
-		task.startedAt = storage.Now()
-		task.actor = actor
-		var call llm.ToolCallRequest
-		prepareCtx := ctx
-		if waitErr := await(func() { call, err = deps.PrepareToolCall(prepareCtx, &snapshot, original) }); waitErr != nil {
-			return toolshare.RunResult{Err: waitErr}
-		}
-		if err != nil {
-			return toolshare.RunResult{Err: err}
-		}
-		preparedCalls[index] = call
-		if err := req.Committer.Prepared(ctx, index, call); err != nil {
-			return toolshare.RunResult{Err: err}
-		}
-		resolved, err := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
-		if err != nil {
-			return toolshare.RunResult{Err: err}
-		}
-		runSource := "foreground"
-		if snapshot.Mode == storage.SessionModeBackground {
-			runSource = snapshot.TaskType
-		}
-		auditStart := task.startedAt
-		finish := func(result executionResult, auditSource toolshare.SourceKind) {
-			task.result = result
-			task.finishedAt = storage.Now()
-			if auditSource != "" {
-				m.recordCallCompleted(ctx, sessionID, call, auditSource, actor, task.risk, runSource, auditStart, result)
+	}
+	for b.completed < len(b.calls) {
+		select {
+		case index := <-b.ready:
+			if err := b.commit(index, false); err != nil {
+				return toolshare.RunResult{Err: err}
 			}
-			ready <- index
+		case <-b.ctx.Done():
+			return toolshare.RunResult{Stopped: true, Err: b.ctx.Err()}
 		}
-		if resolved.Status != operationresult.Success {
-			auditStart = time.Now()
-			finish(executionResult{
-				Message: toolMessage(call.Name, call.ID, resolved.Message),
-				Result:  operationresult.Result[*toolshare.Result]{Status: resolved.Status, Message: resolved.Message},
-				Summary: resolved.Message,
-			}, toolshare.SourceKindNative)
-			continue
-		}
-		resolvedTool := resolved.Data
-		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
-		var prepared operationresult.Result[*toolshare.PreparedCall]
-		if waitErr := await(func() { prepared, err = prepareCall(toolCtx, resolvedTool, call) }); waitErr != nil {
-			return toolshare.RunResult{Err: waitErr}
-		}
-		if err != nil {
-			finish(executionError(call, err), resolvedTool.Source)
-			continue
-		}
-		if prepared.Status != operationresult.Success {
-			finish(executionResult{
-				Message: toolMessage(call.Name, call.ID, prepared.Message),
-				Result:  operationresult.Result[*toolshare.Result]{Status: prepared.Status, Message: prepared.Message},
-				Summary: prepared.Message,
-			}, resolvedTool.Source)
-			continue
-		}
-		async := false
-		if resolvedTool.Native != nil {
-			var reason string
-			async, reason = asyncMode(resolvedTool.Native.Definition, json.RawMessage(call.Arguments), snapshot.Mode == storage.SessionModeWork)
-			if reason != "" {
-				finish(executionResult{
-					Message: toolMessage(call.Name, call.ID, reason),
-					Result:  operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: reason},
-					Summary: reason,
-				}, "")
-				continue
-			}
-		}
-		preparedCall := prepared.Data
-		assessment := preparedCall.RiskAssessment()
-		riskText := string(assessment.Level)
-		task.risk = riskText
-		deps.AddToolUse(sessionID, call.Name)
-		var confirmation operationresult.Result[toolshare.ConfirmResult]
-		if waitErr := await(func() {
-			confirmation, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolvedTool, assessment, preparedCall.Details())
-			if err == nil && confirmation.Status == operationresult.Success {
-				confirmationExtra = joinAssistantText(confirmationExtra, confirmation.Data.Extra)
-			}
-		}); waitErr != nil {
-			return toolshare.RunResult{Err: waitErr}
-		}
-		if err != nil {
-			return toolshare.RunResult{Err: err}
-		}
-		switch confirmation.Status {
-		case operationresult.Timeout, operationresult.Canceled, operationresult.Conflict:
-			return toolshare.RunResult{Stopped: true}
-		}
-		if confirmation.Status != operationresult.Success {
-			message := toolMessage(call.Name, call.ID, confirmation.Message)
-			finish(executionResult{
-				Message: message,
-				Result:  operationresult.Result[*toolshare.Result]{Status: confirmation.Status, Message: confirmation.Message},
-				Summary: confirmation.Message,
-			}, resolvedTool.Source)
-			continue
-		}
-		if rejected := m.checkMediaArguments(toolCtx, call); rejected != nil {
-			finish(*rejected, "")
-			continue
-		}
-		var withdraw func()
-		if prompt := preparedCall.Prompt; prompt != nil {
-			output, publish, cancelPrompt := prompt(sessionID)
-			sent, err := deps.SendOutputs(toolCtx, []delivery.Output{output})
-			if err != nil {
-				finish(executionError(call, err), "")
-				continue
-			}
-			if sent.Status != operationresult.Success {
-				finish(executionResult{
-					Message: toolMessage(call.Name, call.ID, sent.Message),
-					Result:  operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message},
-				}, "")
-				continue
-			}
-			publish()
-			withdraw = cancelPrompt
-		}
-		var job toolshare.AsyncJob
-		var runToolCtx context.Context
-		var done func()
-		if async {
-			job, err = req.Jobs.StartAsyncTool(toolCtx, sessionID, call.Name)
-			runToolCtx, done = job.Context, job.Done
-		} else {
-			runToolCtx, done, err = deps.StartToolRequest(toolCtx, sessionID, call.Name)
-		}
+	}
+	return toolshare.RunResult{Err: req.Committer.Flush(b.ctx)}
+}
 
-		if err != nil {
-			if withdraw != nil {
-				withdraw()
-			}
-			return toolshare.RunResult{Err: err}
-		}
-		if withdraw != nil {
-			finish := done
-			done = func() { withdraw(); finish() }
-		}
-		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		if call.Name == "tool_weave" {
-			runToolCtx, err = m.bindWeave(runToolCtx, deps, snapshot, req.DiscoveredTools, call.ID, actor)
-			if err != nil {
-				done()
-				return toolshare.RunResult{Err: err}
-			}
-		}
-		if async {
-			// Save acceptance before starting the worker. A failed commit cannot leak a job.
-			receipt := "已受理异步任务 " + job.ID + "；完成后自动回报。"
-			task.result = executionResult{Message: toolMessage(call.Name, call.ID, receipt), Result: operationresult.Result[*toolshare.Result]{Status: operationresult.Success}}
-			if err := complete(index, true); err != nil {
-				done()
-				return toolshare.RunResult{Err: err}
-			}
-			go m.runAsync(runToolCtx, deps, job, &snapshot, call, resolvedTool, preparedCall, actor, riskText, runSource, withdraw)
+func (b *runBatch) close() {
+	b.cancel()
+	b.workers.Wait()
+	if !b.callsPublished {
+		return
+	}
+	for _, task := range b.calls {
+		if task.published {
 			continue
 		}
-		workers.Go(func() {
-			startedAt := time.Now()
-			result := m.executePrepared(runToolCtx, call, resolvedTool, preparedCall, func() {
-				startedAt = time.Now()
-				task.startedAt = startedAt
-				m.recordCallStarted(runToolCtx, sessionID, call, resolvedTool.Source, actor, riskText, runSource)
-			})
-			m.recordCallCompleted(runToolCtx, sessionID, call, resolvedTool.Source, actor, riskText, runSource, startedAt, result)
-			task.finishedAt = storage.Now()
-			done()
-			task.result = result
-			ready <- index
+		segments := task.result.Message.Segments
+		if task.result.ExecutionStarted {
+			segments = llm.TextSegments("tool outcome is unknown: result has not been saved")
+		} else if len(segments) == 0 {
+			segments = llm.TextSegments("tool call was not executed")
+		}
+		b.deps.PublishToolResult(context.WithoutCancel(b.ctx), task.call.ID, delivery.ToolResult{
+			Success:  false,
+			Segments: segments,
 		})
 	}
-	for completed < len(tasks) {
+}
+
+// await 在准备或确认阻塞时提交其他已完成的调用。
+func (b *runBatch) await(run func()) error {
+	done := make(chan struct{})
+	go func() { defer close(done); run() }()
+	for {
 		select {
-		case index := <-ready:
-			if err := complete(index, false); err != nil {
-				return toolshare.RunResult{Err: err}
+		case <-done:
+			return nil
+		case index := <-b.ready:
+			if err := b.commit(index, false); err != nil {
+				b.cancel()
+				<-done
+				return err
 			}
-		case <-ctx.Done():
-			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
+		case <-b.ctx.Done():
+			<-done
+			return b.ctx.Err()
 		}
-	}
-	return toolshare.RunResult{Err: req.Committer.Flush(ctx)}
-}
-
-func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
-	if resolvedTool.Source == toolshare.SourceKindELwisp {
-		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
-	}
-	info := resolvedTool.Native.Definition
-	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, toolshare.PolicyFromContext(ctx).AutoConfirmShell)
-	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		scope, _ := workspace.PathScopeFromContext(ctx)
-		content := map[string]string{"task_type": facts.TaskType, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
-		for key, value := range content {
-			content[key] = toolshare.TruncateLogContent(value, 2048)
-		}
-		data, _ := json.Marshal(content)
-		resultStatus := events.ResultSucceeded
-		if !permission.Allowed {
-			resultStatus = events.ResultRejected
-		}
-		record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
-		record.Identity = events.LogIdentityFromContext(ctx)
-		record.Identity.SessionID = sessionID
-		m.Log(ctx, record)
-	}
-	if !permission.Allowed {
-		switch permission.Reason {
-		case "tool_requires_superadmin":
-			deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_requires_superadmin")
-			return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Forbidden, Message: fmt.Sprintf("tool call %s denied: requires superadmin role", call.Name)}, nil
-		case "background_shell_rejected":
-			return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Forbidden, Message: "后台沙盒禁止执行 critical 风险 shell 命令。请改用相对路径，把文件限制在当前 sandbox 目录内，避免绝对路径、.. 逃逸和危险命令；若仍无法完成，请在最终报告中说明阻塞原因。"}, nil
-		default:
-			deps.AuditToolDenied(ctx, sessionID, call, assessment.Level, "tool_risk_above_allowed_level")
-			return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Forbidden, Message: fmt.Sprintf("tool call %s denied: risk %s is above your allowed tool level", call.Name, assessment.Level)}, nil
-		}
-	}
-	if permission.NeedsConfirmation {
-		return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
-	}
-	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
-}
-
-func (result *executionResult) complete(ctx context.Context, deps toolshare.RunnerDeps, session *storage.Session, call llm.ToolCallRequest, risk string) error {
-	deliverOutputs(ctx, deps, result)
-	if !result.ExecutionStarted {
-		return nil
-	}
-	completed := operationresult.Result[[]llm.MessageSegment]{Status: result.Result.Status, Message: result.Result.Message}
-	if result.Error == nil && completed.Status == operationresult.Success {
-		completed.Data = result.Message.Segments
-	}
-	segments, err := deps.CompleteToolCall(ctx, session, call, risk, completed, result.Error)
-	if err == nil {
-		result.Message.Segments = segments
-	}
-	return err
-}
-
-func deliverOutputs(ctx context.Context, deps toolshare.RunnerDeps, result *executionResult) {
-	if result.Result.Status == operationresult.Success && result.Result.Data != nil && len(result.Result.Data.Outputs) > 0 {
-		sent, err := deps.SendOutputs(ctx, result.Result.Data.Outputs)
-		if err != nil {
-			events.LogAndNotify(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
-			result.Error = err
-			result.Result = operationresult.Result[*toolshare.Result]{}
-			result.Message.Segments = llm.TextSegments(err.Error())
-		} else if sent.Status != operationresult.Success {
-			result.Result = operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message}
-			result.Message.Segments = llm.TextSegments(sent.Message)
-		}
-	}
-}
-
-func toolMessage(name, id, content string) llm.LLMMessage {
-	return llm.LLMMessage{Role: llm.RoleTool, Name: name, ToolCallID: id, Segments: llm.TextSegments(content)}
-}
-
-func joinAssistantText(first, second string) string {
-	first = strings.TrimSpace(first)
-	second = strings.TrimSpace(second)
-	switch {
-	case first == "":
-		return second
-	case second == "":
-		return first
-	default:
-		return first + "\n\n" + second
 	}
 }
