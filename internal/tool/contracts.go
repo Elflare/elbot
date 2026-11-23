@@ -97,11 +97,11 @@ type PreparedCall struct {
 // Info 是公开目录元数据，不携带可执行工具对象。
 type Info = share.Info
 
-type SourceKind string
+type SourceKind = share.SourceKind
 
 const (
-	SourceKindNative SourceKind = "native"
-	SourceKindELwisp SourceKind = "elwisp"
+	SourceKindNative = share.SourceKindNative
+	SourceKindELwisp = share.SourceKindELwisp
 )
 
 // DiscoveredTool 是会话已提交的完整声明，恢复时不按名称重建 schema。

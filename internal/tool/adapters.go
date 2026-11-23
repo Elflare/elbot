@@ -43,10 +43,7 @@ func toPublicDiscoveredTools(items []share.DiscoveredTool) []DiscoveredTool {
 	}
 	out := make([]DiscoveredTool, len(items))
 	for i, item := range items {
-		out[i] = DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName, Risk: item.Risk,
-			Source: SourceKind(item.Source), Description: item.Description, Schema: item.Schema,
-			EventKey: item.EventKey, Endpoint: item.Endpoint, TimeoutSeconds: item.TimeoutSeconds,
-			ForegroundOnly: item.ForegroundOnly}
+		out[i] = DiscoveredTool(item)
 	}
 	return out
 }
@@ -57,10 +54,7 @@ func toInternalDiscoveredTools(items []DiscoveredTool) []share.DiscoveredTool {
 	}
 	out := make([]share.DiscoveredTool, len(items))
 	for i, item := range items {
-		out[i] = share.DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName, Risk: item.Risk,
-			Source: share.SourceKind(item.Source), Description: item.Description, Schema: item.Schema,
-			EventKey: item.EventKey, Endpoint: item.Endpoint, TimeoutSeconds: item.TimeoutSeconds,
-			ForegroundOnly: item.ForegroundOnly}
+		out[i] = share.DiscoveredTool(item)
 	}
 	return out
 }
