@@ -158,7 +158,9 @@ func (c *apiClient) sendMedia(ctx context.Context, method string, chatID int64, 
 	if err != nil {
 		return sentMessage{}, err
 	}
-	return c.doMultipart(ctx, method, body, contentType)
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.apiTimeout())
+	defer cancel()
+	return postTelegram[sentMessage](c, ctx, method, body, contentType)
 }
 
 func (c *apiClient) sendMediaByReference(ctx context.Context, method string, chatID int64, field string, value string) (sentMessage, error) {
@@ -166,23 +168,27 @@ func (c *apiClient) sendMediaByReference(ctx context.Context, method string, cha
 }
 
 func callTelegram[T any](c *apiClient, ctx context.Context, method string, in any, timeout time.Duration) (T, error) {
-	var zero T
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	var body io.Reader
-	if in != nil {
-		data, err := json.Marshal(in)
-		if err != nil {
-			return zero, err
-		}
-		body = bytes.NewReader(data)
+	if in == nil {
+		return postTelegram[T](c, ctx, method, nil, "")
 	}
+	data, err := json.Marshal(in)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return postTelegram[T](c, ctx, method, bytes.NewReader(data), "application/json")
+}
+
+func postTelegram[T any](c *apiClient, ctx context.Context, method string, body io.Reader, contentType string) (T, error) {
+	var zero T
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL(method), body)
 	if err != nil {
 		return zero, err
 	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -194,27 +200,6 @@ func callTelegram[T any](c *apiClient, ctx context.Context, method string, in an
 		return zero, err
 	}
 	return decodeTelegramResponse[T](method, resp.StatusCode, data)
-}
-
-func (c *apiClient) doMultipart(ctx context.Context, method string, body *bytes.Buffer, contentType string) (sentMessage, error) {
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, c.cfg.apiTimeout())
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL(method), body)
-	if err != nil {
-		return sentMessage{}, err
-	}
-	req.Header.Set("Content-Type", contentType)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return sentMessage{}, redactTelegramError(err, c.token)
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return sentMessage{}, err
-	}
-	return decodeTelegramResponse[sentMessage](method, resp.StatusCode, data)
 }
 
 type redactedTelegramError struct {
