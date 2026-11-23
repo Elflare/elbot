@@ -48,17 +48,6 @@ func currentChatHistoryContext(ctx context.Context) (operationresult.Result[cont
 	}
 	return operationresult.Result[contextinfo.Source]{Status: operationresult.Success, Data: info.Source}, nil
 }
-func (b *Deps) messages(ctx context.Context, rows []storage.ChatMessage) ([]Message, error) {
-	result := make([]Message, len(rows))
-	for i, row := range rows {
-		message, err := b.message(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-		result[i] = message
-	}
-	return result, nil
-}
 
 func (b *Deps) message(ctx context.Context, row storage.ChatMessage) (Message, error) {
 	reply := storage.ChatMessageReply(row)
@@ -150,9 +139,13 @@ func (b Deps) historyRows(ctx context.Context, rows []storage.ChatMessage, err e
 	if err != nil {
 		return operationresult.Result[[]Message]{}, err
 	}
-	messages, err := b.messages(ctx, rows)
-	if err != nil {
-		return operationresult.Result[[]Message]{}, err
+	messages := make([]Message, len(rows))
+	for i, row := range rows {
+		message, err := b.message(ctx, row)
+		if err != nil {
+			return operationresult.Result[[]Message]{}, err
+		}
+		messages[i] = message
 	}
 	return operationresult.Result[[]Message]{Status: operationresult.Success, Data: messages}, nil
 }
