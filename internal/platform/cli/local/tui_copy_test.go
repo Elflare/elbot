@@ -20,14 +20,13 @@ func (c *fakeClipboard) WriteAll(text string) error {
 
 func newCopyTestModel() tuiModel {
 	m := tuiModel{
-		handler:       fakeCompletingHandler{}.HandleMessage,
-		clipboard:     &fakeClipboard{},
-		userName:      "user",
-		assistantName: "assistant",
-		input:         newTUIInput(),
-		width:         120,
-		height:        20,
-		ctx:           context.Background(),
+		handler:   fakeCompletingHandler{}.HandleMessage,
+		clipboard: &fakeClipboard{},
+		userName:  "user",
+		input:     newTUIInput(),
+		width:     120,
+		height:    20,
+		ctx:       context.Background(),
 	}
 	m.resizeViewports()
 	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: "hello\nassistant: first line\nsecond error line\nthird line"}}

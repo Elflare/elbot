@@ -109,21 +109,18 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 		}
 	}()
 
-	messageHandler := func(callCtx context.Context, text string) error {
+	submit := func(text string) error {
+		if !r.admit() {
+			return signal.ErrClosed
+		}
+		defer r.work.Done()
 		info := contextinfo.Conversation{
 			PlatformData: r,
 			Source:       contextinfo.Source{Platform: r.name, ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: r.clientID},
 			Identity:     contextinfo.Identity{ID: "local", Name: r.clientID},
 		}
 		msg := platformshare.MessageContext{CommandReply: r, Conversation: info, GroupRole: contextinfo.GroupRoleUnknown, RawText: text, Sender: r}
-		return handler(contextinfo.WithConversation(callCtx, info), text, msg)
-	}
-	submit := func(text string) error {
-		if !r.admit() {
-			return signal.ErrClosed
-		}
-		defer r.work.Done()
-		return messageHandler(r.workCtx, text)
+		return handler(contextinfo.WithConversation(r.workCtx, info), text, msg)
 	}
 
 	if !isTerminal(r.input) {
@@ -167,9 +164,9 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 			}
 			runErr := runTUI(tuiModel{
 				ctx: renderCtx, inputCtx: r.workCtx, handler: func(_ context.Context, text string) error { return submit(text) },
-				completion: complete, output: r.output, userName: r.clientID, assistantName: "assistant",
+				completion: complete, output: r.output, userName: r.clientID,
 				ready: func() { close(ready) }, stop: r.BeginClose,
-			}, nil)
+			})
 			if runErr != nil {
 				r.mu.Lock()
 				closing := r.closing

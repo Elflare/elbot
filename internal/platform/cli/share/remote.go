@@ -16,7 +16,8 @@ import (
 // Runtime 是 local/remote 实现向 CLI 根包提供的平台运行能力。
 type Runtime interface {
 	platformshare.Runtime
-	NoticePresenter
+	// PresentNotice 接收根包完成 binding 过滤后的通知事实。
+	PresentNotice(context.Context, Notice) error
 	SetCompleter(func(context.Context, completion.Request) ([]completion.Item, error))
 }
 
@@ -25,11 +26,6 @@ type LocalRuntime interface {
 	Runtime
 	DisplayTarget
 	WaitExit(context.Context) error
-}
-
-// NoticePresenter 接收根包完成 binding 过滤后的通知事实。
-type NoticePresenter interface {
-	PresentNotice(context.Context, Notice) error
 }
 
 // StreamRuntime 为没有原始会话目标的本地输入创建消息流。

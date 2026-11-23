@@ -58,8 +58,6 @@ type tuiNoticeMsg struct {
 	Level slog.Level
 }
 
-type tuiProgramSetter func(*tea.Program)
-
 const (
 	noticePanelWidth        = 40
 	minNoticePanelWidth     = 20
@@ -181,7 +179,6 @@ type tuiModel struct {
 	history         []string
 	histPos         int
 	userName        string
-	assistantName   string
 	streams         map[uint64]*tuiContentBlock // Only uncommitted message previews.
 	toolCalls       map[string]*tuiContentBlock // Active calls, removed when their result arrives.
 	runtimeStatus   runtimestatus.Snapshot
@@ -208,12 +205,9 @@ func newTUIInput() textarea.Model {
 	return input
 }
 
-func runTUI(m tuiModel, setProgram tuiProgramSetter) error {
+func runTUI(m tuiModel) error {
 	if m.userName == "" {
 		m.userName = "user"
-	}
-	if m.assistantName == "" {
-		m.assistantName = "assistant"
 	}
 	m.input = newTUIInput()
 	m.clipboard = newClipboardWriter()
@@ -226,10 +220,6 @@ func runTUI(m tuiModel, setProgram tuiProgramSetter) error {
 			<-quitDone
 		}
 	}()
-	if setProgram != nil {
-		setProgram(program)
-		defer setProgram(nil)
-	}
 	_, err := program.Run()
 	return err
 }
@@ -1021,7 +1011,7 @@ func (m tuiModel) renderContent(styled bool) string {
 				content.WriteString("\n" + render("thinking: "+block.reasoning, tuiReasoningStyle))
 			}
 			if block.text != "" {
-				content.WriteString("\n" + speaker(m.assistantName, block.text, tuiAssistantStyle))
+				content.WriteString("\n" + speaker("assistant", block.text, tuiAssistantStyle))
 			}
 		case tuiContentNotice:
 			content.WriteString(render("[notice] "+block.text, tuiNoticeLevelStyle(block.level)))

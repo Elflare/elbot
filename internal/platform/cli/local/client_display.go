@@ -47,8 +47,8 @@ func (clientDisplay) Run(ctx context.Context, userName string, handler func(cont
 	}()
 	return runTUI(tuiModel{
 		ctx: ctx, inputCtx: ctx, handler: handler, completion: complete,
-		output: output, userName: userName, assistantName: "assistant",
-	}, nil)
+		output: output, userName: userName,
+	})
 }
 
 var _ share.ClientDisplay = clientDisplay{}

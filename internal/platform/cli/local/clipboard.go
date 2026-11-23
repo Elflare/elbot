@@ -49,8 +49,8 @@ func (w osc52ClipboardWriter) WriteAll(text string) error {
 	if maxBytes <= 0 {
 		maxBytes = osc52ClipboardMaxBytes
 	}
-	if len([]byte(text)) > maxBytes {
-		return fmt.Errorf("copy text too large for OSC52: %d bytes > %d bytes", len([]byte(text)), maxBytes)
+	if len(text) > maxBytes {
+		return fmt.Errorf("copy text too large for OSC52: %d bytes > %d bytes", len(text), maxBytes)
 	}
 	_, err := io.WriteString(w.out, osc52.New(text).String())
 	return err

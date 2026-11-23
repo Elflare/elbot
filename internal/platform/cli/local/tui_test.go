@@ -677,7 +677,7 @@ func (s staticCompletionSource) Complete(context.Context, completion.Request) ([
 }
 
 func TestAppendUserContentAddsSeparatorBetweenTurns(t *testing.T) {
-	m := &tuiModel{userName: "user", assistantName: "assistant", width: 12}
+	m := &tuiModel{userName: "user", width: 12}
 	m.appendUserContent("第一轮")
 	m.appendAssistantContent("回答")
 	m.appendUserContent("第二轮")
