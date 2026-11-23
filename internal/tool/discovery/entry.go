@@ -23,11 +23,9 @@ type discoverArgs struct {
 
 func NewDiscoverTool(resolver *Resolver) share.ToolDefinition {
 	t := discoverTool{resolver: resolver}
-	builder := share.NewBuilder("discover_tool").
+	return share.NewBuilder("discover_tool").
 		Description("发现工具/Skill；name/names均空→简介列表，否则→schema或Skill内容。").
-		Risk(share.RiskSafe)
-
-	return builder.
+		Risk(share.RiskSafe).
 		String("name", "单个工具/Skill名称；可与names合并查询。").
 		StringArray("names", "批量工具/Skill名称。").Build(t.PrepareCall)
 }
@@ -61,11 +59,12 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 			return operationresult.Result[*share.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 		}
 		activateTools := []string{}
+		needsElyphRules := false
 		for _, discovered := range result.Tools {
-			if discovered.Detail == "" {
-				continue
+			needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
+			if discovered.Detail != "" {
+				activateTools = append(activateTools, targets[discovered.Info.Name].ActivateTools...)
 			}
-			activateTools = append(activateTools, targets[discovered.Info.Name].ActivateTools...)
 		}
 		data, err := marshalJSONNoEscape(result)
 		if err != nil {
@@ -80,10 +79,6 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 		details, err := discoveryContent(ctx, targets, result)
 		if err != nil {
 			return operationresult.Result[*share.Result]{}, err.Error(), err
-		}
-		needsElyphRules := false
-		for _, discovered := range result.Tools {
-			needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
 		}
 		// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
 		logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))

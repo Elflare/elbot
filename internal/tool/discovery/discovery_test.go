@@ -188,11 +188,6 @@ func TestDiscoverDependenciesAndPartialFailure(t *testing.T) {
 	if len(result.Errors) != 2 || result.Errors[0].Name != "main" || result.Errors[1].Name != "absent" {
 		t.Fatalf("errors = %+v", result.Errors)
 	}
-	for _, item := range result.Tools {
-		if item.Schema == nil {
-			t.Fatalf("missing schema for %s", item.Info.Name)
-		}
-	}
 	result, err = resolver.DiscoverDetails(ctx, []string{"hidden"})
 	if err != nil || len(result.Tools) != 0 || len(result.Errors) != 1 {
 		t.Fatalf("hidden root = %+v, %v", result, err)

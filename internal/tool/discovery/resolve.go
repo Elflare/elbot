@@ -57,15 +57,15 @@ func (r *Resolver) Availability(ctx context.Context) (contextinfo.ToolAvailabili
 	}
 	snapshot := contextinfo.ToolAvailability{Allowed: make(map[string]struct{}, len(available))}
 	for _, item := range available {
-		name, definition := item.Definition.Name, definitions[item.Definition.Name]
+		name := item.Definition.Name
 		if !isValid(name) {
 			continue
 		}
 		snapshot.Allowed[name] = struct{}{}
-		if definition.Definition.Hidden || name == "discover_tool" {
+		if item.Definition.Hidden || name == "discover_tool" {
 			continue
 		}
-		if definition.LoadDetail != nil {
+		if item.LoadDetail != nil {
 			snapshot.Skills = append(snapshot.Skills, name)
 		} else {
 			snapshot.Tools = append(snapshot.Tools, name)
@@ -139,12 +139,11 @@ func (r *Resolver) resolve(ctx context.Context, names []string) (*share.Discover
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	requested := names
 	var roots []share.ToolDefinition
 	var missing []share.DiscoveryError
 	byName := map[string]share.ToolDefinition{}
-	if len(requested) > 0 {
-		tools, err := r.registry.Query(ctx, share.ToolQuery{Scope: share.QueryAvailable, Names: requested, IncludeDiscover: true})
+	if len(names) > 0 {
+		tools, err := r.registry.Query(ctx, share.ToolQuery{Scope: share.QueryAvailable, Names: names, IncludeDiscover: true})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -152,7 +151,7 @@ func (r *Resolver) resolve(ctx context.Context, names []string) (*share.Discover
 			byName[tool.Definition.Name] = tool
 		}
 	}
-	for _, name := range requested {
+	for _, name := range names {
 		tool, ok := byName[name]
 		if !ok {
 			missing = append(missing, share.DiscoveryError{Name: name, Reason: "not found or not allowed"})

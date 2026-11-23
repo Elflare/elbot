@@ -18,11 +18,7 @@ func discoveryContent(ctx context.Context, targets map[string]share.ToolDefiniti
 		name := strings.TrimSpace(discovered.Info.Name)
 		if discovered.Detail != "" {
 			foundTools = append(foundTools, name)
-			block := discovered.DetailBlock
-			if strings.TrimSpace(block.Content) == "" {
-				block = share.DetailBlock{Content: discovered.Detail}
-			}
-			detailBlocks = append(detailBlocks, block)
+			detailBlocks = append(detailBlocks, discovered.DetailBlock)
 			continue
 		}
 		if discovered.Schema != nil && name != "" {
@@ -57,18 +53,9 @@ func discoveryContent(ctx context.Context, targets map[string]share.ToolDefiniti
 	if len(result.Errors) > 0 {
 		failures := make([]string, 0, len(result.Errors))
 		for _, item := range result.Errors {
-			if item.Name == "" {
-				continue
-			}
-			reason := strings.TrimSpace(item.Reason)
-			if reason == "" {
-				reason = "not found or not allowed"
-			}
-			failures = append(failures, fmt.Sprintf("%s：%s", item.Name, reason))
+			failures = append(failures, fmt.Sprintf("%s：%s", item.Name, item.Reason))
 		}
-		if len(failures) > 0 {
-			parts = append(parts, "未发现工具："+strings.Join(failures, ", "))
-		}
+		parts = append(parts, "未发现工具："+strings.Join(failures, ", "))
 	}
 	return share.DiscoveryText{Summary: summary, Details: strings.Join(parts, "\n\n")}, nil
 }
