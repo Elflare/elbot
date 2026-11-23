@@ -165,7 +165,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	if err := commitInput(requestCtx, in.Session, input.Data, prepared.InputCommitter()); err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
-	executed, err := prepared.RunLoop(ctx, requestCtx, loopIn, out)
+	executed, err := prepared.RunLoop(out)
 	if err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}

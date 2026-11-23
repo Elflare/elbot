@@ -62,6 +62,7 @@ func (l *testLoop) PrepareTurn(ctx context.Context, materials agentshare.TurnMat
 }
 
 type testPrepared struct {
+	agentshare.LoopState
 	loop *testLoop
 	user *storage.Message
 }
@@ -74,15 +75,16 @@ func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare
 	if contextinfo.RootRequestIDFromContext(requestCtx) != in.RequestID {
 		p.loop.t.Fatal("preparation lost parent request")
 	}
+	p.LoopState = agentshare.NewLoopState(requestCtx, requestCtx, in)
 	p.user.Content = "canonical input"
 	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: []*storage.Message{p.user}}}, nil
 }
 
-func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
+func (p *testPrepared) RunLoop(out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	p.loop.ran++
-	in.Selection.Model = "final-model"
-	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
-		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(requestCtx), Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}}, nil
+	p.Selection.Model = "final-model"
+	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Completed, Selection: p.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
+		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(p.RequestCtx), Session: p.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}}, nil
 }
 
 type testCompactor struct{ calls int }

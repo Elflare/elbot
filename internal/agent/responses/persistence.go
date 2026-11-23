@@ -109,7 +109,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 	c.inputs = make([]storage.NativeInput, len(s.calls))
 	c.remaining = len(s.calls)
 	native := s.advance("")
-	batch, err := agentshare.NewToolBatch(ctx, s.route.Shared.NewMessageID, head, s.calls)
+	batch, err := agentshare.NewToolBatch(ctx, s.route.Shared.NewMessageID, head)
 	if err != nil {
 		return err
 	}

@@ -99,7 +99,7 @@ func TestCallRetryStreamBoundary(t *testing.T) {
 			processor := CallProcessor{Hooks: callOnlyHooks{}, Tools: &ToolExecutor{Manager: hookTools{}}}
 			calls := 0
 			result, err := processor.Call(ctx, &storage.Session{ID: "s"}, modelmgr.Selection{Client: client},
-				nil, nil, nil, nil, stream,
+				nil, nil, nil, nil, stream, false,
 				func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error) {
 					steps = append(steps, "prepare")
 					return operationresult.Result[struct{}]{Status: operationresult.Success}, nil

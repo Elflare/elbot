@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"context"
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
@@ -12,7 +11,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (result operationresult.Result[agentshare.LoopResult], runErr error) {
+func (p *preparedLoop) RunLoop(out agentshare.Output) (result operationresult.Result[agentshare.LoopResult], runErr error) {
 	r, s := p.route, p.state
 	for i := range p.materials.Loaded.Messages {
 		head := &p.materials.Loaded.Messages[i]
@@ -31,22 +30,22 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}()
 	summarizing := false
 	for {
-		if !summarizing {
-			checked, err := s.RefreshSession(r.Shared, r.CheckSelection, func() error {
-				prompt, err := r.PromptBuilder.Build(s.RequestCtx, PromptBuildRequest{Session: s.Session, Scope: r.Identity.Scope(s.RequestCtx)})
-				if err != nil {
-					return err
-				}
-				s.messages = agentshare.ReplaceSystemMessages(s.messages, prompt)
-				s.tools, err = r.Shared.Tools.Schemas(s.RequestCtx, s.Session)
-				return err
-			})
+		checked, err := s.RefreshSession(r.Shared, r.CheckSelection, func() error {
+			prompt, err := r.PromptBuilder.Build(s.RequestCtx, PromptBuildRequest{Session: s.Session, Scope: r.Identity.Scope(s.RequestCtx)})
 			if err != nil {
-				return failedLoop(err)
+				return err
 			}
-			if checked.Status != operationresult.Success {
-				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
+			s.messages = agentshare.ReplaceSystemMessages(s.messages, prompt)
+			if !summarizing {
+				s.tools, err = r.Shared.Tools.Schemas(s.RequestCtx, s.Session)
 			}
+			return err
+		})
+		if err != nil {
+			return failedLoop(err)
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 		}
 		pending, stream := s.StartCall(r.Shared, out)
 		var snapshot runtimestatus.Snapshot
@@ -55,7 +54,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			snapshot.Kind, snapshot.Label = request.KindTurn, "chat"
 			r.Status.Record(s.Ctx, snapshot)
 		}
-		called, err := r.Caller.Call(s.RequestCtx, s.Session, s.Selection, s.messages, s.tools, pending, stream)
+		called, err := r.Caller.Call(s.RequestCtx, s.Session, s.Selection, s.messages, s.tools, pending, stream, summarizing)
 		if err != nil {
 			return failedLoop(err)
 		}
@@ -77,7 +76,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			r.Status.Record(s.Ctx, snapshot)
 		} else {
 			if len(reply.ToolCalls) > 0 {
-				// TODO: force tool_choice=none when supported; ignore calls in this tool-free summary.
+				// Ignore unsolicited tool calls in the summary, never execute them.
 				out.SendPreview(s.Ctx, "总结中的工具调用已忽略")
 			}
 			if reply.Text == "" {
@@ -109,7 +108,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return failedLoop(err)
 		}
 		committer := r.NewToolTranscriptCommitter()
-		execution, limit := s.RunTools(r.Shared, out, reply.ToolCalls, reply.RawText, reply.ReasoningContent, committer, true, s.skippedToolText)
+		execution, limit := s.RunTools(r.Shared, out, reply.ToolCalls, reply.RawText, reply.ReasoningContent, committer, s.skippedToolText)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}
@@ -121,7 +120,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := s.AppendUserText(r.Shared, r.Messages.Committer("append_summary_input"), &s.messages, "工具调用次数已达上限，可请求继续或者总结当前进度。"); err != nil {
 				return failedLoop(err)
 			}
-			s.tools = nil
 			summarizing = true
 			continue
 		}

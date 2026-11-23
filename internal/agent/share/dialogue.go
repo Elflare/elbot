@@ -73,7 +73,7 @@ type Loop interface {
 type PreparedLoop interface {
 	InputCommitter() MessageCommitter
 	PrepareInput(context.Context, context.Context, LoopInput, Output) (operationresult.Result[storage.DialogueCommit], error)
-	RunLoop(context.Context, context.Context, LoopInput, Output) (operationresult.Result[LoopResult], error)
+	RunLoop(Output) (operationresult.Result[LoopResult], error)
 }
 type LoopResult struct {
 	Outcome   Outcome
@@ -183,17 +183,15 @@ type MessageCommitter interface {
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.
-func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, error), head *storage.Message, calls []llm.ToolCallRequest) (*storage.ToolBatch, error) {
+func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, error), head *storage.Message) (*storage.ToolBatch, error) {
 	if err := storage.PrepareMessageID(ctx, allocate, head); err != nil {
 		return nil, err
 	}
 	head.CreatedAt = storage.Now()
 	head.ToolBatchStatus = "pending"
-	results := make([]*storage.Message, len(calls))
-	ids := make([]string, len(calls))
-	head.ToolCalls = make([]storage.ToolCall, len(calls))
-	for i, call := range calls {
-		head.ToolCalls[i] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+	results := make([]*storage.Message, len(head.ToolCalls))
+	ids := make([]string, len(head.ToolCalls))
+	for i, call := range head.ToolCalls {
 		row := ToolResultStorageMessage(head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved")})
 		row.ToolResultStatus = "pending"
 		results[i] = &row
@@ -329,6 +327,7 @@ type PreparedTurn interface {
 }
 
 type CallInput struct {
+	ToolChoice                string // Empty inherits the configured choice; a tool-limit summary explicitly selects none.
 	Messages, RequestMessages []llm.LLMMessage
 	Tools                     []llm.ToolSchema
 }

@@ -27,7 +27,7 @@ type Caller struct {
 		FinishMaterials(context.Context, media.UsageID)
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingInput, agentshare.MessageCommitter, delivery.MessageStream,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingInput, agentshare.MessageCommitter, delivery.MessageStream, bool,
 			func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 			func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error)) (operationresult.Result[agentshare.CallOutput], error)
 	}
@@ -42,7 +42,7 @@ type llmCallResult struct {
 	Messages         []llm.LLMMessage
 }
 
-func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, stream delivery.MessageStream) (operationresult.Result[llmCallResult], error) {
+func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, stream delivery.MessageStream, summarizing bool) (operationresult.Result[llmCallResult], error) {
 	client := selection.Client.(chatcompletions.Streamer)
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	var req chatcompletions.Request
@@ -60,7 +60,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		if requestMessages.Status != operationresult.Success {
 			return operationresult.Result[struct{}]{Status: requestMessages.Status, Message: requestMessages.Message}, nil
 		}
-		req = chatcompletions.Request{Model: selection.Model, SessionID: session.ID, Messages: requestMessages.Data, Tools: input.Tools}
+		req = chatcompletions.Request{Model: selection.Model, SessionID: session.ID, Messages: requestMessages.Data, Tools: input.Tools, ToolChoice: input.ToolChoice}
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	attempt := func(ctx context.Context, observation agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error) {
@@ -71,7 +71,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		}
 		return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, ReasoningContent: result.ReasoningContent, Usage: result.Usage, ToolCalls: result.ToolCalls}}, nil
 	}
-	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), stream, prepare, attempt)
+	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), stream, summarizing, prepare, attempt)
 	if err != nil {
 		return operationresult.Result[llmCallResult]{}, err
 	}

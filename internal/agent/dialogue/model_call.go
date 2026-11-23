@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"time"
 
@@ -51,13 +52,13 @@ func (c *CallProcessor) Call(
 	ctx context.Context, session *storage.Session, selection modelmgr.Selection,
 	messages []llm.LLMMessage, tools []llm.ToolSchema,
 	pending *agentshare.PendingInput, persistence agentshare.MessageCommitter,
-	stream delivery.MessageStream,
+	stream delivery.MessageStream, summarizing bool,
 	prepare func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 	attempt func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error),
 ) (operationresult.Result[agentshare.CallOutput], error) {
 	startedAt := time.Now()
 	observation := c.Begin(session.ID, selection)
-	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence)
+	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence, summarizing)
 	if err != nil {
 		observation.Publish(ctx, err)
 		return operationresult.Result[agentshare.CallOutput]{}, err
@@ -92,7 +93,7 @@ func (c *CallProcessor) Call(
 		}
 		return operationresult.Result[agentshare.CallOutput]{}, err
 	}
-	if result.Status != operationresult.Success {
+	if result.Status != operationresult.Success || summarizing {
 		return result, nil
 	}
 	data := result.Data
@@ -177,26 +178,10 @@ func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, respo
 
 // PrepareCall applies common hooks and authorization to canonical business
 // material. PrepareMaterials expands only the material selected for this call.
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, persistence agentshare.MessageCommitter) (agentshare.CallInput, error) {
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingInput, persistence agentshare.MessageCommitter, summarizing bool) (agentshare.CallInput, error) {
 	sessionID := session.ID
-	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
-	if !toolsEnabled {
-		tools = nil
-	}
-	var allowedTools map[string]bool
-	if session.Mode == storage.SessionModeBackground {
-		discovered, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
-		if err != nil {
-			return agentshare.CallInput{}, err
-		}
-		allowedTools = map[string]bool{}
-		for _, item := range discovered {
-			if item.Schema.Name != "" {
-				allowedTools[item.Schema.Name] = true
-			}
-		}
-	}
 	baseMessages := llm.CloneMessages(messages)
+	var segments []llm.MessageSegment
 	commit := storage.DialogueCommit{SessionID: sessionID}
 	if pending != nil {
 		commit.Messages = pending.Reports
@@ -215,53 +200,26 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			}
 			baseMessages = append(baseMessages, projected)
 		}
-	}
-	userIndex := len(baseMessages)
-	hookMessage := agentshare.Message{}
-	if pending != nil && pending.Message != nil {
-		baseMessages = append(baseMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
-		hookMessage = agentshare.Message{
-			ID:           pending.Message.ID,
-			Role:         string(llm.RoleUser),
-			PlatformText: pending.PlatformText,
-			Segments:     append([]llm.MessageSegment(nil), pending.Segments...),
+		if pending.Message != nil {
+			segments = pending.Segments
+			baseMessages = append(baseMessages, llm.LLMMessage{Role: llm.RoleUser, Segments: segments})
 		}
 	}
-	requestMessages := llm.CloneMessages(baseMessages)
+	input := agentshare.CallInput{Messages: baseMessages, RequestMessages: llm.CloneMessages(baseMessages)}
 	if notice, ok := agentshare.ForegroundNotice(session); ok {
-		requestMessages = append(requestMessages, notice)
+		input.RequestMessages = append(input.RequestMessages, notice)
 	}
-	result, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMInput{
-		Message:  hookMessage,
-		Provider: selection.Provider,
-		Model:    selection.Model,
-		Messages: llm.CloneMessages(requestMessages),
-		Tools:    tools,
-	})
-	if err != nil {
-		return agentshare.CallInput{}, err
-	}
-	tools = result.Tools
-	// Hooks may change schemas, but cannot override registered availability.
-	tools, err = c.Tools.Manager.FilterSchemas(ctx, tools)
-	if err != nil {
-		return agentshare.CallInput{}, fmt.Errorf("filter tool schemas: %w", err)
-	}
-	if allowedTools != nil {
-		filtered := make([]llm.ToolSchema, 0, len(tools))
-		for _, schema := range tools {
-			if allowedTools[schema.Name] {
-				filtered = append(filtered, schema)
-			}
+	if summarizing {
+		input.ToolChoice = "none"
+	} else {
+		result, err := c.prepareRequestHook(ctx, session, selection, pending, input.RequestMessages, tools)
+		if err != nil {
+			return agentshare.CallInput{}, err
 		}
-		tools = filtered
-	}
-	// Hooks may customize tools in work mode, but cannot enable them in chat.
-	if !toolsEnabled {
-		tools = nil
+		segments, input.Tools = result.Segments, result.Tools
 	}
 	if pending != nil && pending.Message != nil {
-		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: result.Segments}})
+		archived, err := c.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{{Segments: segments}})
 		if err != nil {
 			return agentshare.CallInput{}, err
 		}
@@ -274,8 +232,9 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		if ruleCard != "" {
 			segments = append(llm.TextSegments(ruleCard+"\n\n"), segments...)
 		}
-		baseMessages[userIndex].Segments = segments
-		requestMessages[userIndex].Segments = segments
+		userIndex := len(input.Messages) - 1
+		input.Messages[userIndex].Segments = segments
+		input.RequestMessages[userIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
 		commit.ElyphRulesShown = ruleCard != ""
@@ -285,7 +244,45 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			return agentshare.CallInput{}, err
 		}
 	}
-	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil
+	return input, nil
+}
+
+func (c *CallProcessor) prepareRequestHook(ctx context.Context, session *storage.Session, selection modelmgr.Selection, pending *agentshare.PendingInput, messages []llm.LLMMessage, tools []llm.ToolSchema) (agentshare.LLMInputResult, error) {
+	enabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
+	if !enabled {
+		tools = nil
+	}
+	// Fix the background allowlist before invoking the request hook.
+	var allowed map[string]bool
+	if session.Mode == storage.SessionModeBackground {
+		discovered, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
+		if err != nil {
+			return agentshare.LLMInputResult{}, err
+		}
+		allowed = make(map[string]bool, len(discovered))
+		for _, item := range discovered {
+			if item.Schema.Name != "" {
+				allowed[item.Schema.Name] = true
+			}
+		}
+	}
+	var message agentshare.Message
+	if pending != nil && pending.Message != nil {
+		message = agentshare.Message{ID: pending.Message.ID, Role: string(llm.RoleUser), PlatformText: pending.PlatformText, Segments: slices.Clone(pending.Segments)}
+	}
+	result, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: session.ID}, agentshare.LLMInput{Message: message, Provider: selection.Provider, Model: selection.Model, Messages: llm.CloneMessages(messages), Tools: tools})
+	if err != nil || !enabled {
+		result.Tools = nil
+		return result, err
+	}
+	result.Tools, err = c.Tools.Manager.FilterSchemas(ctx, result.Tools)
+	if err != nil {
+		return result, fmt.Errorf("filter tool schemas: %w", err)
+	}
+	if allowed != nil {
+		result.Tools = slices.DeleteFunc(result.Tools, func(schema llm.ToolSchema) bool { return !allowed[schema.Name] })
+	}
+	return result, nil
 }
 
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content, reasoningContent string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (agentshare.CallOutput, error) {

@@ -8,7 +8,6 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
@@ -40,8 +39,11 @@ type LoopState struct {
 	LoopInput
 	Ctx, RequestCtx    context.Context // Turn/output context and separately cancellable request context.
 	foregroundPrepared bool            // Apply the new selection and request materials once, not once per tool round.
-	toolPhase          bool            // The current attempt has entered the tool phase.
 	rounds             int             // Executed tool batches; skipped calls do not count.
+}
+
+func NewLoopState(ctx, requestCtx context.Context, in LoopInput) LoopState {
+	return LoopState{LoopInput: in, Ctx: ctx, RequestCtx: requestCtx, foregroundPrepared: in.Session.Mode != storage.SessionModeBackground}
 }
 
 func (s *LoopState) RefreshSession(d LoopDeps, check func(modelmgr.Selection) operationresult.Result[struct{}], refresh func() error) (operationresult.Result[struct{}], error) {
@@ -51,7 +53,7 @@ func (s *LoopState) RefreshSession(d LoopDeps, check func(modelmgr.Selection) op
 		return operationresult.Result[struct{}]{}, err
 	}
 	s.Ctx = d.View.Context(s.Ctx)
-	if session.WasPromoted(s.Session) && !s.foregroundPrepared {
+	if !s.foregroundPrepared && s.Session.Mode != storage.SessionModeBackground {
 		s.Selection = d.SelectionForTurn(s.RequestCtx, s.Session)
 		if checked := check(s.Selection); checked.Status != operationresult.Success {
 			return checked, nil
@@ -86,18 +88,14 @@ func (s *LoopState) SendToolOutput(out Output, stream delivery.MessageStream, te
 	return err
 }
 
-// RunTools preserves the route's tool-phase boundary on an over-limit batch.
+// RunTools enters the tool phase before running the first batch.
 // The protocol committer owns the atomic write, including any native checkpoint.
-func (s *LoopState) RunTools(d LoopDeps, out Output, calls []llm.ToolCallRequest, text, reasoning string, committer tool.ToolCommitter, enterOnLimit bool, skippedText func(int) string) (tool.RunResult, bool) {
+func (s *LoopState) RunTools(d LoopDeps, out Output, calls []llm.ToolCallRequest, text, reasoning string, committer tool.ToolCommitter, skippedText func(int) string) (tool.RunResult, bool) {
 	maxRounds := d.Tools.MaxRoundsPerTurn()
-	limit := s.rounds >= maxRounds
-	if !s.toolPhase && (!limit || enterOnLimit) {
-		if !d.Turns.StartToolPhase(s.Session.ID, turn.AttemptFromContext(s.Ctx)) {
-			return tool.RunResult{Stopped: true}, false
-		}
-		s.toolPhase = true
+	if s.rounds == 0 && !d.Turns.StartToolPhase(s.Session.ID, turn.AttemptFromContext(s.Ctx)) {
+		return tool.RunResult{Stopped: true}, false
 	}
-	if limit {
+	if s.rounds >= maxRounds {
 		skipText := skippedText(maxRounds)
 		head := ToolCallStorageMessage(s.Session.ID, text, text, calls, reasoning)
 		if err := committer.Begin(s.RequestCtx, &head); err != nil {

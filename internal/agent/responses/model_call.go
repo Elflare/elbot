@@ -21,9 +21,9 @@ import (
 	"strings"
 )
 
-func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, stream delivery.MessageStream) (final operationresult.Result[agentshare.CallOutput], err error) {
+func (s *turnState) call(pending *agentshare.PendingInput, stream delivery.MessageStream, summarizing bool) (final operationresult.Result[agentshare.CallOutput], err error) {
 	client := s.Selection.Client.(api.Streamer)
-	ctx = agentshare.WithReadOnlyCalls(ctx)
+	ctx := s.RequestCtx
 	var request api.Request
 	var inputs []storage.NativeInput
 	var consumed []string
@@ -63,6 +63,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 			Model:        s.Selection.Model,
 			Instructions: instructions,
 			AllowedTools: s.allowedToolNames(),
+			ToolChoice:   projection.ToolChoice,
 			Store:        &store,
 			Include:      []string{"reasoning.encrypted_content"},
 		}
@@ -190,7 +191,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 		final.ToolCalls = calls
 		return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: final}, nil
 	}
-	final, err = s.route.Calls.Call(ctx, s.Session, s.Selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, prepare, attempt)
+	final, err = s.route.Calls.Call(ctx, s.Session, s.Selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, summarizing, prepare, attempt)
 	s.sourceText = outputText(result.Items)
 	if err != nil {
 		return operationresult.Result[agentshare.CallOutput]{}, err

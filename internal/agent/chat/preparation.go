@@ -24,7 +24,7 @@ func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
 	r := p.route
-	s := &chatTurnState{LoopState: agentshare.LoopState{LoopInput: in, Ctx: ctx, RequestCtx: requestCtx}, output: out}
+	s := &chatTurnState{LoopState: agentshare.NewLoopState(ctx, requestCtx, in), output: out}
 	p.state = s
 	ctx = s.RequestCtx
 	if err := ctx.Err(); err != nil {

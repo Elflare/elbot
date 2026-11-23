@@ -106,22 +106,15 @@ func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, err
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
-	providerExtra, modelExtra := withoutStore(c.extraPayload), withoutStore(c.modelExtraPayloads[req.Model])
-	reserved := []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"}
+	omit := []string{"store"}
 	if compact {
-		// Compaction inherits inference/cache options, but neither an answer format
-		// nor a configured tool choice may turn it into a normal generation.
-		for _, extra := range []map[string]any{providerExtra, modelExtra} {
-			delete(extra, "text")
-			delete(extra, "tool_choice")
-		}
-		body["tool_choice"] = "none"
-		reserved = append(reserved, "text", "tool_choice")
+		// Compaction neither selects tools nor inherits a configured answer format.
+		req.ToolChoice = "none"
+		omit = append(omit, "text")
 	}
-	body, err := llm.AddExtraFields(body, reserved,
-		llm.ExtraFields{Source: "provider extra_payload", Fields: providerExtra},
-		llm.ExtraFields{Source: "model extra_payload", Fields: modelExtra},
-		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
+	provider, model := llm.RequestConfig(body, req.ToolChoice, c.extraPayload, c.modelExtraPayloads[req.Model], omit...)
+	reserved := append([]string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation"}, omit...)
+	body, err := llm.AddExtraFields(body, reserved, provider, model, req.ExtraBody)
 	if err != nil {
 		return PreparedRequest{}, err
 	}
@@ -158,12 +151,6 @@ func (c *Client) StoreForModel(model string) bool {
 		return value.(bool)
 	}
 	return false
-}
-
-func withoutStore(fields map[string]any) map[string]any {
-	copy := maps.Clone(fields)
-	delete(copy, "store")
-	return copy
 }
 
 // include is additive: route-required recovery material cannot be removed by

@@ -25,7 +25,7 @@ func TestLoopRefreshAcrossTakeover(t *testing.T) {
 	row := live.row
 	selected := modelmgr.Selection{Origin: llm.Origin{APIType: llm.APITypeChat, Provider: "test"}}
 	selected.Model = "background"
-	state := share.LoopState{LoopInput: share.LoopInput{Session: &row, Selection: selected}, Ctx: t.Context(), RequestCtx: t.Context()}
+	state := share.NewLoopState(t.Context(), t.Context(), share.LoopInput{Session: &row, Selection: selected})
 	selections, refreshes := 0, 0
 	deps := share.LoopDeps{View: dialogue.ExecutionView{Sessions: live}, SelectionForTurn: func(context.Context, *storage.Session) modelmgr.Selection {
 		selections++
@@ -61,10 +61,17 @@ func TestLoopRefreshAcrossTakeover(t *testing.T) {
 	}
 }
 
-// No attempt owns the tool phase. Only the route that skips before entering it may commit.
-type refusedToolPhase struct{ *turn.Supervisor }
+type oneRound struct {
+	*dialogue.ToolExecutor
+	*turn.Supervisor
+	entries, runs int
+}
 
-func (refusedToolPhase) StartToolPhase(string, string) bool { return false }
+func (r *oneRound) StartToolPhase(string, string) bool { r.entries++; return true }
+func (r *oneRound) ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, string, share.Output, tool.ToolCommitter) tool.RunResult {
+	r.runs++
+	return tool.RunResult{}
+}
 
 type skippedBatch struct {
 	tool.ToolCommitter
@@ -83,22 +90,19 @@ func (b *skippedBatch) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _
 }
 func (b *skippedBatch) Flush(context.Context) error { b.flushed = true; return nil }
 
-func TestLoopToolLimitPreservesPhaseBoundary(t *testing.T) {
-	deps := share.LoopDeps{Turns: refusedToolPhase{}, Tools: &dialogue.ToolExecutor{MaxRounds: 0}}
+func TestLoopToolLimitPairsSkippedResults(t *testing.T) {
+	route := &oneRound{ToolExecutor: &dialogue.ToolExecutor{MaxRounds: 1}}
+	deps := share.LoopDeps{Turns: route, Tools: route}
+	state := share.NewLoopState(t.Context(), t.Context(), share.LoopInput{Session: &storage.Session{ID: "session"}})
 	calls := []llm.ToolCallRequest{{ID: "a", Name: "first"}, {ID: "b", Name: "second"}}
-	for _, enterOnLimit := range []bool{true, false} {
-		state := share.LoopState{LoopInput: share.LoopInput{Session: &storage.Session{ID: "session"}}, Ctx: t.Context(), RequestCtx: t.Context()}
-		batch := new(skippedBatch)
-		r, limited := state.RunTools(deps, nil, calls, "", "", batch, enterOnLimit, func(int) string { return "skipped" })
-		if r.Err != nil || r.Stopped != enterOnLimit || limited == enterOnLimit {
-			t.Fatalf("enterOnLimit=%t: %+v, limited=%t", enterOnLimit, r, limited)
+	batch := new(skippedBatch)
+	for _, wantLimit := range []bool{false, true} {
+		r, limited := state.RunTools(deps, nil, calls, "", "", batch, func(int) string { return "skipped" })
+		if r.Err != nil || r.Stopped || limited != wantLimit || route.entries != 1 || route.runs != 1 {
+			t.Fatalf("limited=%t, run=%+v, entries=%d runs=%d", limited, r, route.entries, route.runs)
 		}
-		if enterOnLimit {
-			if len(batch.calls) != 0 || batch.flushed {
-				t.Fatal("expired attempt committed a batch")
-			}
-		} else if !batch.flushed || len(batch.calls) != 2 || !slices.Equal(batch.results, []string{"a:skipped", "b:skipped"}) {
-			t.Fatalf("lost skipped call/result pairing: %+v", batch)
-		}
+	}
+	if !batch.flushed || len(batch.calls) != 2 || !slices.Equal(batch.results, []string{"a:skipped", "b:skipped"}) {
+		t.Fatalf("lost skipped call/result pairing: %+v", batch)
 	}
 }

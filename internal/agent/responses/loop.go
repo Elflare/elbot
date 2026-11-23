@@ -96,7 +96,7 @@ func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMateria
 			return operationresult.Result[agentshare.PreparedLoop]{}, err
 		}
 	}
-	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &preparedLoop{materials: materials, state: &turnState{route: r, LoopState: agentshare.LoopState{LoopInput: agentshare.LoopInput{Session: materials.Session}}, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}}, nil
+	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &preparedLoop{materials: materials, state: &turnState{route: r, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
@@ -105,7 +105,7 @@ func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
 	s := p.state
-	s.Ctx, s.RequestCtx, s.LoopInput = ctx, agentshare.WithReadOnlyCalls(requestCtx), in
+	s.LoopState = agentshare.NewLoopState(ctx, agentshare.WithReadOnlyCalls(requestCtx), in)
 	if err := s.RequestCtx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
@@ -166,10 +166,9 @@ func (s *turnState) instructions(ctx context.Context) (string, error) {
 	return text, nil
 }
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
+func (p *preparedLoop) RunLoop(out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	s := p.state
-	s.Ctx, s.RequestCtx = ctx, agentshare.WithReadOnlyCalls(requestCtx)
-	result := agentshare.LoopResult{Selection: in.Selection}
+	var result agentshare.LoopResult
 	fail := func(err error) (operationresult.Result[agentshare.LoopResult], error) {
 		return operationresult.Result[agentshare.LoopResult]{}, err
 	}
@@ -179,41 +178,38 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	d := s.route.Shared
 	summarizing := false
 	for {
-		if !summarizing {
-			compatible, err := s.RefreshSession(d, s.route.CheckSelection, func() error {
+		compatible, err := s.RefreshSession(d, s.route.CheckSelection, func() error {
+			if !summarizing {
 				var err error
 				s.tools, err = d.Tools.Schemas(s.RequestCtx, s.Session)
 				if err != nil {
 					return err
 				}
-				instructions, err := s.instructions(s.RequestCtx)
-				if err != nil {
-					return err
-				}
-				s.projection = agentshare.ReplaceSystemMessages(s.projection, []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}})
-				return nil
-			})
+			}
+			instructions, err := s.instructions(s.RequestCtx)
 			if err != nil {
-				return fail(err)
+				return err
 			}
-			if compatible.Status != operationresult.Success {
-				return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
-			}
-			result.Selection = s.Selection
+			s.projection = agentshare.ReplaceSystemMessages(s.projection, []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}})
+			return nil
+		})
+		if err != nil {
+			return fail(err)
 		}
+		if compatible.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
+		}
+		result.Selection = s.Selection
 		pending, stream := s.StartCall(d, out)
 		if !summarizing {
 			s.route.Status.Record(s.Ctx, s.LLMSnapshot(result.Usage))
 		}
-		called, err := s.call(s.RequestCtx, pending, stream)
+		called, err := s.call(pending, stream, summarizing)
 		if err != nil {
 			return fail(err)
 		}
 		if called.Status != operationresult.Success {
 			return operationresult.Result[agentshare.LoopResult]{Status: called.Status, Message: called.Message}, nil
-		}
-		if summarizing && len(s.calls) != 0 {
-			return fail(fmt.Errorf("summary response returned function calls with no tools"))
 		}
 		final := called.Data
 		result.Usage = final.Usage
@@ -238,7 +234,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err := s.SendToolOutput(out, stream, final.Text, append(immediate, later...)); err != nil {
 			return fail(err)
 		}
-		execution, limit := s.RunTools(d, out, s.calls, s.sourceText, final.ReasoningContent, &toolCommitter{state: s}, false, func(int) string {
+		execution, limit := s.RunTools(d, out, s.calls, s.sourceText, final.ReasoningContent, &toolCommitter{state: s}, func(int) string {
 			return "tool call was not executed: max_rounds_per_turn reached"
 		})
 		if execution.Err != nil {
@@ -249,7 +245,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 		}
 		if limit {
-			s.tools = nil
 			out.SendPreview(s.Ctx, fmt.Sprintf("max_rounds_per_turn=%d → 总结", d.Tools.MaxRoundsPerTurn()))
 			if err := s.AppendUserText(d, inputCommitter{state: s}, &s.projection, "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。"); err != nil {
 				return fail(err)

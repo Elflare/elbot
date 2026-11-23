@@ -108,19 +108,14 @@ type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
 	committed []llm.LLMMessage
 	head      *storage.Message
-	calls     []llm.ToolCallRequest
 	results   []*storage.Message
 	remaining int
 }
 
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) error {
 	c.head = head
-	c.calls = make([]llm.ToolCallRequest, len(head.ToolCalls))
-	for i, call := range head.ToolCalls {
-		c.calls[i] = llm.ToolCallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
-	}
-	c.remaining = len(c.calls)
-	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls)
+	c.remaining = len(head.ToolCalls)
+	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head)
 	if err != nil {
 		return err
 	}
@@ -132,8 +127,8 @@ func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallReq
 }
 func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) error {
 	commit := storage.DialogueCommit{SessionID: c.head.SessionID, ToolResult: update}
-	if call.Arguments != c.calls[index].Arguments {
-		previous := media.ArgumentMediaIDs(c.calls[index].Arguments)
+	if call.Arguments != c.head.ToolCalls[index].Arguments {
+		previous := media.ArgumentMediaIDs(c.head.ToolCalls[index].Arguments)
 		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
 			if !slices.Contains(previous, id) {
 				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: c.head.SessionID, SessionID: c.head.SessionID, Purpose: "input", CreatedAt: storage.Now()})
@@ -142,12 +137,9 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	}
 	stored := update.Result
 	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
-	c.calls[index], c.results[index] = call, stored
+	c.head.ToolCalls[index] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+	c.results[index] = stored
 	stored.ToolResultStatus = "completed"
-	c.head.ToolCalls = make([]storage.ToolCall, len(c.calls))
-	for i, item := range c.calls {
-		c.head.ToolCalls[i] = storage.ToolCall{ID: item.ID, Name: item.Name, Arguments: item.Arguments}
-	}
 	if c.remaining == 1 {
 		c.head.ToolBatchStatus = "completed"
 	}

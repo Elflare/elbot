@@ -10,7 +10,7 @@ func TestAddExtraFieldsAddsWithoutMutatingInputs(t *testing.T) {
 	body := map[string]any{"model": "m"}
 	provider := map[string]any{"reasoning": map[string]any{"effort": "medium"}}
 	model := map[string]any{"text": map[string]any{"format": map[string]any{"type": "json_object"}}}
-	result, err := AddExtraFields(body, []string{"tools"}, ExtraFields{"provider", provider}, ExtraFields{"model", model}, ExtraFields{"request", map[string]any{"seed": 42}})
+	result, err := AddExtraFields(body, []string{"tools"}, provider, model, map[string]any{"seed": 42})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,19 +24,19 @@ func TestAddExtraFieldsAddsWithoutMutatingInputs(t *testing.T) {
 
 func TestAddExtraFieldsRejectsAllConflicts(t *testing.T) {
 	for _, tc := range []struct {
-		name, key string
-		body      map[string]any
-		owned     []string
-		extras    []ExtraFields
-		source    string
+		name, key                string
+		body                     map[string]any
+		owned                    []string
+		provider, model, request map[string]any
+		source                   string
 	}{
-		{"request field", "model", map[string]any{"model": "m"}, nil, []ExtraFields{{"provider", map[string]any{"model": "other"}}}, "request"},
-		{"omitted owned field", "tools", map[string]any{}, []string{"tools"}, []ExtraFields{{"provider", map[string]any{"tools": []any{}}}}, "protocol request"},
-		{"equal values", "seed", map[string]any{}, nil, []ExtraFields{{"provider", map[string]any{"seed": 42}}, {"model", map[string]any{"seed": 42}}}, "provider"},
-		{"nested object", "reasoning", map[string]any{}, nil, []ExtraFields{{"provider", map[string]any{"reasoning": map[string]any{"effort": "medium"}}}, {"request", map[string]any{"reasoning": map[string]any{"summary": "auto"}}}}, "provider"},
+		{"request field", "model", map[string]any{"model": "m"}, nil, map[string]any{"model": "other"}, nil, nil, "request"},
+		{"omitted owned field", "tools", map[string]any{}, []string{"tools"}, map[string]any{"tools": []any{}}, nil, nil, "protocol request"},
+		{"equal values", "seed", map[string]any{}, nil, map[string]any{"seed": 42}, map[string]any{"seed": 42}, nil, "provider"},
+		{"nested object", "reasoning", map[string]any{}, nil, map[string]any{"reasoning": map[string]any{"effort": "medium"}}, nil, map[string]any{"reasoning": map[string]any{"summary": "auto"}}, "provider"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := AddExtraFields(tc.body, tc.owned, tc.extras...)
+			_, err := AddExtraFields(tc.body, tc.owned, tc.provider, tc.model, tc.request)
 			if err == nil || !strings.Contains(err.Error(), tc.key) || !strings.Contains(err.Error(), tc.source) {
 				t.Fatalf("error=%v", err)
 			}

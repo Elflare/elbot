@@ -9,6 +9,7 @@ import (
 // Request owns Responses context and the currently callable function names.
 // Definitions enter the context through AdditionalTools input items.
 type Request struct {
+	ToolChoice         string // Explicit native tool_choice; empty leaves the configured choice in force.
 	Model              string
 	Instructions       string
 	Input              []Item

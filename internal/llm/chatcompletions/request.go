@@ -7,6 +7,7 @@ import (
 
 // Request is the input for an LLM chat call.
 type Request struct {
+	ToolChoice  string // Explicit native tool_choice; empty leaves the configured choice in force.
 	Model       string
 	SessionID   string
 	Messages    []llm.LLMMessage

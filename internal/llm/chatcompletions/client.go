@@ -63,10 +63,8 @@ func (a *Client) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 	if len(req.Tools) > 0 {
 		body["tools"] = toOpenAITools(req.Tools)
 	}
-	body, err := llm.AddExtraFields(body, []string{"model", "messages", "tools", "stream", "stream_options"},
-		llm.ExtraFields{Source: "provider extra_payload", Fields: a.extraPayload},
-		llm.ExtraFields{Source: "model extra_payload", Fields: a.modelExtraPayloads[req.Model]},
-		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
+	provider, model := llm.RequestConfig(body, req.ToolChoice, a.extraPayload, a.modelExtraPayloads[req.Model])
+	body, err := llm.AddExtraFields(body, []string{"model", "messages", "tools", "stream", "stream_options"}, provider, model, req.ExtraBody)
 	if err != nil {
 		return nil, err
 	}
