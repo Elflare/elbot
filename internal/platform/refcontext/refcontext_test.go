@@ -51,7 +51,7 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 		if err := history.Append(ctx, row); err != nil {
 			t.Fatal(err)
 		}
-		opts := share.ReferenceOptions{Bot: share.Identity{UserID: "self", Username: tc.username}, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+		opts := share.ReferenceOptions{Bot: share.Identity{UserID: "self", Username: tc.username}, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 			return share.ReferencedMessage{SenderID: tc.sender, SenderName: tc.name, Text: "正文"}, true, nil
 		}}
 		deps := newRefTestOptions(newRefTestStore(t), history)
@@ -59,7 +59,7 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 			t.Fatal("text-only reference queried media associations")
 			return nil, nil
 		}
-		got, err := Apply(ctx, deps, opts)
+		got, err := deps.Apply(ctx, opts)
 		if err != nil || got.Text != tc.want || got.Reply.MessageID != opts.ReplyID {
 			t.Fatalf("%s: got %q (%+v), err %v; want %q", tc.platform, got.Text, got.Reply, err, tc.want)
 		}
@@ -75,7 +75,7 @@ func TestUnrecordedReferenceUsesFetchedContent(t *testing.T) {
 	deps := newRefTestOptions(newRefTestStore(t), newRefTestHistory(t))
 	calls := 0
 	for _, input := range []string{"说：收到", "/help"} {
-		got, err := Apply(t.Context(), deps, share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice", Text: input, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+		got, err := deps.Apply(t.Context(), share.ReferenceOptions{Platform: "qqonebot", ReplyID: "notice", Text: input, Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 			calls++
 			return share.ReferencedMessage{Text: "可读正文但无短号"}, true, nil
 		}})
@@ -113,7 +113,7 @@ func TestExplicitAssistantPagesUseOnlyDeliveredChatContent(t *testing.T) {
 	}
 	deps := newRefTestOptions(store, history)
 	for _, id := range []string{"p1", "p2"} {
-		got, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "someone-else"}, ReplyID: id, Text: "说明"})
+		got, err := deps.Apply(ctx, share.ReferenceOptions{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "someone-else"}, ReplyID: id, Text: "说明"})
 		seq := 1
 		if id == "p2" {
 			seq = 3
@@ -136,7 +136,7 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: "继续", ChatType: scope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-latest", Text: "继续", ChatType: scope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-latest", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "admin"}, ReplyID: "p-bg", Text: "继续", ChatType: scope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "admin"}, ReplyID: "p-bg", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-bg-user", Text: "继续", ChatType: scope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-bg-user", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: otherScope.ChatID, Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, ReplyID: "p-other", Text: "继续", ChatType: otherScope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: "qqofficial", ChatID: otherScope.ChatID, Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, ReplyID: "p-other", Text: "继续", ChatType: otherScope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, currentScope, "p-other-scope", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: currentScope.Platform, ChatID: currentScope.ChatID, Owner: currentScope.Owner, ReplyID: "p-other-scope", Text: "继续", ChatType: currentScope.ChatType})
+	result, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(ctx, share.ReferenceOptions{Platform: currentScope.Platform, ChatID: currentScope.ChatID, Owner: currentScope.Owner, ReplyID: "p-other-scope", Text: "继续", ChatType: currentScope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	} {
 		t.Run(tc.text+tc.prefixes[0], func(t *testing.T) {
 			deps.ParseCommand = func(text string) command.Parsed { return command.Parse(text, tc.prefixes) }
-			result, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: tc.text, ChatType: scope.ChatType})
+			result, err := deps.Apply(ctx, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: tc.text, ChatType: scope.ChatType})
 			if err != nil {
 				t.Fatal(err)
 			}

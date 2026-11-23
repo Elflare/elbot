@@ -31,7 +31,7 @@ type Options struct {
 	}
 }
 
-func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+func (deps Options) Apply(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 	result := share.ReferenceResult{Text: opts.Text, DisplaySegments: opts.Segments}
 	if len(opts.Segments) > 0 {
 		result.Text = share.SegmentsText(opts.Segments)
@@ -61,7 +61,7 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 		if err != nil {
 			return result, err
 		}
-	} else if assistant && parsed.Name == "fork" && parsed.OK {
+	} else if assistant && parsed.Name == "fork" {
 		result.Text = parsed.Prefix + "fork " + stored.ID
 		result.DisplaySegments = []share.MessageSegment{{Type: share.SegmentText, Text: result.Text}}
 	}
@@ -128,7 +128,7 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 	}
 	var expanded []share.MessageSegment
 	if !direct && opts.Enrich != nil {
-		expanded, err = opts.Enrich(ctx, reply.MessageID, ref)
+		expanded, err = opts.Enrich(ctx, ref)
 		if err != nil {
 			return result, err
 		}
@@ -161,13 +161,13 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 	return result, nil
 }
 
-func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) ([]share.MessageSegment, error) {
+func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) error {
 	if !slices.ContainsFunc(segments, func(s share.MessageSegment) bool { return s.Type == share.SegmentImage || s.Type == share.SegmentFile }) {
-		return segments, nil
+		return nil
 	}
 	associations, err := deps.FindHistory(ctx, row.Platform, row.ChatType, row.ChatID, row.PlatformMessageID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	byIndex := make(map[int]storage.HistoryMedia, len(associations))
 	for _, association := range associations {
@@ -191,14 +191,14 @@ func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMess
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if item.Deleting {
 			continue
 		}
 		segment.MediaID = association.MediaID
 	}
-	return segments, nil
+	return nil
 }
 
 func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, row *storage.ChatMessage) (share.ReferencedMessage, bool, error) {
@@ -218,8 +218,8 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		return ref, true, nil
 	}
 	if row != nil {
-		segments, err := restoreHistoryMedia(ctx, deps, *row, historySegments(*row))
-		if err != nil {
+		segments := historySegments(*row)
+		if err := restoreHistoryMedia(ctx, deps, *row, segments); err != nil {
 			return share.ReferencedMessage{}, false, err
 		}
 		if len(segments) > 0 || strings.TrimSpace(row.Text) != "" {
@@ -227,7 +227,7 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		}
 	}
 	if opts.Fetch != nil {
-		return opts.Fetch(ctx, replyID)
+		return opts.Fetch(ctx)
 	}
 	return share.ReferencedMessage{}, false, nil
 }

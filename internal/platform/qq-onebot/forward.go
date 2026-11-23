@@ -12,8 +12,8 @@ import (
 
 // expandForwardReference restores the original protocol segments for explicit
 // references. Private direct messages already have them and use expandForwardSegments.
-func (a *Adapter) expandForwardReference(event Event, getMessage func() (getMessageData, error)) func(context.Context, string, share.ReferencedMessage) ([]share.MessageSegment, error) {
-	return func(ctx context.Context, replyID string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
+func (a *Adapter) expandForwardReference(event Event, getMessage func() (getMessageData, error)) func(context.Context, share.ReferencedMessage) ([]share.MessageSegment, error) {
+	return func(ctx context.Context, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 		hasForward := strings.Contains(ref.Text, "[forward]") || slices.ContainsFunc(ref.Segments, func(segment share.MessageSegment) bool {
 			return segment.Type == share.SegmentText && strings.Contains(segment.Text, "[forward]")
 		})

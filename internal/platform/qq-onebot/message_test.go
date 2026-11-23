@@ -611,7 +611,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, store, nil)
 	adapter.transport = transport
 
-	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9}, func() (getMessageData, error) { return adapter.transport.GetMessage(ctx, "77") })(ctx, "77")
+	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9}, func() (getMessageData, error) { return adapter.transport.GetMessage(ctx, "77") })(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,10 +704,8 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		CommonConfig: share.CommonConfig{PlatformName: testPlatformName,
 			Superadmins: share.NewSuperadmins(testPlatformName, adminIDs),
 		},
-		ChatHistory: history,
-		ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-			return refcontext.Apply(ctx, refs, opts)
-		},
+		ChatHistory:       history,
+		ReferenceResolver: refs.Apply,
 	})
 	if err != nil {
 		t.Fatal(err)

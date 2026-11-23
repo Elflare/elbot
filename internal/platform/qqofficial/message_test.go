@@ -154,7 +154,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if err := a.handleDispatch(ctx, nil, payload{Type: eventReady, Data: []byte(`{"user":{"username":"芙蕾娅"}}`)}, &gatewayState{}); err != nil {
 		t.Fatal(err)
 	}
-	deps := refcontext.Options{ChatHistory: history, ParseCommand: a.parseCommand,
+	a.referenceResolver = refcontext.Options{ChatHistory: history, ParseCommand: a.parseCommand,
 		FindByPlatformMessage: func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
 			return nil, storage.ErrNotFound
 		},
@@ -164,10 +164,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 		FindOutputs: func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) {
 			return nil, nil
 		},
-	}
-	a.referenceResolver = func(ctx context.Context, o share.ReferenceOptions) (share.ReferenceResult, error) {
-		return refcontext.Apply(ctx, deps, o)
-	}
+	}.Apply
 	h := &captureHandler{}
 	boundary := quoteWakeupBoundary{}
 	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Commands: boundary, Hooks: boundary})

@@ -43,12 +43,12 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	}
 	calls := 0
 	deps := newRefTestOptions(store, history.Repository())
-	opts := share.ReferenceOptions{Platform: "telegram", ChatType: "group", ChatID: "9", Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	opts := share.ReferenceOptions{Platform: "telegram", ChatType: "group", ChatID: "9", Text: "看看", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		calls++
 		return share.ReferencedMessage{Segments: raw}, true, nil
 	}}
 	opts.ReplyID = "output"
-	got, err := Apply(ctx, deps, opts)
+	got, err := deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		t.Fatalf("output priority = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "history"
-	got, err = Apply(ctx, deps, opts)
+	got, err = deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		t.Fatalf("history order = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "missing"
-	got, err = Apply(ctx, deps, opts)
+	got, err = deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +82,12 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "latest", latest)
 	calls := 0
 	deps := newRefTestOptions(store, newRefTestHistory(t))
-	opts := share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "latest", Text: "继续", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	opts := share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "latest", Text: "继续", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		calls++
 		return share.ReferencedMessage{Segments: []share.MessageSegment{{Type: share.SegmentImage, PlatformFileID: "image"}}}, true, nil
 	}, ChatType: scope.ChatType,
 	}
-	got, err := Apply(ctx, deps, opts)
+	got, err := deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 		t.Fatalf("latest injected reference = %#v", got)
 	}
 	opts.ReplyID = "old"
-	got, err = Apply(ctx, deps, opts)
+	got, err = deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestLatestAssistantResumesWithoutMediaAndOlderForkRestores(t *testing.T) {
 		t.Fatalf("older media fork = %#v", got)
 	}
 	opts.ReplyID = "latest"
-	got, err = Apply(ctx, deps, opts)
+	got, err = deps.Apply(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 
 	fetchCalls := 0
-	got, err := Apply(ctx, newRefTestOptions(store, history.Repository()), share.ReferenceOptions{Platform: row.Platform, ChatID: row.ChatID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	got, err := newRefTestOptions(store, history.Repository()).Apply(ctx, share.ReferenceOptions{Platform: row.Platform, ChatID: row.ChatID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		fetchCalls++
 		return share.ReferencedMessage{}, false, nil
 	}, ChatType: row.ChatType,

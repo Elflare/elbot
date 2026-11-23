@@ -26,12 +26,12 @@ type ReferenceOptions struct {
 	ChatID   string                    // 聊天范围。
 	Owner    contextinfo.ActorIdentity // 当前行为者。
 
-	Segments   []MessageSegment                                                           // 当前输入的有序展示片段。
-	EventQuote ReferencedMessage                                                          // 入站事件已携带的引用内容，不依赖消息 ID 或二次查询。
-	ReplyID    string                                                                     // 被引用的消息 ID。
-	Text       string                                                                     // 当前输入正文。
-	Fetch      func(context.Context, string) (ReferencedMessage, bool, error)             // 可选协议查询。
-	Enrich     func(context.Context, string, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
+	Segments   []MessageSegment                                                   // 当前输入的有序展示片段。
+	EventQuote ReferencedMessage                                                  // 入站事件已携带的引用内容，不依赖消息 ID 或二次查询。
+	ReplyID    string                                                             // 被引用的消息 ID。
+	Text       string                                                             // 当前输入正文。
+	Fetch      func(context.Context) (ReferencedMessage, bool, error)             // 可选协议查询。
+	Enrich     func(context.Context, ReferencedMessage) ([]MessageSegment, error) // 可选展示加工，不改变原始媒体序号。
 }
 
 type ReferenceResult struct {

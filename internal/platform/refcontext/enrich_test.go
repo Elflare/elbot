@@ -31,13 +31,13 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 		original[1],
 	}
 	calls := 0
-	result, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history.Repository()), share.ReferenceOptions{Platform: "qqonebot", ChatType: "group", ChatID: "9", ReplyID: "123", Text: "问题", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	result, err := newRefTestOptions(newRefTestStore(t), history.Repository()).Apply(ctx, share.ReferenceOptions{Platform: "qqonebot", ChatType: "group", ChatID: "9", ReplyID: "123", Text: "问题", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		t.Fatal("history unexpectedly bypassed")
 		return share.ReferencedMessage{}, false, nil
-	}, Enrich: func(_ context.Context, id string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
+	}, Enrich: func(_ context.Context, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 		calls++
-		if id != "123" || ref.Text != "[forward]" || ref.CanonicalContent || !reflect.DeepEqual(ref.Segments, original) {
-			t.Fatalf("enrichment input=%#v, id=%s", ref, id)
+		if ref.Text != "[forward]" || ref.CanonicalContent || !reflect.DeepEqual(ref.Segments, original) {
+			t.Fatalf("enrichment input=%#v", ref)
 		}
 		return display, nil
 	}})
@@ -80,9 +80,9 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result, err := Apply(ctx, newRefTestOptions(store, history), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			result, err := newRefTestOptions(store, history).Apply(ctx, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 				return share.ReferencedMessage{Text: "[forward]", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}}}, true, nil
-			}, Enrich: func(_ context.Context, _ string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
+			}, Enrich: func(_ context.Context, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 				calls++
 				if !ref.CanonicalContent || ref.Text != first.Content {
 					t.Fatalf("missing canonical answer: %#v", ref)

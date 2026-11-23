@@ -154,7 +154,7 @@ func TestForwardReferenceErrorsAndEmptyContent(t *testing.T) {
 				return response{Data: []byte(`{"messages":[]}`)}
 			})
 			ref := share.ReferencedMessage{Text: "前[forward]后", Segments: []share.MessageSegment{textSegment("前"), textSegment("[forward]"), textSegment("后")}}
-			segments, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "987654321") })(context.Background(), "987654321", ref)
+			segments, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "987654321") })(context.Background(), ref)
 			got := forwardSegmentsForTest(segments)
 			if failure != "empty" && failure != "get_msg" {
 				if err == nil || len(segments) != 0 {
@@ -190,7 +190,7 @@ func TestMultipleForwardsRejectPartialContent(t *testing.T) {
 		}
 		return response{Status: "failed", Retcode: 1}
 	})
-	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", share.ReferencedMessage{Text: "[forward]中间[forward]"})
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), share.ReferencedMessage{Text: "[forward]中间[forward]"})
 	if err == nil || len(got) != 0 || calls.Load() != 2 {
 		t.Fatalf("display=%#v err=%v calls=%d", got, err, calls.Load())
 	}
@@ -203,7 +203,7 @@ func TestCanonicalForwardReferenceDoesNotFetchAgain(t *testing.T) {
 		return response{Status: "failed", Retcode: 1}
 	})
 	ref := share.ReferencedMessage{Text: "完整 assistant 正文", Segments: []share.MessageSegment{textSegment("[forward]")}, CanonicalContent: true}
-	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", ref)
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}

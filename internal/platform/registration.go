@@ -2,7 +2,6 @@
 package platform
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -77,9 +76,7 @@ func registrations(frontendDir string) []registration {
 			adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
 				CommonConfig: common,
 				ParseCommand: references.ParseCommand, ChatHistory: deps.ChatHistory,
-				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-					return refcontext.Apply(ctx, references, opts)
-				},
+				ReferenceResolver: references.Apply,
 			})
 			if err != nil {
 				return err
@@ -92,12 +89,10 @@ func registrations(frontendDir string) []registration {
 				return nil
 			}
 			adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
-				ParseCommand: references.ParseCommand,
-				CommonConfig: common,
-				ChatHistory:  deps.ChatHistory,
-				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-					return refcontext.Apply(ctx, references, opts)
-				},
+				ParseCommand:      references.ParseCommand,
+				CommonConfig:      common,
+				ChatHistory:       deps.ChatHistory,
+				ReferenceResolver: references.Apply,
 			})
 			if err != nil {
 				return err
@@ -110,11 +105,9 @@ func registrations(frontendDir string) []registration {
 				return nil
 			}
 			adapter, err := telegram.NewFromPlatformConfig(raw, telegram.Deps{
-				CommonConfig: common,
-				ChatHistory:  deps.ChatHistory,
-				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-					return refcontext.Apply(ctx, references, opts)
-				},
+				CommonConfig:      common,
+				ChatHistory:       deps.ChatHistory,
+				ReferenceResolver: references.Apply,
 			})
 			if err != nil {
 				return err

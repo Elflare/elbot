@@ -284,8 +284,8 @@ func oneBotChatType(event Event) contextinfo.ChatType {
 	}
 }
 
-func (a *Adapter) referenceFetcher(event Event, getMessage func() (getMessageData, error)) func(context.Context, string) (share.ReferencedMessage, bool, error) {
-	return func(ctx context.Context, replyID string) (share.ReferencedMessage, bool, error) {
+func (a *Adapter) referenceFetcher(event Event, getMessage func() (getMessageData, error)) func(context.Context) (share.ReferencedMessage, bool, error) {
+	return func(ctx context.Context) (share.ReferencedMessage, bool, error) {
 		data, err := getMessage()
 		if err != nil {
 			if ctx.Err() != nil {

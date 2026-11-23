@@ -38,7 +38,7 @@ func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 			return response{Status: "failed", Retcode: 1}
 		}
 	})
-	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), "123", share.ReferencedMessage{Text: "[forward]"})
+	got, err := a.expandForwardReference(Event{}, func() (getMessageData, error) { return a.transport.GetMessage(t.Context(), "123") })(context.Background(), share.ReferencedMessage{Text: "[forward]"})
 	if err != nil {
 		t.Fatal(err)
 	}

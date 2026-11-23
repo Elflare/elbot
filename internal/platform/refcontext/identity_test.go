@@ -39,7 +39,7 @@ func TestReferenceBackgroundIdentityUsesMode(t *testing.T) {
 			if tc.admin {
 				scope.Owner.ID = "admin"
 			}
-			got, err := Apply(t.Context(), newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Owner: scope.Owner, Platform: "p", ChatID: scope.ChatID, ReplyID: "reply", Text: "continue", ChatType: scope.ChatType})
+			got, err := newRefTestOptions(store, newRefTestHistory(t)).Apply(t.Context(), share.ReferenceOptions{Owner: scope.Owner, Platform: "p", ChatID: scope.ChatID, ReplyID: "reply", Text: "continue", ChatType: scope.ChatType})
 			if err != nil {
 				t.Fatal(err)
 			}

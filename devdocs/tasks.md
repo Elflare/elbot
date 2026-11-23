@@ -28,7 +28,7 @@
 - [ ] platform包
     - [x] platform 根部（不含子包）
     - [x] dispatch、notification、headless
-    - [ ] refcontext（结合平台适配器核对引用恢复）
+    - [x] refcontext（结合平台适配器核对引用恢复）
     - [ ] qq-onebot
     - [ ] qqofficial
     - [ ] telegram
