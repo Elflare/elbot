@@ -7,11 +7,11 @@
 ### Added
 
 - QQ official adapter now saves sender avatars.
-- Foreground `shell` and `tool_weave` now support asynchronous execution. Skills can also be configured as asynchronous.
-- Added foreground tool `ask_user`, which is asynchronous by default.
-- Added `tool_weave`, which can execute Python code and call ElBot tools. Pure AgentSkills can join orchestration by setting `weavable = true`.
+- Added `tool_weave` and disabled `py` in shell; it can execute Python code and call ElBot tools. Pure AgentSkills can be added to orchestration using `weavable = true`.
+- Foreground `shell` and `tool_weave` now support async. Skills can also be configured as async.
+- Added foreground tool `ask_user`, which is async by default.
 - AgentSkill TOML now supports `depends_on`; Skill tags now participate in `@t:` tool group completion and preloading.
-- Added `use_workspace` to AgentSkill TOML; when enabled, command and media paths are based on the current workspace.
+- Added `use_workspace` to AgentSkill TOML; when enabled, command and media paths are relative to the current workspace.
 - AgentSkill TOML tools now support passing positional arguments in a specified order via the `positional` array, which can be used in combination with `[args]` flag parameters.
 - Added static frontend hosting to the CLI remote service: automatically detects `frontend/index.html` next to the main configuration.
 - Added numerous CLI remote protocols.
