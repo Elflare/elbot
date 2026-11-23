@@ -42,7 +42,7 @@
 - [ ] tool包
     - [x] tool 根部（不含子包）
     - [ ] builtin
-        - [ ] builtin 根部（不含子包）
+        - [x] builtin 根部（不含子包）
         - [ ] builtin/chat_history
         - [ ] builtin/long_memory
         - [ ] builtin/weave

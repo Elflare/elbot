@@ -137,11 +137,11 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 	if action != "append" && action != "write" && action != "delete" {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "action must be append, write or delete"}, nil
 	}
-	if action != "delete" && args.Content == nil {
-		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "normal content is required"}, nil
-	}
 	content := ""
 	if action != "delete" {
+		if args.Content == nil {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "normal content is required"}, nil
+		}
 		content = *args.Content
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
@@ -149,40 +149,27 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 		toolshare.ConfirmationField{Key: "section", Label: "范围", Value: "normal"},
 		toolshare.ConfirmationField{Key: "content", Label: "正文", Value: content},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		var written operationresult.Result[struct{}]
+		var err error
+		var text string
 		switch action {
 		case "append":
-			written, err := t.service.AppendNormal(ctx, content)
-			if err != nil {
-				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
-			}
-			if written.Status != operationresult.Success {
-				return operationresult.Result[*toolshare.Result]{Status: written.Status, Message: written.Message}, written.Message, nil
-			}
-			result := &toolshare.Result{Content: "已追加普通常驻记忆。"}
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+			written, err = t.service.AppendNormal(ctx, content)
+			text = "已追加普通常驻记忆。"
 		case "write":
-			written, err := t.service.WriteNormal(ctx, content)
-			if err != nil {
-				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
-			}
-			if written.Status != operationresult.Success {
-				return operationresult.Result[*toolshare.Result]{Status: written.Status, Message: written.Message}, written.Message, nil
-			}
-			result := &toolshare.Result{Content: "已更新普通常驻记忆。"}
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+			written, err = t.service.WriteNormal(ctx, content)
+			text = "已更新普通常驻记忆。"
 		case "delete":
-			written, err := t.service.DeleteNormal(ctx)
-			if err != nil {
-				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
-			}
-			if written.Status != operationresult.Success {
-				return operationresult.Result[*toolshare.Result]{Status: written.Status, Message: written.Message}, written.Message, nil
-			}
-			result := &toolshare.Result{Content: "已清空普通常驻记忆。"}
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
-		default:
-			return operationresult.Result[*toolshare.Result]{}, "", fmt.Errorf("unreachable memory action %q", action)
+			written, err = t.service.DeleteNormal(ctx)
+			text = "已清空普通常驻记忆。"
 		}
+		if err != nil {
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
+		}
+		if written.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: written.Status, Message: written.Message}, written.Message, nil
+		}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: text}}, text, nil
 	})}, nil
 }
 
