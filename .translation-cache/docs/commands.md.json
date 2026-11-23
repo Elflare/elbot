@@ -16,14 +16,6 @@
       "translation": "## Context Compaction\n\n| Command | Function |\n| --- | --- |\n| `/compact` | Manually compact the current Session context. |\n\n- Automatic compaction is controlled by `[context] compact_enabled` and `compact_trigger_ratio`.\n- Compaction retains the original user utterances from history and ignores tool return values; upon success, it creates and switches to an independent `原标题 compacted-N` Session, leaving the old Session unmodified; Can be canceled using `/stop`.\n\n",
       "updated_at": 1793351491
     },
-    "docs/commands.md:section:3527621a615e587065bf119259312f4284fd765c9bf164aa3df5f1ac597a99c2": {
-      "kind": "section",
-      "source": "## 帮助与诊断\n\n| 命令 | 作用 |\n| --- | --- |\n| `/help` | 可用命令列表。 |\n| `/help <command>` | 某个命令的详细帮助，例如 `/help model`。 |\n| `/doctor` | 只读检查当前配置及内置 Skill（仅超级管理员）。 |\n\n`/doctor` 使用服务启动时选定的主配置路径，分离配置按 `config_files` 定位。有问题时列出实际文件路径、具体问题、说明和默认模板的 GitHub raw 地址，并生成可复制给 Elbot 的处理请求；复制给能访问这些文件的 Elbot 处理。检查本身不改文件、不自动修复，无问题只返回 `Everything is OK`。范围见 [配置诊断](configuration.md#配置诊断)。\n\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "b153c009b3c3597f9563adfc6244ef97f951e7964a3333c9d634d586b3838a03",
-      "translation": "## Help and Diagnostics\n\n| Command | Function |\n| --- | --- |\n| `/help` | List of available commands. |\n| `/help <command>` | Detailed help for a specific command, for example `/help model`. |\n| `/doctor` | Read-only check of the current configuration and built-in Skills (superadmin only). |\n\n`/doctor` uses the main configuration path selected during service startup; separated configurations are located according to `config_files`. When issues occur, it lists the actual file paths, specific issues, descriptions, and GitHub raw addresses of default templates, and generates a processing request that can be copied to ElBot; Copy and provide it to an ElBot that has access to these files for processing. The check itself does not modify files or perform automatic repairs; if there are no issues, it only returns `Everything is OK`. See [Configuration Diagnosis](configuration.md#配置诊断) for the scope.\n\n",
-      "updated_at": 1793351491
-    },
     "docs/commands.md:section:36b8a29009cc241584fe3e2347cee91757dafb7133131d0bcc81526481a6cad7": {
       "kind": "section",
       "source": "## 追加输入\n\nLLM 正在处理时收到的新输入会停止当前请求并进入追加等待；连续输入会累积，最后确认输出会一并发送。\n\n",
@@ -47,6 +39,14 @@
       "source_hash": "0229f15660ba26790fe7f56076b614e2083dd0b04a14fb10607260c9a3bdc7bd",
       "translation": "## Undo File Edits\n\nAvailable to superadmins only.\n\n| Command | Function |\n| --- | --- |\n| `/rollback` | List undoable files: ID, absolute path, edit time, undo action. |\n| `/rollback <编号>` | Directly undo the file edit corresponding to the index. |\n\n- Each file retains the most recent successful `edit_file` modification: existing files are restored to their original content and permissions, and new files are deleted while parent directories are kept; backups are consumed after undoing, and consecutive undoes or redos are not supported.\n- IDs are bound to specific modifications: editing again will generate a new ID and invalidate the old one; IDs are not reused within the process; Undo will be rejected after the file has been modified again. Undo requires that the current Session has no running tasks or compaction (you can wait for completion or `/stop`).\n- Backups are stored in memory only and are isolated by user, platform Scope, and current Session: they become invalid immediately after switching or clearing the Session, cannot be recovered upon switching back, and are also lost upon restart. The entire process supports a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are evicted, and a notification will be provided in the edit results; Failures and previews do not replace existing backups.\n\n",
       "updated_at": 1793351491
+    },
+    "docs/commands.md:section:5d30fb7e3664c619f4354e6109111a8dbe242b2c16cef533277a197209b0a8c7": {
+      "kind": "section",
+      "source": "## 帮助与诊断\n\n| 命令 | 作用 |\n| --- | --- |\n| `/help` | 可用命令列表。 |\n| `/help <command>` | 某个命令的详细帮助，例如 `/help model`。 |\n| `/doctor` | 只读检查当前配置及内置 Skill（仅超级管理员）。 |\n\n检查范围见[配置诊断](configuration.md#配置诊断)。\n\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "7de2d0445103fc4d9ed193845866ff83ba5e45f9f382edc8dbce41f798adc9a9",
+      "translation": "## Help & Diagnostics\n\n| Command | Description |\n| --- | --- |\n| `/help` | List of available commands. |\n| `/help <command>` | Detailed help for a specific command, e.g., `/help model`. |\n| `/doctor` | Read-only check of current configuration and built-in Skills (superadmin only). |\n\nSee [Configuration Diagnostics](configuration.md#配置诊断) for the check scope.\n\n",
+      "updated_at": 1795443577
     },
     "docs/commands.md:section:6b3892ff2edfcc183e59851bbf9f6395dbcdfd84b7d014eb719b0be8e27ba6c1": {
       "kind": "section",
@@ -122,8 +122,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "3277ec1ecd8b7b83eea446d396d4672f56ec01d28c3ce95b224f44c7c87c7e41",
+  "source_hash": "f06e37152dadd5b9a0b291586ea8832c901f11df10b30336cfa2efb048aaf013",
   "target": "docs.en/commands.md",
-  "updated_at": 1795184551,
+  "updated_at": 1795443577,
   "version": 3
 }

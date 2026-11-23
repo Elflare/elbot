@@ -52,13 +52,14 @@
 
 ### Fixed
 
+- Corrected `/doctor` help and command documentation.
 - Fixed issues related to official QQ quoted replies and @ mentions.
 - Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
 - File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
-- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
+- Fixed an issue where some commands reported `not found` due to the absence of a current Session after first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
 - Fixed several potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.
+- Fixed a bug in the chat history search tool. Now both background and foreground searches are functional and do not interfere with each other.
 - Fixed a bug where repeated content was compressed multiple times.
 
 ## See releases for historical change logs
