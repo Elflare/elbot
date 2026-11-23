@@ -20,7 +20,7 @@ func (m *Supervisor) Start() error {
 		return err
 	}
 	m.started = true
-	done := m.catalog.skillManager.Start(m.ctx)
+	done := m.skillManager.Start(m.ctx)
 	go func() {
 		<-m.ctx.Done()
 		<-done

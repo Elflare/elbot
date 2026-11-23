@@ -15,25 +15,32 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/signal"
+	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
 	"elbot/internal/tool/preload"
+	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
+	"elbot/internal/tool/skill"
 	toolstate "elbot/internal/tool/state"
 )
 
 // Supervisor 只持有内部组件并转接对外能力；装配和生命周期分别由 wiring.go、lifecycle.go 负责。
 type Supervisor struct {
-	catalog     *runtime
-	engine      *execution.Manager
-	preloader   *preload.PreloadService
-	state       *toolstate.StateService
-	ctx         context.Context                                // Tool 生命周期上下文。
-	cancel      context.CancelFunc                             // 由生命周期入口取消后台工作。
-	mu          sync.Mutex                                     // 保护启动、关闭状态。
-	started     bool                                           // 标记已启动。
-	closed      bool                                           // 标记已进入关闭阶段。
-	done        chan struct{}                                  // 生命周期退出通知。
-	cronChanged *signal.Signal[CronChangedEvent, signal.Empty] // 本实例任务定义变更通知。
+	registry            *toolregistry.Registry
+	resolver            *discovery.Resolver
+	residentMemoryStore *resident.Store
+	skillManager        *skill.Manager
+	fileRollback        *fileops.Service
+	engine              *execution.Manager
+	preloader           *preload.PreloadService
+	state               *toolstate.StateService
+	ctx                 context.Context                                // Tool 生命周期上下文。
+	cancel              context.CancelFunc                             // 由生命周期入口取消后台工作。
+	mu                  sync.Mutex                                     // 保护启动、关闭状态。
+	started             bool                                           // 标记已启动。
+	closed              bool                                           // 标记已进入关闭阶段。
+	done                chan struct{}                                  // 生命周期退出通知。
+	cronChanged         *signal.Signal[CronChangedEvent, signal.Empty] // 本实例任务定义变更通知。
 }
 
 // RegisterTools 完整提交一个来源的定义；远端返回会话事务待提交的补丁。
@@ -82,17 +89,17 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 		}
 		internal = append(internal, value)
 	}
-	update, err := m.catalog.registry.RegisterTools(ctx, source, share.ToolRegistrationScope(scope), internal)
+	update, err := m.registry.RegisterTools(ctx, source, share.ToolRegistrationScope(scope), internal)
 	return toPublicStateUpdate(update), err
 }
 
 // QueryTools 返回只读工具描述；修改 Parameters 或 Definition 中的切片前须自行复制。
 func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInfo, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
-	definitions, err := m.catalog.registry.Query(ctx, toInternalToolQuery(query))
+	definitions, err := m.registry.Query(ctx, toInternalToolQuery(query))
 	if err != nil {
 		return nil, err
 	}
@@ -114,10 +121,10 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 
 func (m *Supervisor) LoadToolDetail(ctx context.Context, name string) (operationresult.Result[DetailBlock], error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return operationresult.Result[DetailBlock]{}, err
 	}
-	definitions, err := m.catalog.registry.Query(ctx, share.ToolQuery{
+	definitions, err := m.registry.Query(ctx, share.ToolQuery{
 		Scope: share.QueryCatalog, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true,
 	})
 	if err != nil {
@@ -134,17 +141,17 @@ func (m *Supervisor) LoadToolDetail(ctx context.Context, name string) (operation
 }
 
 func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
 	return m.preloader.Tags(ctx)
 }
 
 func (m *Supervisor) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return ctx, err
 	}
-	availability, err := m.catalog.resolver.Availability(ctx)
+	availability, err := m.resolver.Availability(ctx)
 	if err != nil {
 		return ctx, err
 	}
@@ -164,7 +171,7 @@ func (m *Supervisor) DecodeState(raw string) (State, error) {
 
 func (m *Supervisor) Schemas(ctx context.Context, view Context, discovered []DiscoveredTool) ([]llm.ToolSchema, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
 	return m.engine.Schemas(ctx, share.Context(view), toInternalDiscoveredTools(discovered))
@@ -173,7 +180,7 @@ func (m *Supervisor) Schemas(ctx context.Context, view Context, discovered []Dis
 // FilterSchemas 复核 Hook 修改后的模型声明，只筛除已注册且不适用于当前上下文的工具。
 func (m *Supervisor) FilterSchemas(ctx context.Context, schemas []llm.ToolSchema) ([]llm.ToolSchema, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
 	return m.engine.FilterSchemas(ctx, schemas)
@@ -181,7 +188,7 @@ func (m *Supervisor) FilterSchemas(ctx context.Context, schemas []llm.ToolSchema
 
 func (m *Supervisor) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return RunResult{Err: err}
 	}
 	return RunResult(m.engine.Run(ctx, executionBridge{RunnerDeps: deps}, toInternalRunRequest(req)))
@@ -197,7 +204,7 @@ func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) 
 }
 func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return ToolPreload{}, err
 	}
 	prepared, err := m.preloader.PrepareTools(ctx, names)
@@ -205,7 +212,7 @@ func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPrel
 }
 func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []string) (SkillPreload, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return SkillPreload{}, err
 	}
 	prepared, err := m.preloader.PrepareSkills(ctx, prefix, names)
@@ -213,14 +220,14 @@ func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []s
 }
 func (m *Supervisor) PrepareBackground(ctx context.Context, req BackgroundPreloadRequest) (BackgroundPreload, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return BackgroundPreload{}, err
 	}
 	prepared, err := m.preloader.PrepareBackground(ctx, toInternalBackgroundPreloadRequest(req))
 	return toPublicBackgroundPreload(prepared), err
 }
 func (m *Supervisor) BackgroundSelections(ctx context.Context, names []string) ([]BackgroundSelection, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
 	selections, err := m.preloader.BackgroundSelections(ctx, names)
@@ -231,29 +238,29 @@ func (m *Supervisor) TagPrompts(ctx context.Context, tags []string) ([]TagPrompt
 	return toPublicTagPrompts(prompts), err
 }
 func (m *Supervisor) Remove(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
-	return m.catalog.skillManager.Remove(ctx, name)
+	return m.skillManager.Remove(ctx, name)
 }
-func (m *Supervisor) Reload(ctx context.Context) error { return m.catalog.skillManager.Reload(ctx) }
+func (m *Supervisor) Reload(ctx context.Context) error { return m.skillManager.Reload(ctx) }
 func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (resident.Memory, error) {
-	return m.catalog.residentMemoryStore.Read(ctx, scope)
+	return m.residentMemoryStore.Read(ctx, scope)
 }
 func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, admission ...fileops.CommitAdmission) context.Context {
-	return m.catalog.fileRollback.WithBinding(ctx, binding, admission...)
+	return m.fileRollback.WithBinding(ctx, binding, admission...)
 }
-func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Forget(binding) }
+func (m *Supervisor) Forget(binding fileops.Binding) { m.fileRollback.Forget(binding) }
 func (m *Supervisor) ListRollbacks(ctx context.Context) operationresult.Result[[]fileops.RollbackInfo] {
-	return m.catalog.fileRollback.List(ctx)
+	return m.fileRollback.List(ctx)
 }
 func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[fileops.RollbackResult], error) {
-	return m.catalog.fileRollback.RollbackByID(ctx, id)
+	return m.fileRollback.RollbackByID(ctx, id)
 }
 
 func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (operationresult.Result[*Result], string, error) {
 	ctx = toolPolicyContext(ctx)
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+	if err := m.skillManager.EnsureLoaded(ctx); err != nil {
 		return operationresult.Result[*Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
 	result, logContent, err := m.engine.CallTool(ctx, share.CallRequest(req))

@@ -34,16 +34,14 @@ func newLifecycleTool(t *testing.T, root string, tags ...config.ToolTagsConfig) 
 	cfg.ConfigPath = filepath.Join(root, "app.toml")
 	cfg.Sandbox.Root = root
 	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Store: store, Permission: security.DefaultPermission()})
-	if m != nil {
-		t.Cleanup(func() {
-			if err := m.Close(context.Background()); err != nil {
-				t.Error(err)
-			}
-		})
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := m.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	return m, store
 }
 
