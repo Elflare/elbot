@@ -308,7 +308,7 @@ clientLoop:
 	for _, client := range clients {
 		var sendErr error
 		for _, out := range outputs {
-			msg := outputMessage(remoteMsgChat, out)
+			msg := outputMessage(out)
 			if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile || out.Kind == delivery.KindRecord {
 				kind := string(delivery.KindFile)
 				if out.Kind == delivery.KindImage {

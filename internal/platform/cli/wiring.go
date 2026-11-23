@@ -36,7 +36,7 @@ func New(platformName, clientID string) *Adapter {
 func NewRemoteServer(opts RemoteServerOptions) (*Adapter, error) {
 
 	instance, err := remote.NewServer(remote.ServerOptions{
-		Config:       remote.Config{Server: remote.ServerConfig{Enabled: opts.Config.Server.Enabled, Listen: opts.Config.Server.Listen, Tokens: opts.Config.Server.Tokens}},
+		Config:       remote.ServerConfig(opts.Config.Server),
 		PlatformName: opts.PlatformName, ConfigEnv: opts.ConfigEnv,
 		Superadmins: opts.Superadmins, FrontendDir: opts.FrontendDir, Media: opts.Media,
 		Control: opts.Control,

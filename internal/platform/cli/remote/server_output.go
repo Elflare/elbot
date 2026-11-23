@@ -206,12 +206,12 @@ func (c *remoteClientConn) write(ctx context.Context, msg any) error {
 	return c.conn.Write(writeCtx, websocket.MessageBinary, payload)
 }
 
-func outputMessage(kind string, out delivery.Output) remoteMessage {
+func outputMessage(out delivery.Output) remoteMessage {
 	text := out.Text
 	if out.Kind != delivery.KindText {
 		text = delivery.FallbackText(out)
 	}
-	return remoteMessage{Type: kind, Text: text, Blocks: out.Blocks, Actions: out.Actions}
+	return remoteMessage{Type: remoteMsgChat, Text: text, Blocks: out.Blocks, Actions: out.Actions}
 }
 
 type remoteCommandReply struct {

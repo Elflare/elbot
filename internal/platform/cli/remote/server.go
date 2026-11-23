@@ -29,25 +29,12 @@ type ServerConfig struct {
 	Tokens  map[string][]string
 }
 
-type Config struct {
-	Server ServerConfig
-}
-
-func applyServerConfigDefaults(cfg *Config) {
-	if strings.TrimSpace(cfg.Server.Listen) == "" {
-		cfg.Server.Listen = "127.0.0.1:32172"
-	}
-	if cfg.Server.Tokens == nil {
-		cfg.Server.Tokens = map[string][]string{}
-	}
-}
-
 type ServerOptions struct {
 	Media        clishare.Media
 	Control      ControlCapabilities
 	FrontendDir  string
 	PlatformName string
-	Config       Config
+	Config       ServerConfig
 	ConfigEnv    func(string) (string, bool, error)
 	Superadmins  *platformshare.Superadmins
 }
@@ -58,7 +45,7 @@ type RemoteServer struct {
 	continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)
 	frontendDir   string // 用户静态前端目录，启动监听后异步检查。
 	name          string // 根部登记的平台名。
-	cfg           Config
+	cfg           ServerConfig
 	configEnv     func(string) (string, bool, error)
 	superadmins   *platformshare.Superadmins
 	completer     func(context.Context, completion.Request) ([]completion.Item, error)
@@ -66,11 +53,10 @@ type RemoteServer struct {
 	server                      *http.Server    // 接入 HTTP 服务，最终关闭时释放非升级连接。
 	listener                    net.Listener    // BeginClose 关闭的监听器。
 	listenerStopped             bool            // 仅在本实例成功关闭监听时，归一化对应 Serve 退出。
-	started                     bool            // 已有一次启动尝试。
 	closing                     bool            // 新连接与业务消息的接入闸门已关闭。
 	closingResources            bool            // 最终资源释放已启动，重试仅等待同一次收尾。
 	startDone                   chan struct{}   // 监听初始化结果已发布。
-	serveDone                   chan struct{}   // Serve 已退出。
+	serveDone                   chan struct{}   // 仅成功接管监听器后创建，Serve 退出时关闭。
 	done                        chan struct{}   // 监听、前端初始化、握手及已接纳业务调用均已退出。
 	closeDone                   chan struct{}   // 全部自有连接和处理协程已退出。
 	startErr, runErr, closeErr  error           // 初始化、运行、清理结果分别保留。
@@ -78,7 +64,7 @@ type RemoteServer struct {
 	transportCtx                context.Context // 已认证连接保留至最终关闭。
 	workCancel, transportCancel context.CancelFunc
 	stopParent                  func() bool    // 解除上游取消观察。
-	work                        sync.WaitGroup // 已接纳握手、消息、补全、附件请求及前端初始化。
+	work                        sync.WaitGroup // 启动、前端初始化及已接纳的业务。
 	transports                  sync.WaitGroup // 持有升级连接的处理协程。
 
 	mu           sync.Mutex
@@ -99,14 +85,13 @@ type remoteClientConn struct {
 
 func NewServer(opts ServerOptions) (*RemoteServer, error) {
 	cfg := opts.Config
-	applyServerConfigDefaults(&cfg)
-	if !cfg.Server.Enabled {
+	if !cfg.Enabled {
 		return nil, fmt.Errorf("cli remote server is disabled")
 	}
-	if strings.TrimSpace(cfg.Server.Listen) == "" {
-		return nil, fmt.Errorf("cli remote server listen address is empty")
+	if strings.TrimSpace(cfg.Listen) == "" {
+		cfg.Listen = "127.0.0.1:32172"
 	}
-	if len(cfg.Server.Tokens) == 0 {
+	if len(cfg.Tokens) == 0 {
 		return nil, fmt.Errorf("cli remote server tokens are not configured")
 	}
 	return &RemoteServer{
@@ -120,7 +105,7 @@ func NewServer(opts ServerOptions) (*RemoteServer, error) {
 		clients:      map[string]map[*remoteClientConn]struct{}{},
 		mediaClients: map[string]*remoteClientConn{},
 		apiClients:   map[string]*remoteClientConn{},
-		startDone:    make(chan struct{}), serveDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
+		done:         make(chan struct{}), closeDone: make(chan struct{}),
 	}, nil
 }
 
@@ -366,7 +351,7 @@ func (s *RemoteServer) closeAll() {
 }
 
 func (s *RemoteServer) validToken(clientID, token string) bool {
-	envs := s.cfg.Server.Tokens[clientID]
+	envs := s.cfg.Tokens[clientID]
 	if len(envs) == 0 {
 		return false
 	}

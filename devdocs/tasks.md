@@ -32,11 +32,11 @@
     - [x] qq-onebot
     - [x] qqofficial
     - [x] telegram
-    - [ ] cli
+    - [x] cli
         - [x] cli 根部（不含子包）
         - [x] cli/local
-        - [ ] cli/remote（不含 management）
-        - [ ] cli/remote/management
+        - [x] cli/remote（不含 management）
+        - [x] cli/remote/management
         - [x] cli/share
     - [ ] share（最后按实际消费者核对共享契约）
 - [ ] tool包

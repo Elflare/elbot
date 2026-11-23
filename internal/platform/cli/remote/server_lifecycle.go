@@ -19,8 +19,7 @@ func (s *RemoteServer) Start(ctx context.Context, handler platformshare.MessageH
 		s.mu.Unlock()
 		return signal.ErrClosed
 	}
-	if s.started {
-		done := s.startDone
+	if done := s.startDone; done != nil {
 		s.mu.Unlock()
 		select {
 		case <-done:
@@ -29,28 +28,20 @@ func (s *RemoteServer) Start(ctx context.Context, handler platformshare.MessageH
 			return ctx.Err()
 		}
 	}
-	s.started = true
+	s.startDone = make(chan struct{})
 	s.workCtx, s.workCancel = context.WithCancel(ctx)
-	s.transportCtx, s.transportCancel = context.WithCancel(context.WithoutCancel(ctx))
-	s.stopParent = context.AfterFunc(ctx, s.BeginClose)
+	s.work.Add(1)
 	s.mu.Unlock()
 	defer func() {
-		s.mu.Lock()
+		if err != nil {
+			s.workCancel()
+		}
 		s.startErr = err
 		close(s.startDone)
-		s.mu.Unlock()
-		if err != nil {
-			s.BeginClose()
-		}
+		s.work.Done()
 	}()
-	listener, err := (&net.ListenConfig{}).Listen(s.workCtx, "tcp", s.cfg.Server.Listen)
+	listener, err := (&net.ListenConfig{}).Listen(s.workCtx, "tcp", s.cfg.Listen)
 	if err != nil {
-		s.mu.Lock()
-		if s.workCtx.Err() == nil || !errors.Is(err, s.workCtx.Err()) {
-			s.runErr = err
-		}
-		close(s.serveDone)
-		s.mu.Unlock()
 		return err
 	}
 	mux := http.NewServeMux()
@@ -63,14 +54,15 @@ func (s *RemoteServer) Start(ctx context.Context, handler platformshare.MessageH
 	})
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	s.mu.Lock()
-	s.listener, s.server = listener, server
-	closing := s.closing
-	if closing {
-		s.listenerStopped = listener.Close() == nil
-	} else if s.frontendDir != "" {
-		s.work.Add(1)
+	defer s.mu.Unlock()
+	if s.closing || ctx.Err() != nil {
+		_ = listener.Close()
+		return signal.ErrClosed
 	}
-	s.mu.Unlock()
+	s.listener, s.server = listener, server
+	s.transportCtx, s.transportCancel = context.WithCancel(context.WithoutCancel(ctx))
+	s.stopParent = context.AfterFunc(ctx, s.BeginClose)
+	s.serveDone = make(chan struct{})
 	go func() {
 		serveErr := server.Serve(listener)
 		s.mu.Lock()
@@ -81,10 +73,8 @@ func (s *RemoteServer) Start(ctx context.Context, handler platformshare.MessageH
 		s.mu.Unlock()
 		s.BeginClose()
 	}()
-	if closing {
-		return signal.ErrClosed
-	}
 	if s.frontendDir != "" {
+		s.work.Add(1)
 		go s.initFrontend(mux)
 	}
 	return nil
@@ -97,7 +87,7 @@ func (s *RemoteServer) BeginClose() {
 		return
 	}
 	s.closing = true
-	started := s.started
+	serveDone := s.serveDone
 	if s.workCancel != nil {
 		s.workCancel()
 	}
@@ -106,9 +96,8 @@ func (s *RemoteServer) BeginClose() {
 	}
 	s.mu.Unlock()
 	go func() {
-		if started {
-			<-s.startDone
-			<-s.serveDone
+		if serveDone != nil {
+			<-serveDone
 		}
 		s.work.Wait()
 		close(s.done)

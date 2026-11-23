@@ -36,10 +36,7 @@ func (h *handler) queryTools(w http.ResponseWriter, req *http.Request) {
 }
 func (h *handler) toolDetail(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.LoadToolDetail(req.Context(), control.ToolDetailRequest{Name: req.PathValue("name")})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) reloadSkills(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ReloadSkills(req.Context())
@@ -63,24 +60,15 @@ func (h *handler) removeSkill(w http.ResponseWriter, req *http.Request) {
 }
 func (h *handler) listHooks(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ListHooks(req.Context())
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) getHook(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.GetHook(req.Context(), control.GetHookRequest{HookID: req.PathValue("hook_id")})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) reloadHooks(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ReloadHooks(req.Context())
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) startHook(w http.ResponseWriter, req *http.Request) {
 	h.hookAction(w, req, h.control.StartHook)

@@ -24,17 +24,11 @@ func (h *handler) rollbackByID(w http.ResponseWriter, req *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) listFiles(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ListFiles(req.Context(), control.ListFilesRequest{Root: req.URL.Query().Get("root"), Path: req.URL.Query().Get("path")})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) readFile(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
@@ -49,10 +43,7 @@ func (h *handler) readFile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.ReadFile(req.Context(), control.ReadFileRequest{Root: q.Get("root"), Path: q.Get("path"), Offset: offset, Limit: limit})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) writeFile(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[control.WriteFileRequest](w, req)
@@ -60,8 +51,5 @@ func (h *handler) writeFile(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.WriteFile(req.Context(), body)
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }

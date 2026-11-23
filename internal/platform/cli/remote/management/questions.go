@@ -24,15 +24,9 @@ func (h *handler) saveQuestionDraft(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.SaveQuestionDraft(req.Context(), req.PathValue("session_id"), id, draft)
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) confirmAnswers(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ConfirmAnswers(req.Context(), req.PathValue("session_id"))
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }

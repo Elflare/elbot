@@ -92,7 +92,7 @@ func TestOutputMessageKeepsStructuredBlocks(t *testing.T) {
 		{name: "ordinary text", out: delivery.Text("hello")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			message := outputMessage(remoteMsgChat, tc.out)
+			message := outputMessage(tc.out)
 			if message.Text != tc.out.Text || !reflect.DeepEqual(message.Blocks, tc.out.Blocks) || !reflect.DeepEqual(message.Actions, tc.out.Actions) {
 				t.Fatalf("output message = %+v", message)
 			}

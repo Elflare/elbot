@@ -282,7 +282,7 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 }
 func TestSessionBindingChangeTargetsOldViewWithoutMovingIt(t *testing.T) {
 	s := testRemoteServer(t)
-	s.cfg.Server.Tokens["other"] = s.cfg.Server.Tokens["user"]
+	s.cfg.Tokens["other"] = s.cfg.Tokens["user"]
 	s.control = &subscriptionProbe{}
 	if err := s.Start(t.Context(), nil); err != nil {
 		t.Fatal(err)

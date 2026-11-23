@@ -57,10 +57,7 @@ func (h *handler) listSessions(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.ListSessions(req.Context(), control.ListSessionsRequest{Query: q.Get("query"), Page: page, PageSize: pageSize, Archived: archived, ExcludeCurrent: exclude})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) newSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.CreateSession(req.Context())
@@ -71,10 +68,7 @@ func (h *handler) newSession(w http.ResponseWriter, req *http.Request) {
 }
 func (h *handler) getSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.GetSession(req.Context(), control.GetSessionRequest{SessionID: req.PathValue("session_id")})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) sessionMessages(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
@@ -89,10 +83,7 @@ func (h *handler) sessionMessages(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.SessionMessages(req.Context(), control.SessionMessagesRequest{SessionID: req.PathValue("session_id"), Page: page, PageSize: pageSize})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) resumeSession(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[struct {
@@ -129,10 +120,7 @@ func (h *handler) renameSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.RenameSession(req.Context(), control.RenameSessionRequest{Target: req.PathValue("session_id"), Title: body.Title})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) archiveSession(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[struct {
@@ -142,31 +130,19 @@ func (h *handler) archiveSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.SetSessionArchived(req.Context(), control.SetSessionArchivedRequest{SessionID: req.PathValue("session_id"), Archived: true, Confirmed: body.Confirmed})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) unarchiveSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.SetSessionArchived(req.Context(), control.SetSessionArchivedRequest{SessionID: req.PathValue("session_id"), Archived: false})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) pinSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.SetSessionPinned(req.Context(), control.SetSessionPinnedRequest{SessionID: req.PathValue("session_id"), Pinned: true})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) unpinSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.SetSessionPinned(req.Context(), control.SetSessionPinnedRequest{SessionID: req.PathValue("session_id"), Pinned: false})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) deleteSession(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[struct {
@@ -176,10 +152,7 @@ func (h *handler) deleteSession(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.DeleteSession(req.Context(), control.DeleteSessionRequest{SessionID: req.PathValue("session_id"), Confirmed: body.Confirmed})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) cleanSessions(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[control.CleanSessionsRequest](w, req)
@@ -187,17 +160,11 @@ func (h *handler) cleanSessions(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.CleanSessions(req.Context(), body)
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) compactSession(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.CompactSession(req.Context(), control.CompactSessionRequest{SessionID: req.PathValue("session_id")})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) setMode(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[struct {
@@ -216,8 +183,5 @@ func (h *handler) setMode(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	result, err := h.control.SetMode(req.Context(), control.SetModeRequest{Mode: body.Mode, NewSessionTitle: body.NewSessionTitle})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }

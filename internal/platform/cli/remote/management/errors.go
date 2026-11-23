@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+func writeOKResult[T any](w http.ResponseWriter, result operationresult.Result[T], err error) {
+	if !writeControlResultError(w, result, err) {
+		writeAPIJSON(w, http.StatusOK, result.Data)
+	}
+}
 func writeControlResultError[T any](w http.ResponseWriter, result operationresult.Result[T], err error) bool {
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())

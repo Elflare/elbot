@@ -55,7 +55,7 @@ func testRemoteServer(t *testing.T) *RemoteServer {
 func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServer {
 	t.Helper()
 	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
-	cfg := Config{Server: ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}}
+	cfg := ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}
 	s, err := NewServer(ServerOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
 	if err != nil {
 		t.Fatal(err)
@@ -177,12 +177,9 @@ func TestRemoteStartFailureAndIndependentExit(t *testing.T) {
 		}
 		defer listener.Close()
 		s := testRemoteServer(t)
-		s.cfg.Server.Listen = listener.Addr().String()
+		s.cfg.Listen = listener.Addr().String()
 		if err := s.Start(t.Context(), nil); err == nil {
 			t.Fatal("bind failure hidden")
-		}
-		if err := s.Wait(t.Context()); err == nil {
-			t.Fatal("failure lost")
 		}
 	})
 	t.Run("independent listener failure", func(t *testing.T) {

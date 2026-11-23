@@ -19,10 +19,7 @@ func (h *handler) queryLogs(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	result, err := h.control.QueryLogs(req.Context(), control.QueryLogsRequest{Category: req.URL.Query().Get("category"), Query: q})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) queryUsage(w http.ResponseWriter, req *http.Request) {
 	q, err := logQuery(req.URL.Query())
@@ -45,17 +42,11 @@ func (h *handler) queryUsage(w http.ResponseWriter, req *http.Request) {
 		group = "model"
 	}
 	result, err := h.control.QueryUsage(req.Context(), control.QueryUsageRequest{Query: q, GroupBy: group, First: first, Last: last})
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func (h *handler) checkConfiguration(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.CheckConfiguration(req.Context())
-	if writeControlResultError(w, result, err) {
-		return
-	}
-	writeAPIJSON(w, http.StatusOK, result.Data)
+	writeOKResult(w, result, err)
 }
 func writeBadQuery(w http.ResponseWriter, err error) {
 	writeAPIError(w, http.StatusBadRequest, "invalid_arguments", err.Error())
