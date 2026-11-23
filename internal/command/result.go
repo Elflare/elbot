@@ -11,6 +11,8 @@ type ResultKind = share.ResultKind
 
 const (
 	ResultKindQuestions     = share.ResultKindQuestions
+	ResultKindCoagent       = share.ResultKindCoagent
+	ResultKindCoagentStatus = share.ResultKindCoagentStatus
 	ResultKindQuestionDraft = share.ResultKindQuestionDraft
 	ResultKindAnswers       = share.ResultKindAnswers
 	ResultKindText          = share.ResultKindText

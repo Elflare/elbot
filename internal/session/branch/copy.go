@@ -39,6 +39,9 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	if source.Platform == target.Platform {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Success}, false, nil
 	}
+	if source.TaskType == "coagent" {
+		return operationresult.Result[*storage.Session]{Status: operationresult.Rejected, Message: "请在主会话的留言板联系协作成员"}, false, nil
+	}
 	origin, _, err := share.Origin(source)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, false, err

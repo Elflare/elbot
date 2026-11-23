@@ -30,6 +30,8 @@ ElBot 不在每轮 work 对话中注入所有工具的完整 schema，默认流�
 
 发现流程与模型协议无关：Chat Completions 在请求顶层 `tools` 中发送当前工具；Responses 把首次出现的定义作为 `additional_tools` 追加到原生输入，后续不重复添加，完整回放时保留原有位置。工具发现返回的文字独立保留，每次查询 cron 的当前时间、Skill 说明等都不会因 schema 去重而丢失。
 
+协作工具默认只展示 `coagent`。发现这个名字后，主会话可用 `coagent_create`、`coagent_post`、`coagent_pin`、`coagent_board` 和 `coagent_remove`；子成员只开放发帖和读板。手动操作见 [Co-agent 协作](commands.md#co-agent-协作)。
+
 Responses 每轮通过 `tool_choice` 限定当前可调用工具；历史中保留定义不代表当前获准调用，同名工具的定义变化后需要新建会话。
 
 工具可限制适用的 API 类型：发现、补全、预载和执行都按当前对话模型过滤，后台任务按自身选择的模型判断。

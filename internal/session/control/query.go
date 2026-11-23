@@ -118,6 +118,10 @@ func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, messa
 	if err != nil {
 		return "", "", err
 	}
+	// 引用子成员的回复只提供引用上下文；不恢复或派生该成员，也不改变当前视图。
+	if row.TaskType == "coagent" {
+		return "", "", nil
+	}
 	if share.IsBackground(row) {
 		if s.deps.IsSuperadmin(scope) {
 			return row.ID, "", nil

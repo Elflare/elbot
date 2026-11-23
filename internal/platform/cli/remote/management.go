@@ -11,6 +11,7 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli/remote/management"
+	clishare "elbot/internal/platform/cli/share"
 )
 
 type ControlCapabilities = management.ControlCapabilities
@@ -24,6 +25,7 @@ func (s *RemoteServer) managementHandler() http.Handler {
 			c := ctx.Value(managementAPIClientContextKey{}).(*remoteClientConn)
 			s.mu.Lock()
 			c.sessionID = id
+			c.coagentView = clishare.CoagentView{}
 			s.mu.Unlock()
 		},
 		Authenticate: s.managementContext,

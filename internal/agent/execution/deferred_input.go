@@ -42,19 +42,36 @@ func (c *ExecutionCoordinator) StartAsyncTool(ctx context.Context, sid, name str
 }
 func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id string, retire func(), call llm.ToolCallRequest, outcome delivery.ToolResult) error {
 	binding, _ := session.BindingFromContext(ctx)
-	locked, release, err := c.deps.Sessions.EnterBinding(ctx, binding)
-	if err != nil {
-		return err
-	}
-	// Resolve the outcome and retire the request under the same gate as both /stop forms.
-	active, ok := c.deps.Requests.Get(id)
-	if !ok || active.SessionStopped || ctx.Err() != nil {
-		release()
-		return nil
-	}
-	if active.Stopping {
-		outcome.Success = false
-		outcome.Segments = llm.TextSegments("异步任务 " + id + " 被用户取消；不是新的执行。")
+	var locked context.Context
+	var release func()
+	var err error
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	for {
+		locked, release, err = c.deps.Sessions.EnterBinding(ctx, binding)
+		if err != nil {
+			return err
+		}
+		// 在 /stop 的同一准入锁下处理已完成的异步结果。私聊工具结果也不能进入公开板轮。
+		active, ok := c.deps.Requests.Get(id)
+		if !ok || active.SessionStopped || ctx.Err() != nil {
+			release()
+			return nil
+		}
+		if info.CoagentMainSessionID != "" {
+			e := c.deps.Turns.Snapshot(sid).Execution
+			if e != nil && e.CoagentBoardOutput {
+				release()
+				if err := c.waitForAttempt(ctx, e.Done()); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+		if active.Stopping {
+			outcome.Success = false
+			outcome.Segments = llm.TextSegments("异步任务 " + id + " 被用户取消；不是新的执行。")
+		}
+		break
 	}
 	retire()
 	row, err := c.deps.SessionRows.Get(locked, sid)
@@ -113,6 +130,8 @@ func (c *ExecutionCoordinator) admitReport(ctx context.Context, row *storage.Ses
 			return
 		}
 		if idle {
+			_, publicAsync := ctx.Value(coagentOutputKey{}).(agentshare.Output)
+			e.CoagentBoardOutput = row.TaskType == "coagent" && (in.BoardNotice || publicAsync)
 			if !c.deps.Turns.ReserveExecution(row.ID, in, e) {
 				continue
 			}

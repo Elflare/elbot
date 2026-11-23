@@ -28,13 +28,14 @@ type Identity struct {
 }
 
 type Conversation struct {
-	InputID           string `json:"-"` // 当前输入回显 ID，不是持久化消息的主键。
-	TargetSessionID   string `json:"-"` // 本次请求明确选择的会话，不是可变的页面订阅。
-	Source            Source
-	Identity          Identity
-	PlatformMessageID string
-	ReplyToMessageID  string
-	ReplyToSenderID   string
+	InputID              string `json:"-"` // 当前输入回显 ID，不是持久化消息的主键。
+	TargetSessionID      string `json:"-"` // 本次请求明确选择的会话，不是可变的页面订阅。
+	CoagentMainSessionID string `json:"-"` // CLI 窗口显式选中子成员时记录所属主会话；普通订阅、引用回复和板输入不设置。
+	Source               Source
+	Identity             Identity
+	PlatformMessageID    string
+	ReplyToMessageID     string
+	ReplyToSenderID      string
 	// Platforms own this immutable extension. Resource references retain their
 	// platform-managed lifetime and are never persistent delivery addresses.
 	PlatformData any `json:"-"`

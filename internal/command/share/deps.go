@@ -12,6 +12,7 @@ import (
 
 type ControlCapabilities interface {
 	Coagent(context.Context, session.CoagentAction, bool) (operationresult.Result[storage.CoagentBoard], error)
+	CoagentStatus(context.Context, string) (operationresult.Result[[]control.CoagentStatus], error)
 	ListQuestions(context.Context, string) (operationresult.Result[[]control.Question], error)
 	SaveQuestionDraft(context.Context, string, int64, control.QuestionDraft) (operationresult.Result[control.Question], error)
 	ConfirmAnswers(context.Context, string) (operationresult.Result[control.ConfirmAnswersResult], error)

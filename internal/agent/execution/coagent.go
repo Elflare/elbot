@@ -47,15 +47,17 @@ func (c *ExecutionCoordinator) QueueBoardInput(ctx context.Context, boardID int6
 	if current.Status != operationresult.Success {
 		return fmt.Errorf("成员 %s 的会话已切换", member.Name)
 	}
-	if member.SessionID != current.Data.Session.ID {
-		member.SessionID = current.Data.Session.ID
-		board, err := c.deps.Sessions.ReadCoagentBoard(locked, current.Data.Binding, math.MaxInt64)
-		if err != nil {
-			return err
-		}
-		if board.Data.ID != boardID || !slices.Contains(board.Data.Members, member) {
-			return fmt.Errorf("成员 %s 的会话已切换", member.Name)
-		}
+	// 地址可随压缩前移；退组后旧投递不通过名字查找替补成员。
+	board, err := c.deps.Sessions.ReadCoagentBoard(locked, current.Data.Binding, math.MaxInt64)
+	if err != nil {
+		return err
+	}
+	if !main && board.Status == operationresult.NotFound {
+		return nil
+	}
+	member.SessionID = current.Data.Session.ID
+	if board.Data.ID != boardID || !slices.Contains(board.Data.Members, member) {
+		return fmt.Errorf("成员 %s 的会话已切换", member.Name)
 	}
 	if snapshot := c.deps.Turns.Snapshot(member.SessionID); snapshot.Phase == turn.PhaseCompact {
 		// Register the wait before releasing admission so /stopall also cancels this delivery.

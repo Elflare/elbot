@@ -18,7 +18,7 @@ func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
 	deferred := len(input.Reports) > 0 || input.BoardNotice
 	switch turn.phase {
 	case PhaseLLM:
-		if !deferred && len(turn.originalInput.Reports) == 0 {
+		if !deferred && !turn.originalInput.BoardNotice && len(turn.originalInput.Reports) == 0 {
 			return false
 		}
 	case PhaseAwaitRiskConfirm:

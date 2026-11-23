@@ -35,6 +35,7 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 	return usage
 }
 
-func (c *ExecutionCoordinator) shouldCompact(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
+// ReachedCompactThreshold 统一按本会话已计量的用量和当前模型窗口判断临限。
+func (c *ExecutionCoordinator) ReachedCompactThreshold(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
 	return row != nil && c.deps.Contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection)
 }

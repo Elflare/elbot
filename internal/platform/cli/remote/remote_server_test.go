@@ -114,6 +114,82 @@ func TestRemoteServerSendsStatusAndNoticeToOriginalClient(t *testing.T) {
 	}
 }
 
+func TestRemoteCLIInputWithoutSubscriptionFollowsSelectedMember(t *testing.T) {
+	s := testRemoteServer(t)
+	inputs := make(chan contextinfo.Conversation, 1)
+	if err := s.Start(t.Context(), func(_ context.Context, _ string, msg share.MessageContext) error {
+		inputs <- msg.Conversation
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	conn, hello := dialTestConnection(t, s)
+	s.mu.Lock()
+	client := s.apiClients[hello.APIToken]
+	s.mu.Unlock()
+	v, _ := s.originalTarget(s.messageContext(t.Context(), client))
+	v.SelectCoagentView("main", "child")
+	if err := wsjson.Write(t.Context(), conn, remoteMessage{Type: remoteMsgInput, ID: "p", Text: "你好"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestRemote(t, conn); got.Type != "user_input" || got.SessionID != "child" {
+		t.Fatal(got)
+	}
+	select {
+	case msg := <-inputs:
+		if msg.CoagentMainSessionID != "main" || msg.TargetSessionID != "child" {
+			t.Fatal(msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing private input")
+	}
+	if err := wsjson.Write(t.Context(), conn, remoteMessage{Type: remoteMsgInput, SessionID: "main", Text: "stale view"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestRemote(t, conn); got.Type != remoteMsgError {
+		t.Fatal(got)
+	}
+}
+func TestCoagentViewIsPerConnectionAndRoutesBoardToMain(t *testing.T) {
+	s := testRemoteServer(t)
+	if err := s.Start(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	a, ha := dialTestConnection(t, s)
+	b, hb := dialTestConnection(t, s)
+	s.mu.Lock()
+	c, peer := s.apiClients[ha.APIToken], s.apiClients[hb.APIToken]
+	c.sessionID, peer.sessionID = "main", "main"
+	s.mu.Unlock()
+	ctx := s.messageContext(t.Context(), c)
+	view, _ := s.originalTarget(ctx)
+	view.SelectCoagentView("main", "child")
+	private := s.messageContext(t.Context(), c)
+	info, _ := contextinfo.ConversationFromContext(private)
+	if info.CoagentMainSessionID != "main" || info.TargetSessionID != "child" {
+		t.Fatal(info)
+	}
+	if _, err := s.SendTo(private, delivery.Target{}, []delivery.Output{delivery.Text("private")}); err != nil {
+		t.Fatal(err)
+	}
+	info.CoagentMainSessionID, info.TargetSessionID = "", "main"
+	if _, err := s.SendTo(contextinfo.WithConversation(private, info), delivery.Target{}, []delivery.Output{delivery.Text("board")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		c         *websocket.Conn
+		sid, text string
+	}{{a, "child", "private"}, {b, "main", "board"}} {
+		got := readTestRemote(t, tc.c)
+		if got.SessionID != tc.sid || got.Text != tc.text {
+			t.Fatalf("%s received %+v", tc.sid, got)
+		}
+	}
+	view.SelectCoagentView("", "")
+	if len(s.sessionClients(c.id, "child")) != 0 || len(s.sessionClients(c.id, "main")) != 2 {
+		t.Fatal("switch back did not restore original views")
+	}
+}
 func TestRemoteServerEmptyTargetUsesContextClient(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
 	client := &remoteClientConn{id: "client"}

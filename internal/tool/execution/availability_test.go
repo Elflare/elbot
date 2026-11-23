@@ -27,7 +27,7 @@ func TestCoagentToolDiscoveryAndCalls(t *testing.T) {
 	manager := newTestManager(registry, permission)
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "member", Mode: storage.SessionModeWork, TaskType: "coagent"})
 	var cached []toolshare.DiscoveredTool
-	for _, name := range []string{"ask_user", "coagent_create", "coagent_pin", "coagent_post", "coagent_board"} {
+	for _, name := range []string{"ask_user", "coagent_create", "coagent_pin", "coagent_remove", "coagent_post", "coagent_board"} {
 		def := fakeTool{name: name}.Definition()
 		if err := registerTestTools(registry, def); err != nil {
 			t.Fatal(err)
@@ -42,7 +42,7 @@ func TestCoagentToolDiscoveryAndCalls(t *testing.T) {
 	if err != nil || len(schemas) != 2 || schemas[0].Name != "coagent_post" || schemas[1].Name != "coagent_board" {
 		t.Fatal(schemas, err)
 	}
-	for _, item := range cached[:3] {
+	for _, item := range cached[:4] {
 		resolved, err := manager.resolve(ctx, item.Name, nil, storage.SessionModeWork)
 		if err != nil || resolved.Status != operationresult.Forbidden {
 			t.Fatal(item.Name, resolved, err)

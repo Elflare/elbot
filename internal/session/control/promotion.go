@@ -79,6 +79,10 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 			rejected = operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "无权访问该会话"}
 			return nil
 		}
+		if row.TaskType == "coagent" {
+			rejected = operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: "请在主会话的留言板联系协作成员"}
+			return nil
+		}
 		if share.IsBackground(row) {
 			result, err := s.deps.CheckForeground(ctx, row)
 			if err != nil {

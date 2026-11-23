@@ -9,21 +9,25 @@ import (
 	"elbot/internal/storage"
 )
 
-func TestReportWakeQueuesUserWithoutReplayingReport(t *testing.T) {
-	m := NewSupervisor(testutil.IDSequence())
-	e := NewExecution("report")
-	input := Input{Reports: []*storage.Message{{ID: "B"}, {ToolCallID: "B"}}}
-	if !m.ReserveExecution("s", input, e) || !m.StartAttempt("s", input, e, "attempt") {
-		t.Fatal("report wake failed")
-	}
-	if !m.AppendPendingInput("s", Input{Text: "follow-up"}) || m.BeginAppend("s", "attempt", Input{Text: "interrupt"}) {
-		t.Fatal("report wake interrupted instead of queuing user")
-	}
-	pending, ok := m.CompleteTurn("s", "attempt", false)
-	if !ok || pending.Text != "follow-up" || len(pending.Reports) != 0 {
-		t.Fatalf("handoff: %+v", pending)
+func TestDeferredWakeQueuesUserWithoutReplayingOriginal(t *testing.T) {
+	for name, input := range map[string]Input{"report": {Reports: []*storage.Message{{ID: "B"}, {ToolCallID: "B"}}}, "board": {BoardNotice: true, Text: "board notice"}} {
+		t.Run(name, func(t *testing.T) {
+			m := NewSupervisor(testutil.IDSequence())
+			e := NewExecution(name)
+			if !m.ReserveExecution("s", input, e) || !m.StartAttempt("s", input, e, "attempt") {
+				t.Fatal("deferred wake failed")
+			}
+			if !m.AppendPendingInput("s", Input{Text: "follow-up"}) || m.BeginAppend("s", "attempt", Input{Text: "interrupt"}) {
+				t.Fatal("deferred wake interrupted instead of queuing user")
+			}
+			pending, ok := m.CompleteTurn("s", "attempt", false)
+			if !ok || pending.Text != "follow-up" || len(pending.Reports) != 0 || pending.BoardNotice {
+				t.Fatalf("handoff: %+v", pending)
+			}
+		})
 	}
 }
+
 func TestMergedInputRetainsElyphRequirement(t *testing.T) {
 	for _, inputs := range [][]Input{
 		{{Text: "task", NeedsElyphRules: true}},

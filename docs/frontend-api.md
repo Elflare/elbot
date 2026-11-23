@@ -40,7 +40,7 @@ ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管
 | `user_input` | 同账号订阅者收到输入回显，不代表模型已处理或历史已落库。按 `id` 与历史的 `input_ids` 去重，不按正文去重。 |
 | `chat` / `attachment` | 按到达顺序展示完整消息和附件。`chat.blocks` 优先于 `text`；`question` 块通过管理 API 填草稿、确认，回答后的模型输出仍走 WebSocket。 |
 | `stream` | 按 `stream_id` 维护单条消息的预览，见下文。已由 `send` 提交的正文不会再以 `chat` 重发。 |
-| `command_result` | 仅发给原连接。`request_id` 对应 `input.id`；优先展示 `error`，否则展示 `result.blocks`，仅在 `success` 时读取 `result.data`。`actions` 的命令作为新输入提交。 |
+| `command_result` | 仅发给原连接。`request_id` 对应 `input.id`；优先展示 `error`，否则展示 `result.blocks`，仅在 `success` 时读取 `result.data`。`actions` 的命令作为新输入提交。`/co status` 的 `result.kind` 为 `coagent_status`，`result.data` 是本组成员的 `session_id`、`name`、`phase`、`pending_count` 列表。 |
 | `complete` → `complete_result` | 发送 `id`、`text` 和可选的 `cursor`，按 `id` 匹配响应。`cursor`（默认末尾）及候选的 `ReplaceStart`、`ReplaceEnd` 都是 UTF-8 字节偏移，不是字符序号。 |
 | `status` / `notice` | `status.snapshot` 是可能合并的运行状态快照；`notice` 是账号级文本通知，不按会话过滤，缺省级别为 `INFO`。 |
 | `session_binding_changed` | 当前账号的绑定从 `session_id` 变为 `next_session_id`，只通知仍订阅旧 ID 的连接。服务端不代改订阅；页面若仍在看旧会话，可用 `PUT /view/session` 订阅新 ID。首次绑定、解绑、单纯切换 view 不发，断线不补发。 |

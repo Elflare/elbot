@@ -108,7 +108,7 @@ func (m *Manager) BeginAppend(sessionID, attempt string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
-	if !matches(turn, attempt) || turn.phase != PhaseLLM || len(turn.originalInput.Reports) > 0 {
+	if !matches(turn, attempt) || turn.phase != PhaseLLM || turn.originalInput.BoardNotice || len(turn.originalInput.Reports) > 0 {
 		return false
 	}
 	turn.phase = PhaseAwaitAppendConfirm

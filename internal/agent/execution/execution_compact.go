@@ -214,7 +214,7 @@ func (c *ExecutionCoordinator) CompactActive(sessionID string) bool {
 }
 
 func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (context.Context, operationresult.Result[*storage.Session], error) {
-	if c.deps.Turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
+	if session.TaskType != "coagent" && c.deps.Turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.ReachedCompactThreshold(ctx, session, selection) {
 		compactCtx := agentshare.WithInboundTurnInput(ctx, agentshare.InboundTurnInput(ctx, text))
 		next, err := c.runCompact(compactCtx, session, c.deps.Identity.Scope(compactCtx), "auto", selection)
 		if err != nil || next.Status != operationresult.Success {

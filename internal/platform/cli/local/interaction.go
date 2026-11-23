@@ -36,6 +36,7 @@ type Runtime struct {
 	output      chan tea.Msg
 
 	mu           sync.Mutex
+	coagentView  clishare.CoagentView // 仅当前终端的输入/展示目标，由 mu 保护。
 	started      bool
 	closing      bool
 	closed       bool
@@ -72,6 +73,25 @@ func New(platformName, clientID string) *Runtime {
 
 func (r *Runtime) Name() string { return r.name }
 
+func (r *Runtime) SelectCoagentView(mainID, memberID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.coagentView = clishare.CoagentView{MainSessionID: mainID, SessionID: memberID}
+}
+
+func (r *Runtime) currentView() clishare.CoagentView {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.coagentView
+}
+
+func (r *Runtime) conversation() contextinfo.Conversation {
+	view := r.currentView()
+	return contextinfo.Conversation{PlatformData: r, TargetSessionID: view.SessionID, CoagentMainSessionID: view.MainSessionID,
+		Source:   contextinfo.Source{Platform: r.name, ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: r.clientID},
+		Identity: contextinfo.Identity{ID: "local", Name: r.clientID},
+	}
+}
 func (r *Runtime) SetCompleter(complete func(context.Context, completion.Request) ([]completion.Item, error)) {
 	r.mu.Lock()
 	r.completer = complete
@@ -130,11 +150,7 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 			return signal.ErrClosed
 		}
 		defer r.work.Done()
-		info := contextinfo.Conversation{
-			PlatformData: r,
-			Source:       contextinfo.Source{Platform: r.name, ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: r.clientID},
-			Identity:     contextinfo.Identity{ID: "local", Name: r.clientID},
-		}
+		info := r.conversation()
 		msg := platformshare.MessageContext{CommandReply: r, Conversation: info, GroupRole: contextinfo.GroupRoleUnknown, RawText: text, Sender: r}
 		return handler(contextinfo.WithConversation(r.workCtx, info), text, msg)
 	}
@@ -156,7 +172,7 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 				if fn == nil {
 					return nil, nil
 				}
-				return fn(r.workCtx, req)
+				return fn(contextinfo.WithConversation(r.workCtx, r.conversation()), req)
 			}
 			runErr := runTUI(tuiModel{
 				ctx: renderCtx, inputCtx: r.workCtx, handler: func(_ context.Context, text string) error { return submit(text) },
@@ -352,6 +368,21 @@ func (r *Runtime) SendTo(ctx context.Context, target delivery.Target, outputs []
 	if target.Platform != "" && target.Platform != r.name {
 		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", target.Platform)
 	}
+	if target.Empty() && r.currentView() != coagentOutputView(ctx) {
+		return delivery.Receipt{}, nil
+	}
+	return r.displayOutputs(ctx, outputs)
+}
+
+func coagentOutputView(ctx context.Context) clishare.CoagentView {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	if info.CoagentMainSessionID == "" {
+		return clishare.CoagentView{}
+	}
+	return clishare.CoagentView{MainSessionID: info.CoagentMainSessionID, SessionID: info.TargetSessionID}
+}
+
+func (r *Runtime) displayOutputs(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	text := delivery.FallbackOutput(outputs).Text
 	if text == "" {
 		return delivery.Receipt{}, nil
@@ -365,16 +396,19 @@ func (r *Runtime) SendTo(ctx context.Context, target delivery.Target, outputs []
 
 func (r *Runtime) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
 	outputs := platformshare.CommandResultOutputs(result, failure)
-	return r.SendTo(ctx, delivery.Target{}, outputs)
+	return r.displayOutputs(ctx, outputs)
 }
 
-func (r *Runtime) StartStream(context.Context) (delivery.MessageStream, error) {
-	return localMessageStream{runtime: r, id: nextStreamID.Add(1)}, nil
+func (r *Runtime) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+	return localMessageStream{runtime: r, id: nextStreamID.Add(1), view: coagentOutputView(ctx)}, nil
 }
 
 func (r *Runtime) SupportsToolCallEvents() bool { return r.interactive }
 
 func (r *Runtime) PresentStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	if r.currentView() != coagentOutputView(ctx) {
+		return nil
+	}
 	if !r.interactive {
 		_, err := fmt.Fprintln(os.Stdout, FormatCompact(snapshot, time.Now(), 0))
 		return err
@@ -404,11 +438,15 @@ func (r *Runtime) enqueue(ctx context.Context, msg tea.Msg) error {
 }
 
 type localMessageStream struct {
+	view    clishare.CoagentView // 流固定属于输入时的窗口目标。
 	runtime *Runtime
 	id      uint64
 }
 
 func (s localMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	if s.runtime.currentView() != s.view {
+		return delivery.Receipt{}, nil
+	}
 	if !s.runtime.interactive {
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil

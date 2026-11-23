@@ -78,6 +78,14 @@ func (c *ExecutionCoordinator) waitForAttempt(ctx context.Context, done <-chan s
 // AcceptInput revalidates the prepared input and dispatches under its original binding.
 // Risk responses return to the entrypoint for ConfirmationCoordinator to consume.
 func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (context.Context, operationresult.Result[agentshare.InputDisposition], error) {
+	// 私聊不能进入会把回复发回主窗口的 Execution。等待的输入本身也归 /stop 管理。
+	var wait context.Context
+	var retire func()
+	defer func() {
+		if retire != nil {
+			retire()
+		}
+	}()
 	for {
 		locked, admitted, release, err := c.EnterInput(ctx, session)
 		if err != nil {
@@ -88,6 +96,24 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		}
 		ctx = locked
 		snapshot := c.deps.Turns.Snapshot(session.ID)
+		if wait != nil && wait.Err() != nil {
+			release()
+			return ctx, operationresult.Result[agentshare.InputDisposition]{}, wait.Err()
+		}
+		if session.TaskType == "coagent" && snapshot.Execution != nil && snapshot.Execution.CoagentBoardOutput {
+			if wait == nil {
+				_, wait, retire, err = c.deps.Requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "coagent_private_input"})
+				if err != nil {
+					release()
+					return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
+				}
+			}
+			release()
+			if err := c.waitForAttempt(wait, snapshot.Execution.Done()); err != nil {
+				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
+			}
+			continue
+		}
 		if snapshot.ReservationDone != nil {
 			release()
 			if err := c.waitForAttempt(ctx, snapshot.ReservationDone); err != nil {
@@ -140,6 +166,25 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			}
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
 		default:
+			if session.TaskType == "coagent" {
+				// 在已复核名册的同一准入内预约，退组、/stop 或下一份公开投递不能抢占这个空档。
+				e, err := c.deps.Turns.NewExecution(ctx)
+				if err != nil {
+					release()
+					return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
+				}
+				if !c.deps.Turns.ReserveExecution(session.ID, agentshare.InboundTurnInput(ctx, text), e) {
+					release()
+					continue
+				}
+				ctx = turn.WithExecution(ctx, e)
+				defer c.deps.Turns.ReleaseReservation(session.ID, e)
+				if retire != nil {
+					retire()
+					retire = nil
+					wait = nil
+				}
+			}
 			release()
 			var result operationresult.Result[struct{}]
 			ctx, result, err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.deps.Output})

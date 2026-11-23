@@ -23,6 +23,7 @@ import (
 )
 
 type CallProcessor struct {
+	RetireCoagent func(context.Context, *storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error) // 真实调用前处理成员的上下文阈值。
 	// Status owns the latest raw provider usage, independently of response Hooks.
 	Status interface {
 		RecordUsage(context.Context, string, *llm.Usage)
@@ -56,6 +57,12 @@ func (c *CallProcessor) Call(
 	prepare func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
 	attempt func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error),
 ) (operationresult.Result[agentshare.CallOutput], error) {
+	if session.TaskType == "coagent" {
+		result, err := c.RetireCoagent(ctx, session, selection)
+		if err != nil || result.Status != operationresult.Success {
+			return operationresult.Result[agentshare.CallOutput]{Status: result.Status, Message: result.Message}, err
+		}
+	}
 	startedAt := time.Now()
 	observation := c.Begin(session.ID, selection)
 	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence, summarizing)

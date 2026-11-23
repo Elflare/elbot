@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/control/format"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
 	"elbot/internal/operationresult"
+	"elbot/internal/session"
 )
 
 func NewSessions(deps Deps) command.Handler {
@@ -56,6 +58,35 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (command
 	}
 	if all && target != "last" {
 		return command.TextResult(operationresult.InvalidArguments, "-a/--all is only valid for the resume list or last"), nil
+	}
+	// 只有有独立窗口视图的平台才可在不切换主 binding 的情况下直接与成员对话。
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	if view, ok := info.PlatformData.(interface{ SelectCoagentView(string, string) }); ok {
+		if info.CoagentMainSessionID != "" && target == info.CoagentMainSessionID {
+			view.SelectCoagentView("", "")
+			return command.TextResult(operationresult.Success, "已返回主会话："+target), nil
+		}
+		if target != "last" {
+			board, err := deps.Control.Coagent(ctx, session.CoagentAction{Operation: "board", After: math.MaxInt64}, true)
+			if err != nil {
+				return command.Result{}, err
+			}
+			switch board.Status {
+			case operationresult.Success:
+				for _, member := range board.Data.Members {
+					if member.SessionID == target && target != board.Data.MainSessionID {
+						view.SelectCoagentView(board.Data.MainSessionID, target)
+						return command.TextResult(operationresult.Success, fmt.Sprintf("正在与 %s [%s] 直接对话，不写留言板。返回主会话：%s", member.Name, target, deps.CommandText("resume", board.Data.MainSessionID))), nil
+					}
+				}
+			case operationresult.NotFound, operationresult.NoCurrentSession: // 普通前台会话没有协作组。
+			default:
+				return command.TextResult(board.Status, board.Message), nil
+			}
+		}
+		if info.CoagentMainSessionID != "" {
+			return command.TextResult(operationresult.Rejected, "请先返回主会话："+deps.CommandText("resume", info.CoagentMainSessionID)), nil
+		}
 	}
 	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, MessageLimit: resumeHistoryTurns * 2, AllPlatforms: all})
 	if err != nil {

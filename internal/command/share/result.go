@@ -15,6 +15,7 @@ type ResultKind string
 const (
 	ResultKindQuestions     ResultKind = "questions"
 	ResultKindCoagent       ResultKind = "coagent"
+	ResultKindCoagentStatus ResultKind = "coagent_status"
 	ResultKindQuestionDraft ResultKind = "question_draft"
 	ResultKindAnswers       ResultKind = "answers"
 )

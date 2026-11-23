@@ -128,17 +128,17 @@ func TestCoagentBoardTransactionsAndHandoff(t *testing.T) {
 	if _, err := db.Sessions().Get(ctx, "c"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("partial create: %v", err)
 	}
-	if _, err := repo.Post(ctx, "a", false, storage.CoagentEntry{TargetSessionID: "outside", Text: "跨组"}); err == nil {
+	if _, err := repo.Post(ctx, "a", false, "outside", "跨组"); err == nil {
 		t.Fatal("cross-board target accepted")
 	}
-	if _, err := repo.Post(ctx, "b", false, storage.CoagentEntry{Pinned: true, Text: "覆盖"}); err == nil {
+	if _, err := repo.Pin(ctx, "b", false, storage.CoagentPinUpdate{Text: new("覆盖")}); err == nil {
 		t.Fatal("member changed pin")
 	}
 	const posts = 12
 	var wg sync.WaitGroup
 	for range posts {
 		wg.Go(func() {
-			if _, err := repo.Post(ctx, "a", false, storage.CoagentEntry{TargetSessionID: "b", Text: "待验收"}); err != nil {
+			if _, err := repo.Post(ctx, "a", false, "b", "待验收"); err != nil {
 				t.Errorf("post: %v", err)
 			}
 		})
@@ -163,5 +163,58 @@ func TestCoagentBoardTransactionsAndHandoff(t *testing.T) {
 	}
 	if _, err := repo.ReadBoard(ctx, "b", 0); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("retired member: %v", err)
+	}
+}
+
+func TestCoagentWriteSnapshotsAndRemoval(t *testing.T) {
+	ctx := t.Context()
+	db := newTestStore(t)
+	repo := db.Coagents()
+	if err := db.Sessions().Create(ctx, &storage.Session{ID: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.AddMembers(ctx, "main", "首次", "", []*storage.Session{{ID: "first", Title: "A"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	targeted, err := repo.Post(ctx, "main", true, "first", "这条只给原成员")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = repo.RemoveMember(ctx, "first", "first", false, false); !errors.Is(err, storage.ErrCoagentMainOnly) {
+		t.Fatalf("member removal: %v", err)
+	}
+	if _, err = repo.RemoveMember(ctx, "main", "main", true, false); !errors.Is(err, storage.ErrCoagentTarget) {
+		t.Fatalf("remove main: %v", err)
+	}
+	if _, err = repo.AddMembers(ctx, "main", "冲突", "", []*storage.Session{{ID: "duplicate", Title: "A"}}); !errors.Is(err, storage.ErrCoagentNameConflict) {
+		t.Fatal(err)
+	}
+	removed, err := repo.RemoveMember(ctx, "main", "first", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := repo.AddMembers(ctx, "main", "第二次", "", []*storage.Session{{ID: "next", Title: "A"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed.Members) != 1 || len(removed.Entries) != 1 || removed.Entries[0].Number != 3 || len(next.Members) != 2 || next.Members[1].SessionID != "next" {
+		t.Fatalf("removed: %+v; next: %+v", removed, next)
+	}
+	if first.Goal != "首次" || len(first.Entries) != 1 || first.Entries[0].Number != 1 || len(targeted.Entries) != 1 || targeted.Entries[0].Number != 2 || targeted.Entries[0].TargetSessionID != "first" || targeted.Members[1].SessionID != "first" {
+		t.Fatalf("write snapshots changed: %+v %+v", first, targeted)
+	}
+	if _, err = repo.Post(ctx, "first", false, "", "旧成员发言"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatal(err)
+	}
+	if _, err = repo.Post(ctx, "main", true, "first", "过时的目标"); !errors.Is(err, storage.ErrCoagentTarget) {
+		t.Fatal(err)
+	}
+	board, err := repo.ReadBoard(ctx, "next", 0)
+	if err != nil || len(board.Entries) != 4 || board.Entries[1].TargetSessionID != "first" {
+		t.Fatal(board, err)
+	}
+	if _, err = db.Sessions().Get(ctx, "first"); err != nil {
+		t.Fatal("removed session should survive", err)
 	}
 }

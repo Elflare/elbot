@@ -22,6 +22,10 @@ func (s *RemoteServer) originalTarget(ctx context.Context) (remoteDisplayTarget,
 		return remoteDisplayTarget{}, false
 	}
 	target, ok := info.PlatformData.(remoteDisplayTarget)
+	// 子窗口发起的板操作已经由 Agent 定址到主会话，不能沿用原子窗口的输出目标。
+	if ok && target.coagentMainSessionID != "" && info.TargetSessionID == target.coagentMainSessionID && info.CoagentMainSessionID == "" {
+		target.sessionID = info.TargetSessionID
+	}
 	return target, ok
 }
 
@@ -85,15 +89,27 @@ func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEven
 }
 
 type remoteDisplayTarget struct {
-	sessionID string // 输出路由在输入准入时固定。
-	server    *RemoteServer
-	client    *remoteClientConn
+	coagentMainSessionID string // 从子成员视图派生板输入时的主窗口地址。
+	sessionID            string // 输出路由在输入准入时固定。
+	server               *RemoteServer
+	client               *remoteClientConn
 }
 
+func (t remoteDisplayTarget) SelectCoagentView(mainID, memberID string) {
+	t.server.mu.Lock()
+	defer t.server.mu.Unlock()
+	t.client.coagentView = clishare.CoagentView{MainSessionID: mainID, SessionID: memberID}
+}
 func (t remoteDisplayTarget) TargetID() string { return fmt.Sprintf("%p", t.client) }
 
 func (t remoteDisplayTarget) SendReply(ctx context.Context, outputs []delivery.Output) error {
 	if t.sessionID == "" {
+		t.server.mu.Lock()
+		focused := t.client.coagentView.SessionID != ""
+		t.server.mu.Unlock()
+		if focused {
+			return nil
+		}
 		return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs, "")
 	}
 	return t.server.sendOutputs(ctx, t.server.sessionClients(t.client.id, t.sessionID), outputs, t.sessionID)
@@ -104,6 +120,9 @@ func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageS
 }
 
 func (t remoteDisplayTarget) PresentStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	if t.coagentMainSessionID != "" && snapshot.SessionID == t.coagentMainSessionID {
+		t.sessionID = snapshot.SessionID
+	}
 	clients := t.server.sessionClients(t.client.id, t.sessionID)
 	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, SessionID: t.sessionID, Snapshot: snapshot})
 }
@@ -132,7 +151,7 @@ func (s *RemoteServer) sessionClients(id, sessionID string) []*remoteClientConn 
 	defer s.mu.Unlock()
 	var clients []*remoteClientConn
 	for c := range s.clients[id] {
-		if c.sessionID == sessionID {
+		if c.viewSessionID() == sessionID {
 			clients = append(clients, c)
 		}
 	}

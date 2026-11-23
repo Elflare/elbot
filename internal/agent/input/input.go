@@ -123,7 +123,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	}
 	ctx = locked
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	facts.Mode = session.Mode
+	facts.SessionID, facts.Mode, facts.TaskType, facts.TaskID = session.ID, session.Mode, session.TaskType, session.TaskID
 	ctx = contextinfo.WithExecution(ctx, facts)
 	release()
 	result, err := c.deps.NormalizeInput(ctx, session.ID, agentshare.InboundSegments(ctx, text))

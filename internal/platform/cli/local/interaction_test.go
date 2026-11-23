@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
@@ -32,6 +34,28 @@ func testLocalAdapter(t *testing.T) (*Runtime, *os.File) {
 	return a, writer
 }
 
+func TestCoagentPrivateStreamDoesNotFollowTerminalBackToMain(t *testing.T) {
+	r := New("cli", "test")
+	r.interactive = true
+	r.SelectCoagentView("main", "child")
+	info := r.conversation()
+	if info.CoagentMainSessionID != "main" || info.TargetSessionID != "child" {
+		t.Fatal(info)
+	}
+	stream, err := r.StartStream(contextinfo.WithConversation(t.Context(), info))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.SelectCoagentView("", "")
+	if _, err := stream.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamSend, Text: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case m := <-r.output:
+		t.Fatalf("late private output shown in main: %v", m)
+	default:
+	}
+}
 func TestLocalStopUnblocksPipeAndKeepsInputOwnedByCaller(t *testing.T) {
 	a, writer := testLocalAdapter(t)
 	if err := a.Start(t.Context(), func(context.Context, string, share.MessageContext) error { t.Error("unexpected input"); return nil }); err != nil {

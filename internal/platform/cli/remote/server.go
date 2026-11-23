@@ -74,15 +74,22 @@ type RemoteServer struct {
 }
 
 type remoteClientConn struct {
-	sessionID  string                     // s.mu 保护；当前连接授权订阅的会话。
-	writeMu    sync.Mutex                 // Keep CLI chunks of one JSON envelope consecutive.
-	mediaToken string                     // 本连接的 HTTP 附件凭据，断连即撤销。
-	apiToken   string                     // 本连接的管理 API 路由凭据，断连即撤销。
-	files      map[string]*remoteMediaRef // 本连接的附件授权，由 server.mu 保护。
-	id         string
-	conn       *websocket.Conn
+	coagentView clishare.CoagentView       // s.mu 保护；显式 /resume 的窗口目标，独立于原订阅。
+	sessionID   string                     // s.mu 保护；当前连接授权订阅的会话。
+	writeMu     sync.Mutex                 // Keep CLI chunks of one JSON envelope consecutive.
+	mediaToken  string                     // 本连接的 HTTP 附件凭据，断连即撤销。
+	apiToken    string                     // 本连接的管理 API 路由凭据，断连即撤销。
+	files       map[string]*remoteMediaRef // 本连接的附件授权，由 server.mu 保护。
+	id          string
+	conn        *websocket.Conn
 }
 
+func (c *remoteClientConn) viewSessionID() string {
+	if c.coagentView.SessionID != "" {
+		return c.coagentView.SessionID
+	}
+	return c.sessionID
+}
 func NewServer(opts ServerOptions) (*RemoteServer, error) {
 	cfg := opts.Config
 	if !cfg.Enabled {
@@ -167,7 +174,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler platformshar
 	s.work.Done()
 	handshakeDone = true
 	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID, MediaToken: client.mediaToken, APIToken: client.apiToken}); err != nil {
-		client.logControlSendFailure(s.sessionContext(s.workCtx, client, ""), remoteMsgHelloOK, err)
+		client.logControlSendFailure(s.sessionContext(s.workCtx, client, "", ""), remoteMsgHelloOK, err)
 		return
 	}
 	for {
@@ -190,14 +197,15 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 	}
 	s.work.Add(1)
 	complete := s.completer
-	selected := client.sessionID
+	selected, mainID := client.viewSessionID(), client.coagentView.MainSessionID
+	implicitInput := client.sessionID == "" // 无显式订阅的 CLI 不发送 session_id。
 	s.mu.Unlock()
-	ctx = s.sessionContext(ctx, client, selected)
+	ctx = s.sessionContext(ctx, client, selected, mainID)
 	go func() {
 		defer s.work.Done()
 		switch msg.Type {
 		case remoteMsgInput:
-			if msg.SessionID != selected {
+			if msg.SessionID != selected && !(implicitInput && msg.SessionID == "") {
 				_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: msg.ID, SessionID: msg.SessionID, Text: "输入目标与当前订阅不一致"})
 				return
 			}
@@ -256,9 +264,9 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {
 	s.mu.Lock()
-	selected := client.sessionID
+	selected, mainID := client.viewSessionID(), client.coagentView.MainSessionID
 	s.mu.Unlock()
-	return s.sessionContext(ctx, client, selected)
+	return s.sessionContext(ctx, client, selected, mainID)
 }
 
 func (c *remoteClientConn) logControlSendFailure(ctx context.Context, operation string, err error) {
@@ -268,10 +276,11 @@ func (c *remoteClientConn) logControlSendFailure(ctx context.Context, operation 
 	}
 	events.AsyncLog(ctx, record)
 }
-func (s *RemoteServer) sessionContext(ctx context.Context, client *remoteClientConn, sessionID string) context.Context {
+func (s *RemoteServer) sessionContext(ctx context.Context, client *remoteClientConn, sessionID, mainID string) context.Context {
 	msg := platformshare.MessageContext{
 		Conversation: contextinfo.Conversation{
-			TargetSessionID: sessionID,
+			TargetSessionID:      sessionID,
+			CoagentMainSessionID: mainID,
 			Source: contextinfo.Source{
 				Platform: s.Name(),
 
@@ -279,7 +288,7 @@ func (s *RemoteServer) sessionContext(ctx context.Context, client *remoteClientC
 				ChatID:   client.id,
 				Name:     client.id,
 			},
-			PlatformData: remoteDisplayTarget{server: s, client: client, sessionID: sessionID},
+			PlatformData: remoteDisplayTarget{server: s, client: client, sessionID: sessionID, coagentMainSessionID: mainID},
 			Identity: contextinfo.Identity{
 
 				ID:       client.id,

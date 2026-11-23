@@ -12,18 +12,20 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
 type coagentHandler struct {
-	sessions  *session.Supervisor
-	execution *execution.ExecutionCoordinator
-	identity  *agentshare.IdentityResolver
-	models    ModelCapabilities
-	platform  PlatformCapabilities
-	lifetime  context.Context
+	sessions    *session.Supervisor
+	execution   *execution.ExecutionCoordinator
+	identity    *agentshare.IdentityResolver
+	models      ModelCapabilities
+	platform    PlatformCapabilities
+	stopSession func(string) // 停止退组成员的执行与活动请求。
+	lifetime    context.Context
 }
 
 // Board inputs keep the original foreground address even when a member posts another message.
@@ -51,7 +53,7 @@ func (h coagentHandler) handle(ctx context.Context, action session.CoagentAction
 	if action.Operation == "board" {
 		return h.sessions.ReadCoagentBoard(ctx, b, action.After)
 	}
-	var result operationresult.Result[storage.CoagentEntry]
+	var board operationresult.Result[storage.CoagentBoard]
 	switch action.Operation {
 	case "create":
 		if current.Data.Session.TaskType == "coagent" || current.Data.Session.Mode != storage.SessionModeWork {
@@ -81,37 +83,77 @@ func (h coagentHandler) handle(ctx context.Context, action session.CoagentAction
 			if err := json.Unmarshal([]byte(answer.Text), &action.Names); err != nil || len(action.Names) != action.Count {
 				return operationresult.Result[storage.CoagentBoard]{Status: operationresult.Rejected, Message: "模型未返回指定数量的成员名"}, nil
 			}
+			checked := session.ValidateCoagentNames(action.Goal, action.Names)
+			if checked.Status != operationresult.Success {
+				return operationresult.Result[storage.CoagentBoard]{Status: checked.Status, Message: checked.Message}, nil
+			}
+			action.Names = checked.Data
 		}
-		result, err = h.sessions.CreateCoagents(ctx, b, action.Goal, action.Names, user)
+		board, err = h.sessions.CreateCoagents(ctx, b, action.Goal, action.Names, user)
 	case "pin":
-		result, err = h.sessions.PinCoagentBoard(ctx, b, user, action.Pin)
+		board, err = h.sessions.PinCoagentBoard(ctx, b, user, action.Pin)
 	case "post":
-		result, err = h.sessions.PostCoagentEntry(ctx, b, user, storage.CoagentEntry{Text: action.Text, TargetSessionID: action.TargetSessionID})
+		board, err = h.sessions.PostCoagentEntry(ctx, b, user, action.TargetSessionID, action.Text)
+	case "remove":
+		board, err = h.remove(ctx, b, action.TargetSessionID, user, false)
 	default:
 		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.InvalidArguments, Message: "未知协作操作"}, nil
 	}
-	if err != nil || result.Status != operationresult.Success {
-		return operationresult.Result[storage.CoagentBoard]{Status: result.Status, Message: result.Message}, err
-	}
-	board, err := h.sessions.ReadCoagentBoard(ctx, b, result.Data.Number-1)
 	if err != nil || board.Status != operationresult.Success {
 		return board, err
 	}
-	board.Data.Entries = []storage.CoagentEntry{result.Data}
-	text := session.FormatCoagentEntry(result.Data, board.Data.Members)
-	if result.Data.Pinned {
-		text = session.FormatCoagentBoard(board.Data)
+	return board, h.deliver(ctx, board.Data, user)
+}
+
+// 成员准入与删除按同一 Session 锁串行：提交退组后不再接受此前已快照的投递。
+func (h coagentHandler) remove(ctx context.Context, b *session.Binding, target string, user, retire bool) (operationresult.Result[storage.CoagentBoard], error) {
+	locked, release, err := h.sessions.EnterActivation(ctx, b.Scope(), b.SessionID(), target)
+	if err != nil {
+		return operationresult.Result[storage.CoagentBoard]{}, err
+	}
+	defer release()
+	result, err := h.sessions.RemoveCoagent(locked, b, target, user, retire)
+	if err == nil && result.Status == operationresult.Success {
+		h.stopSession(target)
+	}
+	return result, err
+}
+
+// RetireCoagent 在真实模型调用前检查上次计量；系统退出不占用一轮模型调用，也不压缩。
+func (h coagentHandler) RetireCoagent(ctx context.Context, row *storage.Session, selection modelmgr.Selection) (operationresult.Result[struct{}], error) {
+	if !h.execution.ReachedCompactThreshold(ctx, row, selection) {
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	}
+	binding, _ := session.BindingFromContext(ctx)
+	r, err := h.remove(ctx, binding, row.ID, false, true)
+	if err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	if r.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: r.Status, Message: r.Message}, nil
+	}
+	err = h.deliver(ctx, r.Data, false)
+	return operationresult.Result[struct{}]{Status: operationresult.Canceled, Message: "协作成员上下文已达阈值，已退组"}, err
+}
+func (h coagentHandler) deliver(ctx context.Context, board storage.CoagentBoard, user bool) error {
+	entry := board.Entries[0]
+	text := session.FormatCoagentEntry(entry, board.Members)
+	if entry.Pinned {
+		text = session.FormatCoagentBoard(board)
 	}
 	base, ok := ctx.Value(coagentHomeKey{}).(context.Context)
 	if !ok {
 		home, _ := contextinfo.ConversationFromContext(ctx)
-		home.InputID, home.PlatformMessageID, home.ReplyToMessageID = "", "", ""
+		home.InputID, home.PlatformMessageID, home.ReplyToMessageID, home.ReplyToSenderID = "", "", "", ""
+		if home.CoagentMainSessionID != "" {
+			home.TargetSessionID, home.CoagentMainSessionID = board.MainSessionID, ""
+		}
 		base = h.platform.RestoreMessageContext(h.lifetime, ctx)
 		base = contextinfo.WithActor(base, h.identity.Actor(ctx))
 		base = contextinfo.WithConversation(base, home)
 	}
 	home, _ := contextinfo.ConversationFromContext(base)
-	display := contextinfo.WithExecution(base, contextinfo.Execution{SessionID: board.Data.MainSessionID, Mode: storage.SessionModeWork})
+	display := contextinfo.WithExecution(base, contextinfo.Execution{SessionID: board.MainSessionID, Mode: storage.SessionModeWork})
 	// A user command presents its own structured reply; tool writes need a separate display.
 	var displayErr error
 	if !user {
@@ -121,12 +163,12 @@ func (h coagentHandler) handle(ctx context.Context, action session.CoagentAction
 			displayErr = fmt.Errorf("协作留言已保存，主窗口展示失败：%s", sent.Message)
 		}
 	}
-	for _, member := range board.Data.Members {
-		if target := result.Data.TargetSessionID; target != "" && target != member.SessionID {
+	for _, member := range board.Members {
+		if target := entry.TargetSessionID; target != "" && target != member.SessionID {
 			continue
 		}
 		info := home
-		main := member.SessionID == board.Data.MainSessionID
+		main := member.SessionID == board.MainSessionID
 		memberBase := base
 		if !main {
 			info.TargetSessionID = member.SessionID
@@ -135,7 +177,7 @@ func (h coagentHandler) handle(ctx context.Context, action session.CoagentAction
 		}
 		memberCtx := contextinfo.WithConversation(context.WithValue(memberBase, coagentHomeKey{}, base), info)
 		memberCtx = agentshare.WithMessageContext(memberCtx, agentshare.MessageContext{RestoreMessageContext: h.platform.RestoreMessageContext})
-		err := h.execution.QueueBoardInput(memberCtx, board.Data.ID, member, text, main, func(sendCtx context.Context, body string) (delivery.Receipt, error) {
+		err := h.execution.QueueBoardInput(memberCtx, board.ID, member, text, main, func(sendCtx context.Context, body string) (delivery.Receipt, error) {
 			if strings.TrimSpace(body) == "" {
 				return delivery.Receipt{}, nil
 			}
@@ -152,5 +194,5 @@ func (h coagentHandler) handle(ctx context.Context, action session.CoagentAction
 			displayErr = err
 		}
 	}
-	return board, displayErr
+	return displayErr
 }

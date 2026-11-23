@@ -2,6 +2,9 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/session"
+	"math"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/operationresult"
@@ -10,8 +13,10 @@ import (
 )
 
 func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (context.Context, operationresult.Result[*storage.Session], error) {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	private := info.CoagentMainSessionID != ""
 	msg, ok := agentshare.MessageContextFrom(ctx)
-	fork := ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != ""
+	fork := !private && ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != ""
 	scope := c.deps.Identity.Scope(ctx)
 	var result operationresult.Result[*storage.Session]
 	var locked context.Context
@@ -35,7 +40,11 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 	}
 	defer release()
 	if !fork {
-		result, err = c.sessionForInput(locked, text)
+		if private { // 显式成员视图不根据引用切换/派生或创建当前会话。
+			result, err = c.deps.Sessions.Current(locked, scope)
+		} else {
+			result, err = c.sessionForInput(locked, text)
+		}
 		if err != nil {
 			return ctx, operationresult.Result[*storage.Session]{}, err
 		}
@@ -43,7 +52,7 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 			return ctx, result, nil
 		}
 	}
-	if result.Data.TaskType == "coagent" {
+	if (result.Data.TaskType == "coagent") != private {
 		return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Rejected, Message: "请在主会话的留言板联系协作成员"}, nil
 	}
 	bound, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, result.Data.ID)
@@ -120,6 +129,18 @@ func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Sess
 	if err != nil || captured.Status != operationresult.Success {
 		release()
 		return ctx, operationresult.Result[struct{}]{Status: captured.Status, Message: captured.Message}, nil, err
+	}
+	if info, _ := contextinfo.ConversationFromContext(locked); info.CoagentMainSessionID != "" {
+		binding, _ := session.BindingFromContext(locked)
+		board, err := c.deps.Sessions.ReadCoagentBoard(locked, binding, math.MaxInt64)
+		if err != nil {
+			release()
+			return ctx, operationresult.Result[struct{}]{}, nil, err
+		}
+		if board.Status != operationresult.Success || board.Data.MainSessionID != info.CoagentMainSessionID || captured.Data.ID == board.Data.MainSessionID {
+			release()
+			return ctx, operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "成员已不在当前协作组，请重新选择"}, nil, nil
+		}
 	}
 	latest := captured.Data
 	switch {

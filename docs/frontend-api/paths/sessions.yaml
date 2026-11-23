@@ -191,6 +191,7 @@
     post:
       operationId: resumeSession
       summary: Resume a session and bind it as current
+      description: Co-agent member sessions cannot become the foreground session. A rejected resume leaves the current binding unchanged.
       parameters:
         - $ref: '../components/transport.yaml#/parameters/sessionID'
       requestBody:

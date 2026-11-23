@@ -58,71 +58,99 @@ func FormatCoagentEntry(entry storage.CoagentEntry, members []storage.CoagentMem
 	return fmt.Sprintf("#%d %s：%s", entry.Number, label, entry.Text)
 }
 
-// 创建、写入和读取均以调用者已取得的当前绑定选择协作组。
-func (s *Supervisor) CreateCoagents(ctx context.Context, binding *Binding, goal string, names []string, user bool) (operationresult.Result[storage.CoagentEntry], error) {
+// ValidateCoagentNames 校验整批创建参数，返回去除首尾空白的成员名，不修改调用者的名单。
+func ValidateCoagentNames(goal string, names []string) operationresult.Result[[]string] {
+	if strings.TrimSpace(goal) == "" || len(names) == 0 {
+		return operationresult.Result[[]string]{Status: operationresult.InvalidArguments, Message: "需要任务目标及成员名字"}
+	}
+	if len(names) > storage.MaxCoagents {
+		return operationresult.Result[[]string]{Status: operationresult.InvalidArguments, Message: storage.ErrCoagentLimit.Error()}
+	}
+	seen := map[string]bool{"主会话": true, "用户": true, "系统": true}
+	clean := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.ContainsAny(name, "\r\n") || seen[name] {
+			return operationresult.Result[[]string]{Status: operationresult.InvalidArguments, Message: "成员名应为组内唯一的非空单行文本，不得使用系统署名"}
+		}
+		seen[name] = true
+		clean = append(clean, name)
+	}
+	return operationresult.Result[[]string]{Status: operationresult.Success, Data: clean}
+}
+
+// Co-agent 写入返回提交时的名册和单条事件，读操作按原样返回板历史。
+func coagentResult(board storage.CoagentBoard, err error) (operationresult.Result[storage.CoagentBoard], error) {
+	var status operationresult.Status
+	switch {
+	case err == nil:
+		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.Success, Data: board}, nil
+	case errors.Is(err, storage.ErrNotFound):
+		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.NotFound, Message: "当前会话未加入协作组"}, nil
+	case errors.Is(err, storage.ErrCoagentMainOnly):
+		status = operationresult.Forbidden
+	case errors.Is(err, storage.ErrCoagentLimit), errors.Is(err, storage.ErrCoagentNameConflict):
+		status = operationresult.Conflict
+	case errors.Is(err, storage.ErrCoagentTarget):
+		status = operationresult.InvalidArguments
+	default:
+		return operationresult.Result[storage.CoagentBoard]{}, err
+	}
+	return operationresult.Result[storage.CoagentBoard]{Status: status, Message: err.Error()}, nil
+}
+
+func (s *Supervisor) CreateCoagents(ctx context.Context, binding *Binding, goal string, names []string, user bool) (operationresult.Result[storage.CoagentBoard], error) {
 	ctx, release, err := s.EnterBinding(ctx, binding)
 	if err != nil {
-		return operationresult.Result[storage.CoagentEntry]{}, err
+		return operationresult.Result[storage.CoagentBoard]{}, err
 	}
 	defer release()
 	current, err := s.CurrentBound(ctx, binding.Scope())
 	if err != nil || current.Status != operationresult.Success {
-		return operationresult.Result[storage.CoagentEntry]{Status: current.Status, Message: current.Message}, err
+		return operationresult.Result[storage.CoagentBoard]{Status: current.Status, Message: current.Message}, err
 	}
-	return s.coagents.Create(ctx, current.Data.Session, goal, names, user)
+	result, err := s.coagents.Create(ctx, current.Data.Session, goal, names, user)
+	if err != nil {
+		return coagentResult(storage.CoagentBoard{}, err)
+	}
+	return result, nil
 }
-
 func (s *Supervisor) ReadCoagentBoard(ctx context.Context, binding *Binding, after int64) (operationresult.Result[storage.CoagentBoard], error) {
 	ctx, release, err := s.EnterBinding(ctx, binding)
 	if err != nil {
 		return operationresult.Result[storage.CoagentBoard]{}, err
 	}
 	defer release()
-	board, err := s.coagents.Boards.ReadBoard(ctx, binding.SessionID(), after)
-	if errors.Is(err, storage.ErrNotFound) {
-		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.NotFound, Message: "当前会话未加入协作组"}, nil
+	return coagentResult(s.coagents.Boards.ReadBoard(ctx, binding.SessionID(), after))
+}
+func (s *Supervisor) PostCoagentEntry(ctx context.Context, binding *Binding, user bool, targetSessionID, text string) (operationresult.Result[storage.CoagentBoard], error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.InvalidArguments, Message: "留言不能为空"}, nil
 	}
+	ctx, release, err := s.EnterBinding(ctx, binding)
 	if err != nil {
 		return operationresult.Result[storage.CoagentBoard]{}, err
 	}
-	return operationresult.Result[storage.CoagentBoard]{Status: operationresult.Success, Data: board}, nil
-}
-
-func (s *Supervisor) PostCoagentEntry(ctx context.Context, binding *Binding, user bool, entry storage.CoagentEntry) (operationresult.Result[storage.CoagentEntry], error) {
-	entry.Text = strings.TrimSpace(entry.Text)
-	if entry.Text == "" {
-		return operationresult.Result[storage.CoagentEntry]{Status: operationresult.InvalidArguments, Message: "留言不能为空"}, nil
-	}
-	ctx, release, err := s.EnterBinding(ctx, binding)
-	if err != nil {
-		return operationresult.Result[storage.CoagentEntry]{}, err
-	}
 	defer release()
-	entry, err = s.coagents.Boards.Post(ctx, binding.SessionID(), user, entry)
-	if errors.Is(err, storage.ErrNotFound) {
-		return operationresult.Result[storage.CoagentEntry]{Status: operationresult.NotFound, Message: "当前会话未加入协作组"}, nil
-	}
-	if err != nil {
-		return operationresult.Result[storage.CoagentEntry]{}, err
-	}
-	return operationresult.Result[storage.CoagentEntry]{Status: operationresult.Success, Data: entry}, nil
+	return coagentResult(s.coagents.Boards.Post(ctx, binding.SessionID(), user, targetSessionID, text))
 }
-
-func (s *Supervisor) PinCoagentBoard(ctx context.Context, binding *Binding, user bool, update storage.CoagentPinUpdate) (operationresult.Result[storage.CoagentEntry], error) {
+func (s *Supervisor) PinCoagentBoard(ctx context.Context, binding *Binding, user bool, update storage.CoagentPinUpdate) (operationresult.Result[storage.CoagentBoard], error) {
 	if update.Text == nil && update.Goal == nil || update.Goal != nil && strings.TrimSpace(*update.Goal) == "" {
-		return operationresult.Result[storage.CoagentEntry]{Status: operationresult.InvalidArguments, Message: "请提供非空目标或置顶正文；正文可为空"}, nil
+		return operationresult.Result[storage.CoagentBoard]{Status: operationresult.InvalidArguments, Message: "请提供非空目标或置顶正文；正文可为空"}, nil
 	}
 	ctx, release, err := s.EnterBinding(ctx, binding)
 	if err != nil {
-		return operationresult.Result[storage.CoagentEntry]{}, err
+		return operationresult.Result[storage.CoagentBoard]{}, err
 	}
 	defer release()
-	entry, err := s.coagents.Boards.Pin(ctx, binding.SessionID(), user, update)
-	if errors.Is(err, storage.ErrNotFound) {
-		return operationresult.Result[storage.CoagentEntry]{Status: operationresult.NotFound, Message: "当前会话未加入协作组"}, nil
-	}
+	return coagentResult(s.coagents.Boards.Pin(ctx, binding.SessionID(), user, update))
+}
+func (s *Supervisor) RemoveCoagent(ctx context.Context, binding *Binding, targetSessionID string, user, retire bool) (operationresult.Result[storage.CoagentBoard], error) {
+	ctx, release, err := s.EnterBinding(ctx, binding)
 	if err != nil {
-		return operationresult.Result[storage.CoagentEntry]{}, err
+		return operationresult.Result[storage.CoagentBoard]{}, err
 	}
-	return operationresult.Result[storage.CoagentEntry]{Status: operationresult.Success, Data: entry}, nil
+	defer release()
+	return coagentResult(s.coagents.Boards.RemoveMember(ctx, binding.SessionID(), targetSessionID, user, retire))
 }

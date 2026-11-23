@@ -13,13 +13,14 @@ import (
 // Execution spans individual requests and append-confirmation continuations.
 // Its completion is independent of a canceled model request.
 type Execution struct {
-	ID                string
-	mu                sync.Mutex
-	foreground        context.Context
-	foregroundSession storage.Session // Immutable committed handoff snapshot, paired with foreground under mu.
-	result            Result
-	done              chan struct{}
-	finished          bool
+	CoagentBoardOutput bool // 仅在预约前设置：该成员执行的普通回复公开投递到主窗口，不能吸收私聊输入。
+	ID                 string
+	mu                 sync.Mutex
+	foreground         context.Context
+	foregroundSession  storage.Session // Immutable committed handoff snapshot, paired with foreground under mu.
+	result             Result
+	done               chan struct{}
+	finished           bool
 }
 
 func NewExecution(id string) *Execution {

@@ -19,7 +19,7 @@ func InfoAvailableInContext(ctx context.Context, info share.Info) bool {
 func UnavailableReason(ctx context.Context, info share.Info) string {
 	if facts, ok := contextinfo.ExecutionFromContext(ctx); ok && facts.TaskType == "coagent" {
 		switch info.Name {
-		case "ask_user", "coagent_create", "coagent_pin":
+		case "ask_user", "coagent_create", "coagent_pin", "coagent_remove":
 			return "tool is only available to the main agent"
 		}
 	}

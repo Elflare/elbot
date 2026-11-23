@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 
 	"elbot/internal/storage"
 )
@@ -38,128 +40,145 @@ type CoagentRepository struct{ db *sql.DB }
 
 func (s *Store) Coagents() storage.CoagentRepository { return &CoagentRepository{s.db} }
 
-func appendCoagentEntry(ctx context.Context, tx *sql.Tx, board int64, entry storage.CoagentEntry) (storage.CoagentEntry, error) {
+// 同一事务分配编号、保存事件并返回本次投递的名册，不让并发写入/压缩改变收件范围。
+func appendCoagentEntry(ctx context.Context, tx *sql.Tx, board storage.CoagentBoard, entry storage.CoagentEntry) (storage.CoagentBoard, error) {
 	err := tx.QueryRowContext(ctx, `INSERT INTO coagent_entries(board_id,number,author,author_session_id,target_session_id,body,pinned)
-	SELECT ?,COALESCE(MAX(number),0)+1,?,?,?,?,? FROM coagent_entries WHERE board_id=? RETURNING number`,
-		board, entry.Author, entry.AuthorSessionID, entry.TargetSessionID, entry.Text, entry.Pinned, board).Scan(&entry.Number)
-	return entry, err
+ SELECT ?,COALESCE(MAX(number),0)+1,?,?,?,?,? FROM coagent_entries WHERE board_id=? RETURNING number`, board.ID, entry.Author, entry.AuthorSessionID, entry.TargetSessionID, entry.Text, entry.Pinned, board.ID).Scan(&entry.Number)
+	if err != nil {
+		return storage.CoagentBoard{}, err
+	}
+	board.Entries = []storage.CoagentEntry{entry}
+	return board, tx.Commit()
 }
 
-func (r *CoagentRepository) AddMembers(ctx context.Context, main, goal, author string, sessions []*storage.Session) (storage.CoagentEntry, error) {
-	var entry storage.CoagentEntry
+func (r *CoagentRepository) AddMembers(ctx context.Context, main, goal, author string, sessions []*storage.Session) (storage.CoagentBoard, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return entry, err
+		return storage.CoagentBoard{}, err
 	}
 	defer tx.Rollback()
-	var board int64
-	if err = tx.QueryRowContext(ctx, `INSERT INTO coagent_boards(main_session_id,goal) VALUES(?,?)
-	ON CONFLICT(main_session_id) DO UPDATE SET goal=excluded.goal RETURNING id`, main, goal).Scan(&board); err != nil {
-		return entry, err
+	var id int64
+	if err = tx.QueryRowContext(ctx, `INSERT INTO coagent_boards(main_session_id,goal) VALUES(?,?) ON CONFLICT(main_session_id) DO UPDATE SET goal=excluded.goal RETURNING id`, main, goal).Scan(&id); err != nil {
+		return storage.CoagentBoard{}, err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO coagent_members(session_id,board_id,name) VALUES(?,?,'主会话') ON CONFLICT(session_id) DO NOTHING`, main, board); err != nil {
-		return entry, err
+	if _, err = tx.ExecContext(ctx, `INSERT INTO coagent_members(session_id,board_id,name) VALUES(?,?,'主会话') ON CONFLICT(session_id) DO NOTHING`, main, id); err != nil {
+		return storage.CoagentBoard{}, err
 	}
-	var bound int64
-	if err = tx.QueryRowContext(ctx, `SELECT board_id FROM coagent_members WHERE session_id=?`, main).Scan(&bound); err != nil {
-		return entry, err
+	board, err := readCoagentBoard(ctx, tx, main)
+	if err != nil {
+		return storage.CoagentBoard{}, err
 	}
-	if bound != board {
-		return entry, fmt.Errorf("只有主会话可创建成员")
+	if board.ID != id {
+		return storage.CoagentBoard{}, storage.ErrCoagentMainOnly
 	}
-	var members int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM coagent_members WHERE board_id=? AND session_id<>?`, board, main).Scan(&members); err != nil {
-		return entry, err
-	}
-	if len(sessions) > storage.MaxCoagents-members {
-		return entry, storage.ErrCoagentLimit
+	if len(board.Members)-1+len(sessions) > storage.MaxCoagents {
+		return storage.CoagentBoard{}, storage.ErrCoagentLimit
 	}
 	for _, row := range sessions {
 		if err = createSession(ctx, tx, row); err != nil {
-			return entry, err
+			return storage.CoagentBoard{}, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO coagent_members(session_id,board_id,name) VALUES(?,?,?)`, row.ID, board, row.Title); err != nil {
-			return entry, err
+		res, err := tx.ExecContext(ctx, `INSERT INTO coagent_members(session_id,board_id,name) VALUES(?,?,?) ON CONFLICT(board_id,name) DO NOTHING`, row.ID, id, row.Title)
+		if err != nil {
+			return storage.CoagentBoard{}, err
 		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return storage.CoagentBoard{}, err
+		}
+		if n == 0 {
+			return storage.CoagentBoard{}, storage.ErrCoagentNameConflict
+		}
+		board.Members = append(board.Members, storage.CoagentMember{SessionID: row.ID, Name: row.Title})
 	}
-	entry = storage.CoagentEntry{Text: goal, Pinned: true, Author: "用户"}
+	entry := storage.CoagentEntry{Text: goal, Pinned: true, Author: "用户"}
 	if author != "" {
 		entry.Author = "主会话"
 		entry.AuthorSessionID = main
 	}
-	entry, err = appendCoagentEntry(ctx, tx, board, entry)
-	if err != nil {
-		return entry, err
-	}
-	return entry, tx.Commit()
+	return appendCoagentEntry(ctx, tx, board, entry)
 }
 
-func (r *CoagentRepository) Post(ctx context.Context, member string, user bool, entry storage.CoagentEntry) (storage.CoagentEntry, error) {
-	return r.writeEntry(ctx, member, user, entry, nil)
-}
-
-func (r *CoagentRepository) Pin(ctx context.Context, member string, user bool, update storage.CoagentPinUpdate) (storage.CoagentEntry, error) {
-	return r.writeEntry(ctx, member, user, storage.CoagentEntry{Pinned: true}, &update)
-}
-
-func (r *CoagentRepository) writeEntry(ctx context.Context, member string, user bool, entry storage.CoagentEntry, update *storage.CoagentPinUpdate) (storage.CoagentEntry, error) {
+// 授权与编辑在同一个写事务内基于同一份名册，编辑函数只负责本次操作。
+func (r *CoagentRepository) writeEntry(ctx context.Context, member string, user bool, edit func(*sql.Tx, *storage.CoagentBoard, *storage.CoagentEntry) error) (storage.CoagentBoard, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return entry, err
+		return storage.CoagentBoard{}, err
 	}
 	defer tx.Rollback()
-	var board int64
-	var main string
-	err = tx.QueryRowContext(ctx, `SELECT b.id,b.main_session_id,m.name FROM coagent_boards b JOIN coagent_members m ON m.board_id=b.id WHERE m.session_id=?`, member).Scan(&board, &main, &entry.Author)
-	if errors.Is(err, sql.ErrNoRows) {
-		return entry, storage.ErrNotFound
-	}
+	board, err := readCoagentBoard(ctx, tx, member)
 	if err != nil {
-		return entry, err
+		return storage.CoagentBoard{}, err
 	}
-	entry.AuthorSessionID = member
-	if user {
-		entry.Author = "用户"
-		entry.AuthorSessionID = ""
-	}
-	if entry.Pinned {
-		if member != main {
-			return entry, fmt.Errorf("只有主会话可修改置顶")
-		}
-		entry.TargetSessionID = ""
-		if update == nil {
-			return entry, fmt.Errorf("置顶更新需要目标或正文")
-		}
-		var goal, body string
-		if err = tx.QueryRowContext(ctx, `UPDATE coagent_boards SET goal=COALESCE(?,goal), pinned_text=COALESCE(?,pinned_text) WHERE id=? RETURNING goal,pinned_text`, update.Goal, update.Text, board).Scan(&goal, &body); err != nil {
-			return entry, err
-		}
-		entry.Text = fmt.Sprintf("目标：%s\n正文：%s", goal, body)
-	}
-	if entry.TargetSessionID != "" {
-		var ok bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM coagent_members WHERE board_id=? AND session_id=?)`, board, entry.TargetSessionID).Scan(&ok); err != nil {
-			return entry, err
-		}
-		if !ok {
-			return entry, fmt.Errorf("目标会话不属于本组")
+	entry := storage.CoagentEntry{Author: "用户"}
+	if !user {
+		for _, m := range board.Members {
+			if m.SessionID == member {
+				entry.Author, entry.AuthorSessionID = m.Name, member
+				break
+			}
 		}
 	}
-	entry, err = appendCoagentEntry(ctx, tx, board, entry)
-	if err != nil {
-		return entry, err
+	if err = edit(tx, &board, &entry); err != nil {
+		return storage.CoagentBoard{}, err
 	}
-	return entry, tx.Commit()
+	return appendCoagentEntry(ctx, tx, board, entry)
 }
 
-func (r *CoagentRepository) ReadBoard(ctx context.Context, member string, after int64) (storage.CoagentBoard, error) {
+func (r *CoagentRepository) Post(ctx context.Context, member string, user bool, targetSessionID, text string) (storage.CoagentBoard, error) {
+	return r.writeEntry(ctx, member, user, func(_ *sql.Tx, b *storage.CoagentBoard, e *storage.CoagentEntry) error {
+		e.Text, e.TargetSessionID = text, targetSessionID
+		if targetSessionID != "" && !slices.ContainsFunc(b.Members, func(m storage.CoagentMember) bool { return m.SessionID == targetSessionID }) {
+			return storage.ErrCoagentTarget
+		}
+		return nil
+	})
+}
+func (r *CoagentRepository) Pin(ctx context.Context, member string, user bool, update storage.CoagentPinUpdate) (storage.CoagentBoard, error) {
+	return r.writeEntry(ctx, member, user, func(tx *sql.Tx, b *storage.CoagentBoard, e *storage.CoagentEntry) error {
+		if member != b.MainSessionID {
+			return storage.ErrCoagentMainOnly
+		}
+		err := tx.QueryRowContext(ctx, `UPDATE coagent_boards SET goal=COALESCE(?,goal), pinned_text=COALESCE(?,pinned_text) WHERE id=? RETURNING goal,pinned_text`, update.Goal, update.Text, b.ID).Scan(&b.Goal, &b.PinnedText)
+		e.Text = fmt.Sprintf("目标：%s\n正文：%s", b.Goal, b.PinnedText)
+		e.Pinned = true
+		return err
+	})
+}
+func (r *CoagentRepository) RemoveMember(ctx context.Context, member, targetSessionID string, user, retire bool) (storage.CoagentBoard, error) {
+	return r.writeEntry(ctx, member, user, func(tx *sql.Tx, b *storage.CoagentBoard, e *storage.CoagentEntry) error {
+		if retire {
+			if targetSessionID != member {
+				return storage.ErrCoagentTarget
+			}
+		} else if member != b.MainSessionID {
+			return storage.ErrCoagentMainOnly
+		}
+		if targetSessionID == b.MainSessionID {
+			return storage.ErrCoagentTarget
+		}
+		i := slices.IndexFunc(b.Members, func(m storage.CoagentMember) bool { return m.SessionID == targetSessionID })
+		if i < 0 {
+			return storage.ErrCoagentTarget
+		}
+		name := b.Members[i].Name
+		if _, err := tx.ExecContext(ctx, `DELETE FROM coagent_members WHERE board_id=? AND session_id=?`, b.ID, targetSessionID); err != nil {
+			return err
+		}
+		b.Members = slices.Delete(b.Members, i, i+1)
+		e.Pinned = true
+		e.Text = fmt.Sprintf("成员 %s（%s）已移出协作组", name, targetSessionID)
+		if retire {
+			e.Author, e.AuthorSessionID = "系统", ""
+			e.Text = fmt.Sprintf("成员 %s（%s）上下文已达阈值，停止工作并退出协作组。", name, targetSessionID)
+		}
+		return nil
+	})
+}
+
+func readCoagentBoard(ctx context.Context, tx *sql.Tx, member string) (storage.CoagentBoard, error) {
 	var result storage.CoagentBoard
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return result, err
-	}
-	defer tx.Rollback()
-	err = tx.QueryRowContext(ctx, `SELECT b.id,b.main_session_id,b.goal,b.pinned_text FROM coagent_boards b JOIN coagent_members m ON m.board_id=b.id WHERE m.session_id=?`, member).Scan(&result.ID, &result.MainSessionID, &result.Goal, &result.PinnedText)
+	err := tx.QueryRowContext(ctx, `SELECT b.id,b.main_session_id,b.goal,b.pinned_text FROM coagent_boards b JOIN coagent_members m ON m.board_id=b.id WHERE m.session_id=?`, member).Scan(&result.ID, &result.MainSessionID, &result.Goal, &result.PinnedText)
 	if errors.Is(err, sql.ErrNoRows) {
 		return result, storage.ErrNotFound
 	}
@@ -180,6 +199,21 @@ func (r *CoagentRepository) ReadBoard(ctx context.Context, member string, after 
 	}
 	if err := rows.Err(); err != nil {
 		return result, err
+	}
+	return result, nil
+}
+func (r *CoagentRepository) ReadBoard(ctx context.Context, member string, after int64) (storage.CoagentBoard, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return storage.CoagentBoard{}, err
+	}
+	defer tx.Rollback()
+	result, err := readCoagentBoard(ctx, tx, member)
+	if err != nil {
+		return storage.CoagentBoard{}, err
+	}
+	if after == math.MaxInt64 {
+		return result, tx.Commit()
 	}
 	entries, err := tx.QueryContext(ctx, `SELECT number,author,author_session_id,target_session_id,body,pinned FROM coagent_entries WHERE board_id=? AND number>? ORDER BY number`, result.ID, after)
 	if err != nil {
