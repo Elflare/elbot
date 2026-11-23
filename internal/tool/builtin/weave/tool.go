@@ -121,7 +121,6 @@ func run(parent context.Context, env processenv.Environment, dir string, a args)
 	defer cancel()
 	options, note, err := uvOptions(ctx, env, dir, a)
 	var warnings []string
-	warnFallback := a.Mode == "uv"
 	var stdout, stderr share.ProcessOutput
 	var dispatched bool // 开始向就绪的 runner 交付代码后，不可再次执行。
 	execute := func(name string, prefix []string) error {
@@ -131,29 +130,28 @@ func run(parent context.Context, env processenv.Environment, dir string, a args)
 		cmd.WaitDelay = time.Second
 		return runProcess(ctx, cmd, a.Code, share.WeaveFromContext(ctx), &dispatched)
 	}
+	var fallback bool
 	if options != nil && ctx.Err() == nil {
 		err = execute("uv", options)
 		var exit *exec.ExitError
-		if !dispatched && ctx.Err() == nil && (errors.As(err, &exit) || errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist)) {
+		fallback = !dispatched && ctx.Err() == nil && (errors.As(err, &exit) || errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist))
+		if fallback {
 			reason := strings.TrimSpace(stderr.String())
 			if reason == "" {
 				reason = err.Error()
 			}
 			note = "uv 环境准备失败：" + reason
-			warnFallback = true
-			err = nil
-			options = nil
 			stdout, stderr = share.ProcessOutput{}, share.ProcessOutput{}
 		} else if dispatched && note != "" {
 			warnings = append(warnings, note)
 		}
 	}
-	if options == nil && err == nil && ctx.Err() == nil {
+	if (fallback || (options == nil && err == nil)) && ctx.Err() == nil {
 		if len(a.Packages) > 0 {
 			message := "packages 仅限 uv。" + note
 			return operationresult.Result[*share.Result]{Status: operationresult.InvalidArguments, Message: message}, "Python 依赖需要 uv", nil
 		}
-		if warnFallback {
+		if fallback || a.Mode == "uv" {
 			warnings = append(warnings, note+"，回退到系统 Python。")
 		}
 		python := "python3"
@@ -166,10 +164,10 @@ func run(parent context.Context, env processenv.Environment, dir string, a args)
 	if text := stderr.String(); text != "" {
 		content += "\nstderr:\n" + text
 	}
-	if err != nil || ctx.Err() != nil {
+	if ctxErr := ctx.Err(); err != nil || ctxErr != nil {
 		status := operationresult.Failed
-		if ctx.Err() != nil {
-			err = ctx.Err()
+		if ctxErr != nil {
+			err = ctxErr
 			status = operationresult.Canceled
 			if errors.Is(err, context.DeadlineExceeded) {
 				status = operationresult.Timeout

@@ -23,7 +23,7 @@
         - [x] builtin 根部（不含子包）
         - [x] builtin/chat_history
         - [x] builtin/long_memory
-        - [ ] builtin/weave
+        - [x] builtin/weave
         - [ ] builtin/web
     - [ ] discovery
     - [ ] execution

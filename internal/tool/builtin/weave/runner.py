@@ -1,7 +1,6 @@
 """Execute one script with asynchronous ElBot tool proxies."""
 import ast
 import asyncio
-import inspect
 import itertools
 import json
 import os
@@ -58,7 +57,7 @@ async def main():
         scope["asyncio"] = asyncio
         code = compile(init["code"], "<tool_weave>", "exec", ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
         result = eval(code, scope)
-        if inspect.isawaitable(result):
+        if result is not None:
             await result
     finally:
         receiver.cancel()
