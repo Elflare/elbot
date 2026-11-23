@@ -4,10 +4,10 @@
 
 ## Terminology and Selection
 
-| Name | Configuration & Lifecycle | Use Case |
+| Name | Configuration and Lifecycle | Applicable Scenarios |
 | --- | --- | --- |
 | **Rule Hook** | TOML `[[rules]]`; executes actions after matching. | Simple logic such as modifying text or sending content. |
-| **One-time exec Hook** | `type = "exec"` in rules; starts an external program upon each hit and exits after processing the current event. | Independent scripts or logic that does not require saving process state. |
+| **One-time exec Hook** | `type = "exec"` in rules; starts an external program on each hit and exits after processing the current event. | Independent scripts or logic that does not require saving process state. |
 | **Transient Worker** | `[plugin.runtime] mode = "transient"`; starts after hitting a trigger rule and exits after the waiting Session ends. | Short-term stateful, multi-turn interactions. |
 | **Persistent Worker** | `[plugin.runtime] mode = "persistent"`; starts and remains resident with ElBot. | Long-term state, background tasks, frequent events. |
 
@@ -15,7 +15,7 @@
 - `mode = "once"` does not create a Worker and still runs as a Rule Hook; a one-time exec Hook is only started if the rule is configured with `type = "exec"`.
 - All entry points that produce outputs use the same set of segments.
 
-See [Hook Showcase](https://github.com/Elfreese/elbot-showcase/blob/main/hooks/README.md) for examples.
+See examples in [Hook Showcase](https://github.com/Elfreese/elbot-showcase/tree/main/hooks).
 
 ## Configuration Location
 
