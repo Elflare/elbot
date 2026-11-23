@@ -25,7 +25,7 @@
         - [x] builtin/long_memory
         - [x] builtin/weave
         - [x] builtin/web
-    - [ ] discovery
+    - [x] discovery
     - [ ] execution
     - [ ] media
     - [ ] preload

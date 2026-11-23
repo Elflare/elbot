@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"elbot/internal/llm"
 	"elbot/internal/tool/share"
 )
 
@@ -45,16 +46,15 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 	for _, tool := range tools {
 		allowed[tool.Definition.Name] = tool
 	}
-	discovery := &share.DiscoveryResult{}
+	out := make([]share.DiscoveredTool, 0, len(tools))
 	for _, name := range names {
 		target, ok := allowed[name]
 		if !ok || !target.Callable() {
 			continue
 		}
-		schema := target.Schema()
-		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Definition), Schema: &schema})
+		out = append(out, nativeDiscoveredTool(publicInfo(target.Definition), target.Schema()))
 	}
-	return NativeDiscoveredToolsFromDiscovery(discovery), nil
+	return out, nil
 }
 
 // NativeDiscoveredToolsFromDiscovery 只转换可执行条目，并分离 schema 中的可变数据。
@@ -67,13 +67,17 @@ func NativeDiscoveredToolsFromDiscovery(result *share.DiscoveryResult) []share.D
 		if discovered.Schema == nil || discovered.Info.Name == "" {
 			continue
 		}
-		out = append(out, share.DiscoveredTool{
-			Name: discovered.Info.Name, Source: share.SourceKindNative,
-			Description: discovered.Info.Description, Schema: share.CloneSchema(*discovered.Schema),
-			ForegroundOnly: discovered.Info.ForegroundOnly,
-		})
+		out = append(out, nativeDiscoveredTool(discovered.Info, *discovered.Schema))
 	}
 	return out
+}
+
+func nativeDiscoveredTool(info share.PublicInfo, schema llm.ToolSchema) share.DiscoveredTool {
+	return share.DiscoveredTool{
+		Name: info.Name, Source: share.SourceKindNative,
+		Description: info.Description, Schema: share.CloneSchema(schema),
+		ForegroundOnly: info.ForegroundOnly,
+	}
 }
 
 func metadataToolNames(value any) []string {
