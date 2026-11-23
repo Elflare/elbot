@@ -233,7 +233,7 @@ func TestLongMemorySyncInvalidRecoveryAndRestart(t *testing.T) {
 	if err := store.close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.categories(t.Context()); err != nil {
+	if _, err := store.search(t.Context(), longMemorySearchArgs{}); err != nil {
 		t.Fatal(err)
 	}
 	record, err := store.recordByIDLocked(t.Context(), 1)
@@ -268,7 +268,7 @@ func TestLongMemorySyncFailureCanRetry(t *testing.T) {
 	if result, err := store.ensureLocked(t.Context()); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if _, err := store.categories(t.Context()); err != nil {
+	if _, err := store.search(t.Context(), longMemorySearchArgs{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(store.memoriesDir); err != nil {
@@ -281,18 +281,18 @@ func TestLongMemorySyncFailureCanRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSyncMemory(t, store, "a.md", 1, "recovered")
-	result, err := store.categories(t.Context())
+	result, err := store.search(t.Context(), longMemorySearchArgs{})
 	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共1条记录）") {
 		t.Fatalf("retry result = %+v, %v", result, err)
 	}
 	// Reading within the cooldown uses the existing index; the next eligible read refreshes it.
 	writeSyncMemory(t, store, "b.md", 2, "next")
-	result, err = store.categories(t.Context())
+	result, err = store.search(t.Context(), longMemorySearchArgs{})
 	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共1条记录）") {
 		t.Fatalf("cooldown result = %+v, %v", result, err)
 	}
 	store.lastSync = time.Now().Add(-longMemorySyncCooldown)
-	result, err = store.categories(t.Context())
+	result, err = store.search(t.Context(), longMemorySearchArgs{})
 	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共2条记录）") {
 		t.Fatalf("refreshed result = %+v, %v", result, err)
 	}
@@ -436,30 +436,50 @@ func TestLongMemoryToolSetIsCompact(t *testing.T) {
 	}
 }
 
+func TestPreparedLongMemoryRefreshOnMissingID(t *testing.T) {
+	for _, operation := range []string{"update", "delete"} {
+		t.Run(operation, func(t *testing.T) {
+			store := newLongMemoryStore(t.TempDir())
+			t.Cleanup(func() { _ = store.close() })
+			writer := (LongMemoryWriteTool{store: store}).Definition()
+			req := toolshare.CallRequest{Arguments: []byte(fmt.Sprintf(`{"operation":%q,"id":7,"summary":"updated"}`, operation))}
+			prepared, err := writer.PrepareCall(t.Context(), req)
+			if err != nil || prepared.Status != operationresult.NotFound {
+				t.Fatalf("missing ID: status=%v err=%v", prepared.Status, err)
+			}
+			writeSyncMemory(t, store, "external.md", 7, "external")
+			prepared, err = writer.PrepareCall(t.Context(), req)
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("external file: status=%v message=%q err=%v", prepared.Status, prepared.Message, err)
+			}
+		})
+	}
+}
+
 func TestLongMemorySearchAndWriteTools(t *testing.T) {
 	store := newLongMemoryStore(t.TempDir())
 	t.Cleanup(func() { _ = store.close() })
 	searchTool := LongMemorySearchTool{store: store}
 	writeTool := LongMemoryWriteTool{store: store}
 
-	result, _, err := callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{}`)})
+	result, audit, err := callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "长期记忆库为空") {
-		t.Fatalf("empty categories = %q", result.Data.Content)
+	if audit != "operation=categories" || !strings.Contains(result.Data.Content, "长期记忆库为空") {
+		t.Fatalf("empty categories = %q, audit = %q", result.Data.Content, audit)
 	}
 
 	result, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha beta","content":"完整内容 alpha"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	result, _, err = callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"alpha","brief_only":true}`)})
+	result, audit, err = callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"category":"测试"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "测试记忆") {
-		t.Fatalf("search result = %q", result.Data.Content)
+	if audit != `keywords="" category="测试"` || !strings.Contains(result.Data.Content, "测试记忆") {
+		t.Fatalf("category search = %q, audit = %q", result.Data.Content, audit)
 	}
 
 	result, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"新摘要"}`)})

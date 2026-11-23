@@ -3,12 +3,10 @@ package long_memory
 
 import (
 	"context"
-	"database/sql"
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,17 +87,6 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 		toolshare.ConfirmationField{Key: "brief_only", Label: "仅摘要", Value: args.BriefOnly},
 		toolshare.ConfirmationField{Key: "limit", Label: "条数", Value: args.Limit},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		if args.Keywords == "" && args.Category == "" {
-			content, err := t.store.categories(ctx)
-			if err != nil {
-				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
-			}
-			if content.Status != operationresult.Success {
-				return operationresult.Result[*toolshare.Result]{Status: content.Status, Message: content.Message}, content.Message, nil
-			}
-			result := &toolshare.Result{Content: strings.TrimSpace(content.Data)}
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, "operation=categories", nil
-		}
 		content, err := t.store.search(ctx, args)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -108,7 +95,11 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 			return operationresult.Result[*toolshare.Result]{Status: content.Status, Message: content.Message}, content.Message, nil
 		}
 		result := &toolshare.Result{Content: strings.TrimSpace(content.Data)}
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("keywords=%q category=%q", args.Keywords, args.Category), nil
+		audit := "operation=categories"
+		if args.Keywords != "" || args.Category != "" {
+			audit = fmt.Sprintf("keywords=%q category=%q", args.Keywords, args.Category)
+		}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, audit, nil
 	})}, nil
 }
 
@@ -184,26 +175,14 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		}
 		t.store.mu.Lock()
 		defer t.store.mu.Unlock()
-		ready, err := t.store.ensureLocked(ctx)
+		found, err := t.store.prepareRecordByIDLocked(ctx, args.ID)
 		if err != nil {
 			return operationresult.Result[*toolshare.PreparedCall]{}, err
 		}
-		if ready.Status != operationresult.Success {
-			return operationresult.Result[*toolshare.PreparedCall]{Status: ready.Status, Message: ready.Message}, nil
+		if found.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: found.Status, Message: found.Message}, nil
 		}
-		record, err := t.store.recordByIDLocked(ctx, args.ID)
-		if errors.Is(err, sql.ErrNoRows) {
-			if err := t.store.syncLocked(ctx, true); err != nil {
-				return operationresult.Result[*toolshare.PreparedCall]{}, err
-			}
-			record, err = t.store.recordByIDLocked(ctx, args.ID)
-		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", args.ID)}, nil
-		}
-		if err != nil {
-			return operationresult.Result[*toolshare.PreparedCall]{}, err
-		}
+		record := found.Data
 		target, err := filepath.EvalSymlinks(record.FilePath)
 		if err != nil {
 			return operationresult.Result[*toolshare.PreparedCall]{}, err

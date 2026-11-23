@@ -40,46 +40,22 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
+	if args.Keywords == "" && args.Category == "" {
+		var out strings.Builder
+		writeInvalidLongMemoryWarning(&out, invalids)
+		if overview == "" {
+			out.WriteString("当前长期记忆库为空，尚未建立任何分类。你可以自由创建新的分类。")
+		} else {
+			out.WriteString("当前可用的长期记忆分类目录\n")
+			out.WriteString(overview)
+		}
+		return operationresult.Result[string]{Status: operationresult.Success, Data: out.String()}, nil
+	}
 	records, err := s.searchFTSLocked(ctx, args.Keywords, args.Category, args.MatchMode, args.Limit)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
 	return formatSearchResult(invalids, overview, records, args.BriefOnly)
-}
-
-func (s *longMemoryStore) categories(ctx context.Context) (operationresult.Result[string], error) {
-	if err := ctx.Err(); err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ready, err := s.ensureLocked(ctx)
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[string]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	if err := s.syncLocked(ctx, false); err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	invalids, err := s.invalidFilesLocked(ctx, 5)
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	overview, err := s.categoryOverviewLocked(ctx)
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	var out strings.Builder
-	writeInvalidLongMemoryWarning(&out, invalids)
-	if strings.TrimSpace(overview) == "" {
-		out.WriteString("当前长期记忆库为空，尚未建立任何分类。你可以自由创建新的分类。")
-		return operationresult.Result[string]{Status: operationresult.Success, Data: out.String()}, nil
-	}
-	out.WriteString("当前可用的长期记忆分类目录\n")
-	out.WriteString(overview)
-	return operationresult.Result[string]{Status: operationresult.Success, Data: strings.TrimSpace(out.String())}, nil
 }
 
 func formatSearchResult(invalids []longMemoryInvalidFile, overview string, records []longMemoryRecord, briefOnly bool) (operationresult.Result[string], error) {

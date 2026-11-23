@@ -130,6 +130,30 @@ func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePr
 	return operationresult.Result[longMemoryRecord]{Status: operationresult.Success, Data: preview.After}, nil
 }
 
+func (s *longMemoryStore) prepareRecordByIDLocked(ctx context.Context, id int64) (operationresult.Result[longMemoryRecord], error) {
+	ready, err := s.ensureLocked(ctx)
+	if err != nil {
+		return operationresult.Result[longMemoryRecord]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[longMemoryRecord]{Status: ready.Status, Message: ready.Message}, nil
+	}
+	record, err := s.recordByIDLocked(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		if err := s.syncLocked(ctx, true); err != nil {
+			return operationresult.Result[longMemoryRecord]{}, err
+		}
+		record, err = s.recordByIDLocked(ctx, id)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return operationresult.Result[longMemoryRecord]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", id)}, nil
+	}
+	if err != nil {
+		return operationresult.Result[longMemoryRecord]{}, err
+	}
+	return operationresult.Result[longMemoryRecord]{Status: operationresult.Success, Data: record}, nil
+}
+
 func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryWriteArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[longMemoryUpdatePreview]{}, err
@@ -145,26 +169,14 @@ func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryWrit
 	if args.Category == "" && args.Title == "" && args.Summary == "" && args.Keywords == "" && args.Content == "" && len(args.ContentEdits) == 0 {
 		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "update requires at least one changed field or content_edits"}, nil
 	}
-	ready, err := s.ensureLocked(ctx)
+	found, err := s.prepareRecordByIDLocked(ctx, args.ID)
 	if err != nil {
 		return operationresult.Result[longMemoryUpdatePreview]{}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[longMemoryUpdatePreview]{Status: ready.Status, Message: ready.Message}, nil
+	if found.Status != operationresult.Success {
+		return operationresult.Result[longMemoryUpdatePreview]{Status: found.Status, Message: found.Message}, nil
 	}
-	record, err := s.recordByIDLocked(ctx, args.ID)
-	if errors.Is(err, sql.ErrNoRows) {
-		if syncErr := s.syncLocked(ctx, true); syncErr != nil {
-			return operationresult.Result[longMemoryUpdatePreview]{}, syncErr
-		}
-		record, err = s.recordByIDLocked(ctx, args.ID)
-	}
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", args.ID)}, nil
-		}
-		return operationresult.Result[longMemoryUpdatePreview]{}, err
-	}
+	record := found.Data
 	var preview longMemoryUpdatePreview
 	file, err := fileops.PrepareFile(ctx, record.FilePath, func(text string) (operationresult.Result[string], error) {
 		parsed, err := parseLongMemoryText(text)
