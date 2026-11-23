@@ -118,7 +118,7 @@ func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call ll
 	if result.Status == operationresult.Success {
 		adapted.Data = share.ConfirmResult(result.Data)
 	}
-	return adapted, err
+	return adapted, nil
 }
 
 func toInternalToolQuery(query ToolQuery) share.ToolQuery {
@@ -156,8 +156,6 @@ func toInternalDiscoveredTools(items []DiscoveredTool) []share.DiscoveredTool {
 func toPublicState(state share.State) State {
 	return State{DiscoveredTools: toPublicDiscoveredTools(state.DiscoveredTools), ToolTags: state.ToolTags, ElyphRulesShown: state.ElyphRulesShown}
 }
-
-func toInternalContext(view Context) share.Context { return share.Context(view) }
 
 func toInternalStateUpdate(update StateUpdate) share.StateUpdate {
 	groups := make([]share.ToolRegistrationScope, len(update.ReplaceGroups))
@@ -227,10 +225,6 @@ func toPublicTagPrompts(items []share.TagPrompt) []TagPrompt {
 func toInternalRunRequest(req RunRequest) share.RunRequest {
 	return share.RunRequest{Jobs: req.Jobs, Committer: req.Committer, Session: req.Session, Calls: req.Calls, AssistantText: req.AssistantText, AssistantRawText: req.AssistantRawText, DiscoveredTools: toInternalDiscoveredTools(req.DiscoveredTools), Actor: req.Actor}
 }
-
-func toPublicRunResult(result share.RunResult) RunResult { return RunResult(result) }
-
-func toInternalCallRequest(req CallRequest) share.CallRequest { return share.CallRequest(req) }
 
 func toPublicResult(result *share.Result) *Result {
 	if result == nil {

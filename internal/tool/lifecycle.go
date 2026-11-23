@@ -48,13 +48,9 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	m.cancel()
 	m.cronChanged.BeginClose()
 	if !m.started {
-		select {
-		case <-m.done:
-		default:
-			// 尚未 Start 时也必须等信号任务真正结束。
-			m.started = true
-			go func() { <-m.cronChanged.Done(); close(m.done) }()
-		}
+		// 尚未 Start 时也必须等信号任务真正结束。
+		m.started = true
+		go func() { <-m.cronChanged.Done(); close(m.done) }()
 	}
 	m.mu.Unlock()
 

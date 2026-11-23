@@ -40,6 +40,21 @@
         - [x] cli/share
     - [x] share（最后按实际消费者核对共享契约）
 - [ ] tool包
+    - [ ] tool 根部（不含子包）
+    - [ ] builtin
+        - [ ] builtin 根部（不含子包）
+        - [ ] builtin/chat_history
+        - [ ] builtin/long_memory
+        - [ ] builtin/weave
+        - [ ] builtin/web
+    - [ ] discovery
+    - [ ] execution
+    - [ ] media
+    - [ ] preload
+    - [ ] registry
+    - [ ] skill
+    - [ ] state
+    - [ ] share（最后按实际消费者核对共享契约）
 - [ ] hook 包
 - [ ] background包
 - [x] completion包

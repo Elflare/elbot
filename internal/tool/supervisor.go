@@ -92,8 +92,7 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
-	internalQuery := toInternalToolQuery(query)
-	definitions, err := m.catalog.registry.Query(ctx, internalQuery)
+	definitions, err := m.catalog.registry.Query(ctx, toInternalToolQuery(query))
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +167,7 @@ func (m *Supervisor) Schemas(ctx context.Context, view Context, discovered []Dis
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
-	return m.engine.Schemas(ctx, toInternalContext(view), toInternalDiscoveredTools(discovered))
+	return m.engine.Schemas(ctx, share.Context(view), toInternalDiscoveredTools(discovered))
 }
 
 // FilterSchemas 复核 Hook 修改后的模型声明，只筛除已注册且不适用于当前上下文的工具。
@@ -185,7 +184,7 @@ func (m *Supervisor) Run(ctx context.Context, deps RunnerDeps, req RunRequest) R
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return RunResult{Err: err}
 	}
-	return toPublicRunResult(m.engine.Run(ctx, executionBridge{RunnerDeps: deps}, toInternalRunRequest(req)))
+	return RunResult(m.engine.Run(ctx, executionBridge{RunnerDeps: deps}, toInternalRunRequest(req)))
 }
 func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, error) {
 	committed, err := m.state.Commit(ctx, id, toInternalStateUpdate(update))
@@ -257,7 +256,7 @@ func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (operationre
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return operationresult.Result[*Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
-	result, logContent, err := m.engine.CallTool(ctx, toInternalCallRequest(req))
+	result, logContent, err := m.engine.CallTool(ctx, share.CallRequest(req))
 	if err != nil {
 		return operationresult.Result[*Result]{}, logContent, err
 	}
