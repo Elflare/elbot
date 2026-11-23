@@ -154,7 +154,7 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	if err := a.handleDispatch(ctx, nil, payload{Type: eventReady, Data: []byte(`{"user":{"username":"芙蕾娅"}}`)}, &gatewayState{}); err != nil {
 		t.Fatal(err)
 	}
-	a.referenceResolver = refcontext.Options{ChatHistory: history, ParseCommand: a.parseCommand,
+	a.referenceResolver = refcontext.Options{ChatHistory: history, ParseCommand: parseTestCommand,
 		FindByPlatformMessage: func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
 			return nil, storage.ErrNotFound
 		},
@@ -596,6 +596,8 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 	}
 }
 
+func parseTestCommand(text string) command.Parsed { return command.Parse(text, []string{"/"}) }
+
 func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
 	t.Helper()
 	if history == nil {
@@ -610,7 +612,7 @@ func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryReposit
 	if cfg.MarkdownByDefault != nil {
 		raw["markdown_by_default"] = *cfg.MarkdownByDefault
 	}
-	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, Superadmins: share.NewSuperadmins(testPlatformName, adminIDs)}, ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }, ChatHistory: history})
+	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, Superadmins: share.NewSuperadmins(testPlatformName, adminIDs)}, ChatHistory: history})
 	if err != nil {
 		t.Fatal(err)
 	}

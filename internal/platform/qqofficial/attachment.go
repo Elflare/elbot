@@ -7,7 +7,6 @@ import (
 	"elbot/internal/platform/share"
 	"fmt"
 	"mime"
-	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -24,13 +23,13 @@ func inboundAttachmentSegments(attachments []messageAttachment) []share.MessageS
 		if mimeType == "file" {
 			mimeType = ""
 		}
-		segments = append(segments, share.MessageSegment{Type: kind, URL: strings.TrimSpace(attachment.URL), Name: inboundAttachmentName(attachment, nil, i+1), MIMEType: mimeType, Size: attachment.Size})
+		segments = append(segments, share.MessageSegment{Type: kind, URL: strings.TrimSpace(attachment.URL), Name: inboundAttachmentName(attachment, i+1), MIMEType: mimeType, Size: attachment.Size})
 	}
 	return segments
 }
 
-func inboundAttachmentName(attachment messageAttachment, header http.Header, index int) string {
-	name := firstNonEmpty(attachment.Filename, contentDispositionFilename(header.Get("Content-Disposition")))
+func inboundAttachmentName(attachment messageAttachment, index int) string {
+	name := strings.TrimSpace(attachment.Filename)
 	if name == "" {
 		if parsed, err := url.Parse(attachment.URL); err == nil {
 			name = filepath.Base(parsed.Path)
@@ -38,17 +37,9 @@ func inboundAttachmentName(attachment messageAttachment, header http.Header, ind
 	}
 	name = sanitizeFilename(name)
 	if name == "" || looksLikeQQDownloadName(name) {
-		name = fmt.Sprintf("attachment-%d%s", index, extensionFromContentType(header.Get("Content-Type")))
+		name = fmt.Sprintf("attachment-%d", index)
 	}
 	return name
-}
-
-func contentDispositionFilename(value string) string {
-	_, params, err := mime.ParseMediaType(value)
-	if err != nil {
-		return ""
-	}
-	return firstNonEmpty(params["filename*"], params["filename"])
 }
 
 func isImageAttachment(attachment messageAttachment) bool {
@@ -73,41 +64,9 @@ func attachmentDeclaredMIMEType(attachment messageAttachment) string {
 	return strings.ToLower(mimeType)
 }
 
-func extensionFromContentType(value string) string {
-	mediaType, _, err := mime.ParseMediaType(value)
-	if err != nil {
-		mediaType = strings.TrimSpace(strings.ToLower(value))
-	}
-	switch mediaType {
-	case "image/jpeg":
-		return ".jpg"
-	case "image/png":
-		return ".png"
-	case "image/gif":
-		return ".gif"
-	case "image/webp":
-		return ".webp"
-	case "application/pdf":
-		return ".pdf"
-	case "text/plain":
-		return ".txt"
-	default:
-		return ""
-	}
-}
-
 func looksLikeQQDownloadName(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	return strings.Contains(lower, "qqdownload") || strings.HasPrefix(lower, "robot1.0_") || len([]rune(lower)) > 96
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 func sanitizeFilename(name string) string {

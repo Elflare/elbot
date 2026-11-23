@@ -328,10 +328,6 @@ func (a *Adapter) targetFromDelivery(target delivery.Target) (sendTarget, error)
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {
-	msgID = strings.TrimSpace(msgID)
-	if msgID == "" {
-		return 0
-	}
 	a.seqMu.Lock()
 	defer a.seqMu.Unlock()
 	a.seqByID[msgID]++

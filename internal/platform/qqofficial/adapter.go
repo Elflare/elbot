@@ -3,7 +3,6 @@ package qqofficial
 
 import (
 	"context"
-	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
@@ -13,7 +12,6 @@ import (
 // Deps 由 Platform 根部交付配置与实际需要的借用能力。
 type Deps struct {
 	share.CommonConfig
-	ParseCommand func(string) command.Parsed // 根部绑定配置前缀的命令解析能力。
 	// ChatHistory 只写历史及维护平台消息别名，不拥有历史库。
 	ChatHistory interface {
 		share.ChatHistoryWriter
@@ -27,7 +25,6 @@ type Adapter struct {
 	name              string             // 根部登记的平台名。
 	superadmins       *share.Superadmins // 根部注入的当前平台超管能力。
 	cfg               Config
-	parseCommand      func(string) command.Parsed                                                  // 借用的命令解析函数。
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 借用的引用恢复函数。
 	chatHistory       interface {
 		share.ChatHistoryWriter

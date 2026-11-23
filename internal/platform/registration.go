@@ -74,8 +74,8 @@ func registrations(frontendDir string) []registration {
 				return nil
 			}
 			adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
-				CommonConfig: common,
-				ParseCommand: references.ParseCommand, ChatHistory: deps.ChatHistory,
+				CommonConfig:      common,
+				ChatHistory:       deps.ChatHistory,
 				ReferenceResolver: references.Apply,
 			})
 			if err != nil {

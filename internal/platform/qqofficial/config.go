@@ -51,8 +51,7 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	sendCtx, sendCancel := context.WithCancel(context.Background())
 	adapter := &Adapter{
 		name: deps.PlatformName, superadmins: deps.Superadmins,
-		parseCommand: deps.ParseCommand,
-		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
+		cfg: cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		client: newAPIClient(cfg), seqByID: make(map[string]int),
 		sendCtx: sendCtx, sendCancel: sendCancel,
 		gatewayDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),

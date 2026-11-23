@@ -48,7 +48,7 @@ func (a *Adapter) handleGroupMessage(ctx context.Context, handler share.MessageH
 }
 
 func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ChatType, content string, mentionedBot bool) {
-	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
+	senderID, scopeID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
 		if conversation == contextinfo.ChatPrivate {
@@ -70,7 +70,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		}
 		return
 	}
-	if targetID == "" {
+	if scopeID == "" {
 		{
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogCategoryLog,
@@ -121,7 +121,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				Platform: a.Name(),
 
 				ChatType: conversation,
-				ChatID:   targetID,
+				ChatID:   scopeID,
 			},
 			Identity: contextinfo.Identity{
 
@@ -192,14 +192,12 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	_ = handler(msgCtx, text, messageCtx)
 }
 
-func inboundRoute(msg inboundMessage, conversation contextinfo.ChatType) (senderID, scopeID string, kind sendTargetKind, targetID string) {
+func inboundRoute(msg inboundMessage, conversation contextinfo.ChatType) (senderID, scopeID string) {
 	if conversation == contextinfo.ChatGroup {
-		senderID = strings.TrimSpace(msg.Author.MemberOpenID)
-		targetID = strings.TrimSpace(msg.GroupOpenID)
-		return senderID, targetID, targetGroup, targetID
+		return strings.TrimSpace(msg.Author.MemberOpenID), strings.TrimSpace(msg.GroupOpenID)
 	}
 	senderID = strings.TrimSpace(msg.Author.UserOpenID)
-	return senderID, senderID, targetC2C, senderID
+	return senderID, senderID
 }
 
 func normalizedInboundText(content string) string {

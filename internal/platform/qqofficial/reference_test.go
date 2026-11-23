@@ -120,7 +120,7 @@ func TestGroupQuoteRequiresNewContent(t *testing.T) {
 func TestEventReferenceWithoutHistory(t *testing.T) {
 	for _, group := range []bool{false, true} {
 		a := newTestAdapter(t, Config{}, nil)
-		a.referenceResolver = refcontext.Options{ParseCommand: a.parseCommand}.Apply
+		a.referenceResolver = refcontext.Options{ParseCommand: parseTestCommand}.Apply
 		const quote = "[群聊的聊天记录]\n=== 消息 1 ===\n测试正文"
 		msg := inboundMessage{ID: "current", Author: inboundAuthor{Username: "芙蕾娅", UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group", MessageType: 103, Content: "你好", MsgElements: []messageElement{{Content: quote}}}
 		if group {
