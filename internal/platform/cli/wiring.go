@@ -29,8 +29,7 @@ type ControlCapabilities = remote.ControlCapabilities
 
 // New 创建本地终端实现并以 CLI 平台门面对外提供。
 func New(platformName, clientID string) *Adapter {
-	runtime := local.New(platformName, clientID)
-	return &Adapter{name: platformName, runtime: runtime}
+	return &Adapter{name: platformName, runtime: local.New(platformName, clientID)}
 }
 
 // NewRemoteServer 创建远程服务实现并以 CLI 平台门面对外提供。

@@ -31,9 +31,9 @@
     - [x] refcontext（结合平台适配器核对引用恢复）
     - [x] qq-onebot
     - [x] qqofficial
-    - [ ] telegram
+    - [x] telegram
     - [ ] cli
-        - [ ] cli 根部（不含子包）
+        - [x] cli 根部（不含子包）
         - [ ] cli/local
         - [ ] cli/remote（不含 management）
         - [ ] cli/remote/management

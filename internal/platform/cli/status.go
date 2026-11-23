@@ -25,7 +25,6 @@ type statusTarget struct {
 type statusProjection struct {
 	event  StatusChangedEvent
 	target share.DisplayTarget
-	dirty  bool
 }
 
 type bindingState struct {
@@ -38,7 +37,7 @@ type statusDisplay struct {
 	platformName string
 	send         func(context.Context, share.DisplayTarget, runtimestatus.Snapshot) error
 	mu           sync.Mutex
-	latest       map[statusTarget]*statusProjection
+	pending      map[statusTarget]statusProjection
 	versions     map[statusTarget]uint64
 	bindings     map[session.Scope]bindingState
 	wake         chan struct{}
@@ -50,18 +49,16 @@ type statusDisplay struct {
 
 func newStatusDisplay(platformName string) *statusDisplay {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &statusDisplay{
+	return &statusDisplay{
 		platformName: platformName,
 		send: func(ctx context.Context, target share.DisplayTarget, snapshot runtimestatus.Snapshot) error {
 			return target.PresentStatus(ctx, share.Status{Snapshot: snapshot})
 		},
-		latest:   make(map[statusTarget]*statusProjection),
+		pending:  make(map[statusTarget]statusProjection),
 		versions: make(map[statusTarget]uint64),
 		bindings: make(map[session.Scope]bindingState),
 		wake:     make(chan struct{}, 1), ctx: ctx, cancel: cancel, done: make(chan struct{}),
 	}
-	go d.run()
-	return d
 }
 
 func (d *statusDisplay) validBindingLocked(binding *BindingSnapshot) bool {
@@ -80,7 +77,7 @@ func (d *statusDisplay) receive(event StatusChangedEvent) {
 		return
 	}
 	display, ok := event.Conversation.PlatformData.(share.DisplayTarget)
-	if !ok || display == nil {
+	if !ok {
 		return
 	}
 	source := event.Conversation.Source
@@ -100,7 +97,7 @@ func (d *statusDisplay) receive(event StatusChangedEvent) {
 		return
 	}
 	d.versions[key] = event.Version
-	d.latest[key] = &statusProjection{event: event, target: display, dirty: true}
+	d.pending[key] = statusProjection{event: event, target: display}
 	select {
 	case d.wake <- struct{}{}:
 	default:
@@ -124,7 +121,7 @@ func (d *statusDisplay) forget(event BindingChangedEvent) {
 	for key := range d.versions {
 		if key.Binding.Version != 0 && !d.validBindingLocked(&key.Binding) {
 			delete(d.versions, key)
-			delete(d.latest, key)
+			delete(d.pending, key)
 		}
 	}
 }
@@ -139,17 +136,14 @@ func (d *statusDisplay) run() {
 		}
 		for {
 			d.mu.Lock()
-			var key statusTarget
-			var selected *statusProjection
-			for candidate, entry := range d.latest {
-				if entry.dirty {
-					key, selected = candidate, entry
-					entry.dirty = false
-					break
-				}
-			}
-			if selected == nil {
+			if len(d.pending) == 0 {
 				d.mu.Unlock()
+				break
+			}
+			var selected statusProjection
+			for key, entry := range d.pending {
+				selected = entry
+				delete(d.pending, key)
 				break
 			}
 			event := selected.event
@@ -167,14 +161,6 @@ func (d *statusDisplay) run() {
 				}
 				events.Log(ctx, record)
 			}
-			d.mu.Lock()
-			if d.latest[key] == selected {
-				phase := event.Snapshot.Phase
-				if err != nil || phase == runtimestatus.PhaseDone || phase == runtimestatus.PhaseError {
-					delete(d.latest, key)
-				}
-			}
-			d.mu.Unlock()
 			if d.ctx.Err() != nil {
 				return
 			}
@@ -185,15 +171,14 @@ func (d *statusDisplay) run() {
 func (d *statusDisplay) BeginClose() {
 	d.mu.Lock()
 	d.closed = true
-	clear(d.latest)
+	clear(d.pending)
 	clear(d.versions)
 	clear(d.bindings)
 	d.cancel()
 	d.mu.Unlock()
 }
 
-func (d *statusDisplay) Close(ctx context.Context) error {
-	d.BeginClose()
+func (d *statusDisplay) wait(ctx context.Context) error {
 	select {
 	case <-d.done:
 		return nil

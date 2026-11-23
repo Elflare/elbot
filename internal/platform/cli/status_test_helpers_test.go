@@ -2,9 +2,21 @@ package cli
 
 import (
 	"context"
+	"testing"
 
 	clishare "elbot/internal/platform/cli/share"
 )
+
+func startTestDisplay(t *testing.T) (*statusDisplay, func()) {
+	d := newStatusDisplay(testPlatformName)
+	go d.run()
+	stop := func() {
+		d.BeginClose()
+		_ = d.wait(context.Background())
+	}
+	t.Cleanup(stop)
+	return d, stop
+}
 
 type testDisplayTarget struct{ id string }
 

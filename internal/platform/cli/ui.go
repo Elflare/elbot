@@ -21,27 +21,26 @@ type UI struct {
 
 // ConnectUI 在平台开始接收输入前建立状态订阅。
 func (a *Adapter) ConnectUI(source AgentEvents) (*UI, error) {
-	u := &UI{display: newStatusDisplay(a.name)}
-	connection, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
-	if connection != nil {
-		u.connections = append(u.connections, connection)
+	display := newStatusDisplay(a.name)
+	status, err := source.ObserveStatusChanged(display.receive, signal.ConnectOptions{})
+	if err != nil {
+		return nil, err
 	}
-	if err == nil {
-		connection, err = source.ObserveBindingChanged(func(event BindingChangedEvent) {
-			u.display.forget(event)
-			old, next := event.Old, event.New
-			if old == nil || next == nil || old.Scope.Platform != a.name {
-				return
-			}
-			if remote, ok := a.runtime.(interface{ PresentBindingChange(string, string, string) }); ok {
-				remote.PresentBindingChange(old.Scope.ChatID, old.SessionID, next.SessionID)
-			}
-		}, signal.ConnectOptions{})
-		if connection != nil {
-			u.connections = append(u.connections, connection)
+	binding, err := source.ObserveBindingChanged(func(event BindingChangedEvent) {
+		display.forget(event)
+		old, next := event.Old, event.New
+		if old == nil || next == nil || old.Scope.Platform != a.name {
+			return
 		}
+		if remote, ok := a.runtime.(interface{ PresentBindingChange(string, string, string) }); ok {
+			remote.PresentBindingChange(old.Scope.ChatID, old.SessionID, next.SessionID)
+		}
+	}, signal.ConnectOptions{})
+	if err != nil {
+		return nil, err
 	}
-	return u, err
+	go display.run()
+	return &UI{display: display, connections: []*signal.Connection{status, binding}}, nil
 }
 
 func (u *UI) BeginClose() {
@@ -58,5 +57,5 @@ func (u *UI) Close(ctx context.Context) error {
 			return err
 		}
 	}
-	return u.display.Close(ctx)
+	return u.display.wait(ctx)
 }

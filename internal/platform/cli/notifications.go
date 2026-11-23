@@ -26,14 +26,15 @@ func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification
 		if err == nil {
 			return
 		}
+		status := events.LogStatus(err)
 		level := slog.LevelWarn
-		if events.LogStatus(err) == events.ResultCanceled {
+		if status == events.ResultCanceled {
 			level = slog.LevelInfo
 		}
 		events.AsyncLog(ctx, events.LogRecord{
 			Category: events.LogCategoryLog, Level: level, EventName: "notification_send_failed", Module: "cli",
 			Content: fmt.Sprintf("target=%+v error=%v", notification.Target, err), ContentLimit: 4096,
-			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err),
+			Identity: events.LogIdentityFromContext(ctx), ResultStatus: status,
 		})
 	}, signal.ConnectOptions{})
 }

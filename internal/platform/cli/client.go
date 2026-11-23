@@ -54,8 +54,7 @@ func RunClient(ctx context.Context, rawConfig map[string]any, configEnv func(str
 	if err != nil {
 		return classifyClientResult(name, client.URL, err)
 	}
-	runErr := clientRuntime.Run(ctx)
-	return classifyClientResult(name, client.URL, runErr)
+	return classifyClientResult(name, client.URL, clientRuntime.Run(ctx))
 }
 
 func classifyClientResult(name, address string, err error) ClientResult {
@@ -80,6 +79,5 @@ func isLocalCLIURL(raw string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return net.ParseIP(host).IsLoopback()
 }

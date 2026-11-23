@@ -47,8 +47,7 @@ func TestConnectUIForwardsOnlyBindingReplacementsOnOwnPlatform(t *testing.T) {
 	}
 }
 func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
-	d := newStatusDisplay(testPlatformName)
-	defer d.Close(context.Background())
+	d, stop := startTestDisplay(t)
 	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	old := &BindingSnapshot{Scope: scope, SessionID: "same", Version: 1}
 	next := &BindingSnapshot{Scope: scope, SessionID: "same", Version: 2}
@@ -95,17 +94,14 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 	d.forget(BindingChangedEvent{Version: 3, Old: next})
 	event.Binding, event.Version, event.Snapshot.Provider = next, 2, "late unbound"
 	d.receive(event)
-	if err := d.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	stop()
 	if len(displayed) != 0 {
 		t.Fatal("stale binding resurrected")
 	}
 }
 
 func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
-	d := newStatusDisplay(testPlatformName)
-	defer d.Close(context.Background())
+	d, _ := startTestDisplay(t)
 	sent := make(chan struct{}, 2)
 	d.send = func(context.Context, clishare.DisplayTarget, runtimestatus.Snapshot) error {
 		sent <- struct{}{}
@@ -114,25 +110,11 @@ func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
 	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: testDisplayTarget{id: "one"}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
 	d.receive(event)
 	<-sent
-	deadline := time.Now().Add(time.Second)
-	for {
-		d.mu.Lock()
-		empty := len(d.latest) == 0
-		d.mu.Unlock()
-		if empty {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("terminal body retained")
-		}
-		time.Sleep(time.Millisecond)
-	}
 	event.Version, event.Snapshot.Phase = 9, runtimestatus.PhaseLLM
 	d.receive(event)
 	d.mu.Lock()
-	pending := len(d.latest)
-	d.mu.Unlock()
-	if pending != 0 {
-		t.Fatal("old state recreated terminal projection")
+	defer d.mu.Unlock()
+	if len(d.pending) != 0 || d.versions[statusTarget{SessionID: "s", DisplayID: "one"}] != 10 {
+		t.Fatal("terminal body retained or watermark lost")
 	}
 }

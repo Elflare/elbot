@@ -51,9 +51,8 @@ func defaultConfig() Config {
 		DefaultClient: "local",
 		DefaultURL:    "ws://" + defaultRemoteAddr + defaultRemotePath,
 		Server: ServerConfig{
-			Enabled: false,
-			Listen:  defaultRemoteAddr,
-			Tokens:  map[string][]string{},
+			Listen: defaultRemoteAddr,
+			Tokens: map[string][]string{},
 		},
 		Clients: map[string]ClientConfig{},
 	}
@@ -94,23 +93,9 @@ func (cfg Config) Client(name string) (string, ClientConfig, error) {
 	if name == "" {
 		name = strings.TrimSpace(cfg.DefaultClient)
 	}
-	if name == "" && len(cfg.Clients) == 1 {
-		for key := range cfg.Clients {
-			name = key
-		}
-	}
-	if name == "" {
-		return "", ClientConfig{}, fmt.Errorf("cli client is not configured")
-	}
 	client, ok := cfg.Clients[name]
 	if !ok {
 		return "", ClientConfig{}, fmt.Errorf("cli client %q is not configured", name)
-	}
-	if strings.TrimSpace(client.ID) == "" {
-		client.ID = name
-	}
-	if strings.TrimSpace(client.URL) == "" {
-		client.URL = cfg.DefaultURL
 	}
 	return name, client, nil
 }

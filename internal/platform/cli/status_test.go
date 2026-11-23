@@ -44,11 +44,10 @@ func nextStatus(t *testing.T, sent <-chan runtimestatus.Snapshot) runtimestatus.
 func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	first, second := make(chan struct{}), make(chan struct{})
 	p := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 10), gates: []chan struct{}{first, second}}
-	d := newStatusDisplay(testPlatformName)
+	d, _ := startTestDisplay(t)
 	d.send = func(ctx context.Context, _ clishare.DisplayTarget, snapshot runtimestatus.Snapshot) error {
 		return p.SetRuntimeStatus(ctx, snapshot)
 	}
-	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: testDisplayTarget{id: "one"}}))
 	defer cancel()
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
@@ -76,30 +75,16 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	if got := nextStatus(t, p.sent); got.Phase != runtimestatus.PhaseError || (got.Usage.TotalTokens == nil || *got.Usage.TotalTokens != 22) {
 		t.Fatalf("lost update during send: %+v", got)
 	}
-	deadline := time.Now().Add(time.Second)
-	for {
-		d.mu.Lock()
-		remaining := len(d.latest)
-		d.mu.Unlock()
-		if remaining == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("terminal projection retained")
-		}
-		time.Sleep(time.Millisecond)
-	}
 }
 
 func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 	one, two := New(testPlatformName, "user"), New(testPlatformName, "user")
-	d := newStatusDisplay(testPlatformName)
+	d, stop := startTestDisplay(t)
 	sent := make(chan clishare.DisplayTarget, 2)
 	d.send = func(_ context.Context, target clishare.DisplayTarget, _ runtimestatus.Snapshot) error {
 		sent <- target
 		return nil
 	}
-	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	e := StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1}
 	for _, id := range []string{one.Name() + ":one", two.Name() + ":two"} {
 		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: testDisplayTarget{id: id}})
@@ -120,9 +105,7 @@ func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
 	e.Version++
 	background := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}})
 	d.receive(StatusChangedEvent{Snapshot: e.Snapshot, Version: e.Version, Conversation: testConversation(background)})
-	if err := d.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	stop()
 	if len(sent) != 0 {
 		t.Fatal("background status escaped")
 	}
