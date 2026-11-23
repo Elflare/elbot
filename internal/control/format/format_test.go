@@ -17,10 +17,15 @@ func TestDoctorFormattingRetainsConfigPathsAndFields(t *testing.T) {
 		ConfigPath: "/config/app.toml",
 		Items:      []control.DoctorIssue{{Path: "/config/providers.toml", Level: "error", Field: []string{"platform", "telegram", "enabled"}, Message: "类型错误。"}},
 	}})
-	for _, want := range []string{"主配置：/config/app.toml", "/config/providers.toml", "[错误]", "platform.telegram.enabled", "类型错误。"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("doctor output missing %q: %s", want, got)
-		}
+	want := `1 项错误，0 项提示，涉及 1 个文件。
+
+主配置：/config/app.toml
+
+检查结果：
+1. /config/providers.toml
+   - [错误] platform.telegram.enabled: 类型错误。`
+	if got != want {
+		t.Fatalf("doctor output:\ngot: %s\nwant: %s", got, want)
 	}
 }
 

@@ -10,7 +10,7 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | `/help <command>` | 某个命令的详细帮助，例如 `/help model`。 |
 | `/doctor` | 只读检查当前配置及内置 Skill（仅超级管理员）。 |
 
-`/doctor` 使用服务启动时选定的主配置路径，分离配置按 `config_files` 定位。有问题时列出实际文件路径、具体问题、说明和默认模板的 GitHub raw 地址，并生成可复制给 Elbot 的处理请求；复制给能访问这些文件的 Elbot 处理。检查本身不改文件、不自动修复，无问题只返回 `Everything is OK`。范围见 [配置诊断](configuration.md#配置诊断)。
+检查范围见[配置诊断](configuration.md#配置诊断)。
 
 ## 模型
 

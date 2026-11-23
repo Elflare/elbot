@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/agent"
 	command "elbot/internal/command/share"
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
@@ -112,6 +113,26 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			if after := doctorConfigSnapshot(t, root); !reflect.DeepEqual(before, after) {
 				t.Error("diagnosis created or modified configuration files")
 			}
+		}
+
+		for _, asset := range config.DefaultAssets() {
+			path := filepath.Join(root, asset.Path)
+			if asset.Path == "app.toml" {
+				path = customPath
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(asset.Content), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := supervisor.HandleMessage(ctx, agent.MessageRequest{Text: "/doctor"}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if reply.text != "Everything is OK" {
+			t.Fatalf("healthy diagnosis: %s", reply.text)
 		}
 	})
 }

@@ -20,7 +20,7 @@ func (c doctorCommand) Info() command.Info {
 		Name:        "doctor",
 		Args:        "",
 		Description: "检查配置与内置 Skill",
-		Help:        "只读；发现问题→给出可复制的修复请求",
+		Help:        "只读检查配置与内置 Skill，按文件列出错误和提示。",
 		MinRole:     contextinfo.RoleSuperadmin,
 	}
 }

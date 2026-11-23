@@ -47,7 +47,7 @@ func requireIssue(t *testing.T, report doctor.Report, path string, level config.
 			}
 		}
 	}
-	t.Fatalf("missing %s %q at %s:\n%s", level, fragment, path, report.Text())
+	t.Fatalf("missing %s %q at %s:\n%+v", level, fragment, path, report.Files)
 	return config.Issue{}
 }
 
@@ -62,7 +62,7 @@ func requireErrorCount(t *testing.T, report doctor.Report, want int) {
 		}
 	}
 	if got != want {
-		t.Fatalf("errors = %d, want %d:\n%s", got, want, report.Text())
+		t.Fatalf("errors = %d, want %d:\n%+v", got, want, report.Files)
 	}
 }
 
@@ -97,8 +97,8 @@ func TestMissingAssetsFollowRuntimeRequirements(t *testing.T) {
 			removeFile(t, path)
 			report := check(t, service)
 			if tc.level == "" {
-				if report.Text() != "Everything is OK" {
-					t.Fatal(report.Text())
+				if len(report.Files) != 0 {
+					t.Fatalf("unexpected issues: %+v", report.Files)
 				}
 				return
 			}
@@ -108,8 +108,8 @@ func TestMissingAssetsFollowRuntimeRequirements(t *testing.T) {
 				wantErrors = 1
 			}
 			requireErrorCount(t, report, wantErrors)
-			if tc.level == config.LevelHint && !strings.HasPrefix(report.Text(), "未发现必要问题，有 1 项提示，涉及 1 个文件。") {
-				t.Fatal(report.Text())
+			if tc.level == config.LevelHint && (len(report.Files) != 1 || len(report.Files[0].Issues) != 1) {
+				t.Fatalf("unexpected issues: %+v", report.Files)
 			}
 			if tc.name == "app.toml" {
 				for _, file := range report.Files {
@@ -145,8 +145,8 @@ func TestUserNamedExamplesCanBeRemovedOrReplaced(t *testing.T) {
 	})
 	writeFile(t, filepath.Join(dir, "plugins", "hooks.toml"), "")
 	removeFile(t, filepath.Join(dir, ".env.example"))
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 }
 
@@ -167,7 +167,7 @@ func TestOptionalConfigFilesStillRejectInvalidTypes(t *testing.T) {
 			for _, file := range report.Files {
 				for _, issue := range file.Issues {
 					if strings.Contains(issue.Message, "有效配置缺少") {
-						t.Fatal("cascaded after a type failure:\n" + report.Text())
+						t.Fatalf("cascaded after a type failure: %+v", issue)
 					}
 				}
 			}
@@ -200,13 +200,13 @@ func TestBuiltinTagHintsDoNotConstrainCustomTags(t *testing.T) {
 			report := check(t, service)
 			requireErrorCount(t, report, 0)
 			if tc.want == "" {
-				if report.Text() != "Everything is OK" {
-					t.Fatal(report.Text())
+				if len(report.Files) != 0 {
+					t.Fatalf("unexpected issues: %+v", report.Files)
 				}
 			} else {
 				requireIssue(t, report, path, config.LevelHint, tc.want)
 				if len(report.Files) != 1 || len(report.Files[0].Issues) != 1 {
-					t.Fatal(report.Text())
+					t.Fatalf("unexpected issues: %+v", report.Files)
 				}
 			}
 		})
@@ -257,8 +257,8 @@ func TestEffectiveModelsFollowStateOverrides(t *testing.T) {
 			requireErrorCount(t, report, tc.wantErrors)
 			if tc.want != "" {
 				requireIssue(t, report, statePath, config.LevelError, tc.want)
-			} else if report.Text() != "Everything is OK" {
-				t.Fatal(report.Text())
+			} else if len(report.Files) != 0 {
+				t.Fatalf("unexpected issues: %+v", report.Files)
 			}
 			// Exercise the real loader too: provider references are checked by
 			// the app, while default mode and selection completeness are here.
@@ -285,15 +285,19 @@ func TestRequiredAndOptionalModelSlots(t *testing.T) {
 	requireErrorCount(t, report, 1)
 	requireIssue(t, report, statePath, config.LevelError, "mode_models.chat.model")
 	issue := requireIssue(t, report, statePath, config.LevelHint, "mode_models.elwisp1")
-	if issue.Topic != config.TopicElnis || !strings.Contains(report.Text(), "Elnis 说明：") {
-		t.Fatal(report.Text())
+	if issue.Topic != config.TopicElnis {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	removeFile(t, statePath)
 	report = check(t, service)
 	requireErrorCount(t, report, 2)
 	requireIssue(t, report, statePath, config.LevelHint, "文件缺失")
-	if strings.Contains(report.Text(), "缺失可选模型槽") {
-		t.Fatal("cascaded optional hints for a missing state file")
+	for _, file := range report.Files {
+		for _, issue := range file.Issues {
+			if strings.Contains(issue.Message, "缺失可选模型槽") {
+				t.Fatalf("cascaded optional hint for a missing state file: %+v", issue)
+			}
+		}
 	}
 }
 
@@ -311,7 +315,7 @@ func TestUnknownMainFieldsDoNotBlockSemanticChecks(t *testing.T) {
 	requireIssue(t, report, statePath, config.LevelError, "provider \"missing\" 不存在")
 }
 
-func TestElnisTokenDeclarationsAndConditionalLink(t *testing.T) {
+func TestElnisTokenDeclarations(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		enabled    bool
@@ -349,11 +353,11 @@ func TestElnisTokenDeclarationsAndConditionalLink(t *testing.T) {
 			requireErrorCount(t, report, tc.wantErrors)
 			if tc.wantErrors > 0 {
 				issue := requireIssue(t, report, path, config.LevelError, "token_env")
-				if issue.Topic != config.TopicElnis || strings.Count(report.Text(), "Elnis 说明：") != 1 {
-					t.Fatal(report.Text())
+				if issue.Topic != config.TopicElnis {
+					t.Fatalf("unexpected issues: %+v", report.Files)
 				}
-			} else if report.Text() != "Everything is OK" {
-				t.Fatal(report.Text())
+			} else if len(report.Files) != 0 {
+				t.Fatalf("unexpected issues: %+v", report.Files)
 			}
 		})
 	}
@@ -367,8 +371,8 @@ func TestElnisFileReplacesMainConfig(t *testing.T) {
 		raw["elnis"] = map[string]any{"enabled": true}
 	})
 	// The bundled disabled Elnis file overrides main's enabled setting.
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	removeFile(t, elnisPath)
 	report := check(t, service)
@@ -377,24 +381,32 @@ func TestElnisFileReplacesMainConfig(t *testing.T) {
 	requireIssue(t, report, elnisPath, config.LevelHint, "文件缺失")
 }
 
-func TestElnisLinkTracksIssueTopic(t *testing.T) {
+func TestElnisIssueTopic(t *testing.T) {
 	for _, tc := range []struct {
-		name, file string
-		change     func(map[string]any)
+		name, file, field string
+		change            func(map[string]any)
 	}{
-		{"path type", "app.toml", func(raw map[string]any) { raw["config_files"].(map[string]any)["elnis"] = 123 }},
-		{"unknown inline setting", "app.toml", func(raw map[string]any) { raw["elnis"] = map[string]any{"typo": true} }},
-		{"optional slot type", "state.toml", func(raw map[string]any) {
+		{"path type", "app.toml", "config_files.elnis", func(raw map[string]any) { raw["config_files"].(map[string]any)["elnis"] = 123 }},
+		{"unknown inline setting", "app.toml", "elnis.typo", func(raw map[string]any) { raw["elnis"] = map[string]any{"typo": true} }},
+		{"optional slot type", "state.toml", "mode_models.elwisp1.model", func(raw map[string]any) {
 			raw["mode_models"].(map[string]any)["elwisp1"].(map[string]any)["model"] = 123
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, service := fixture(t)
-			changeTOML(t, filepath.Join(dir, tc.file), tc.change)
+			path := filepath.Join(dir, tc.file)
+			changeTOML(t, path, tc.change)
 			report := check(t, service)
-			if strings.Count(report.Text(), "Elnis 说明：") != 1 {
-				t.Fatal(report.Text())
+			for _, file := range report.Files {
+				if file.Path == path {
+					for _, issue := range file.Issues {
+						if strings.Join(issue.Field, ".") == tc.field && issue.Topic == config.TopicElnis {
+							return
+						}
+					}
+				}
 			}
+			t.Fatalf("missing Elnis topic for %s: %+v", tc.field, report.Files)
 		})
 	}
 }

@@ -93,8 +93,8 @@ func diskSnapshot(t *testing.T, root string) map[string]string {
 func TestHealthyAssetsAndReadOnlyCheck(t *testing.T) {
 	dir, service := fixture(t)
 	before := diskSnapshot(t, dir)
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	if after := diskSnapshot(t, dir); !reflect.DeepEqual(before, after) {
 		t.Fatal("doctor modified assets or timestamps")
@@ -129,8 +129,8 @@ func TestCustomPathsAndOptionalFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	editFile(t, providers, "default_context_window = 256000\n", "")
 	report := check(t, service)
@@ -151,11 +151,10 @@ func TestMissingUnknownAndSkillDifferencesAreGrouped(t *testing.T) {
 	if len(report.Files) != 2 || report.Files[0].Path != main || report.Files[1].Path != skill {
 		t.Fatalf("files = %#v", report.Files)
 	}
-	for _, want := range []string{"缺失字段：media.llm_image_max_length", "未知字段：runtime.log_levle", "缺失字段：runtime.log_level", "内容与当前内置版本不同，需要查看差异。"} {
-		if !strings.Contains(report.Text(), want) {
-			t.Fatalf("missing %q in %s", want, report.Text())
-		}
+	for _, want := range []string{"缺失字段：media.llm_image_max_length", "未知字段：runtime.log_levle", "缺失字段：runtime.log_level"} {
+		requireIssue(t, report, main, config.LevelHint, want)
 	}
+	requireIssue(t, report, skill, config.LevelHint, "内容与当前内置版本不同，需要查看差异。")
 	if again := check(t, service); !reflect.DeepEqual(report, again) {
 		t.Fatal("diagnosis order is not stable")
 	}
@@ -187,17 +186,15 @@ enabled = false
 api_base_url = "https://example.invalid"
 reconnect_interval_seconds = 10
 `)
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	editFile(t, main, `api_base_url = "https://example.invalid"`, `api_base_urll = "https://example.invalid"`)
 	editFile(t, main, "[platform.cli.clients.workstation]", "[platform.cli.clients.workstation]\ntoken_en = []")
 	editFile(t, main, "\n[platform.telegram]\n", "\n[platform.typo]\nenabled = false\n[platform.telegram]\n")
 	report := check(t, service)
 	for _, want := range []string{"未知字段：platform.telegram.api_base_urll", "未知字段：platform.cli.clients.workstation.token_en", "未知字段：platform.typo"} {
-		if !strings.Contains(report.Text(), want) {
-			t.Fatalf("missing %q in %s", want, report.Text())
-		}
+		requireIssue(t, report, main, config.LevelHint, want)
 	}
 }
 
@@ -214,8 +211,8 @@ func TestUnknownFieldsOutsideMainAndUserContentAreIgnored(t *testing.T) {
 	for _, name := range []string{"SOUL.md", "memories.toml", ".env.example", "plugins/.env", "skills/agent/user_added/SKILL.md"} {
 		writeFile(t, filepath.Join(dir, name), "arbitrary user content\n")
 	}
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 }
 
@@ -227,12 +224,12 @@ func TestChangedValuesAndArraysAreNotMissing(t *testing.T) {
 	editFile(t, main, `prefixes = ["/"]`, "prefixes = []")
 	editFile(t, main, `log_level = "info"`, `log_level = ""`)
 	writeFile(t, filepath.Join(dir, "plugins/hooks.toml"), "rules = []\n")
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	writeFile(t, filepath.Join(dir, "plugins/hooks.toml"), "[[rules]]\nname = 'a'\n[[rules]]\nname = 'a'\n")
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 }
 
@@ -253,7 +250,7 @@ func TestParseAndTypeErrorsDoNotBlockOtherFiles(t *testing.T) {
 			}
 			report := check(t, service)
 			if len(report.Files) != 2 || report.Files[0].Path != path || !strings.Contains(report.Files[0].Issues[0].Message, tc.want) {
-				t.Fatal(report.Text())
+				t.Fatalf("unexpected issues: %+v", report.Files)
 			}
 		})
 	}
@@ -270,9 +267,10 @@ func TestInvalidMainDoesNotGuessDependentPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := check(t, service)
-	if len(report.Files) != 2 || report.Files[1].Path != skill || !strings.Contains(report.Text(), "未检查依赖") {
-		t.Fatal(report.Text())
+	if len(report.Files) != 2 || report.Files[1].Path != skill {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
+	requireIssue(t, report, filepath.Join(dir, "app.toml"), config.LevelHint, "未检查依赖")
 	writeFile(t, filepath.Join(dir, "app.toml"), "config_files = 123\n")
 	report = check(t, service)
 	for _, file := range report.Files {
@@ -291,7 +289,7 @@ func TestMissingDirectoryIsNotCreated(t *testing.T) {
 	}
 	report := check(t, service)
 	if len(report.Files) != 8 || report.Files[0].Path != path {
-		t.Fatal(report.Text())
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("created directory: %v", err)
@@ -305,14 +303,14 @@ func TestSkillLineEndingsAndMalformedMetadata(t *testing.T) {
 			writeFile(t, filepath.Join(dir, asset.Path), strings.ReplaceAll(asset.Content, "\n", "\r\n"))
 		}
 	}
-	if report := check(t, service); report.Text() != "Everything is OK" {
-		t.Fatal(report.Text())
+	if report := check(t, service); len(report.Files) != 0 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
 	writeFile(t, path, "[invalid\n")
 	report := check(t, service)
 	if len(report.Files) != 1 || len(report.Files[0].Issues) != 1 || report.Files[0].Issues[0].Level != config.LevelError || report.Files[0].Path != path {
-		t.Fatal(report.Text())
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 }
 
@@ -325,8 +323,10 @@ func TestReadFailureAndCancellation(t *testing.T) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if report := check(t, service); len(report.Files) != 1 || !strings.Contains(report.Text(), "无法读取文件") {
-		t.Fatal(report.Text())
+	report := check(t, service)
+	requireIssue(t, report, path, config.LevelError, "无法读取文件")
+	if len(report.Files) != 1 {
+		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -335,38 +335,6 @@ func TestReadFailureAndCancellation(t *testing.T) {
 	}
 	if _, err := doctor.New("", testInspector()); err == nil {
 		t.Fatal("accepted empty main config path")
-	}
-}
-
-func TestReportTextMatchesApprovedWording(t *testing.T) {
-	report := doctor.Report{ConfigPath: "/srv/mybot/custom.toml", Files: []doctor.FileIssue{
-		{Path: "/srv/mybot/custom.toml", Issues: []config.Issue{
-			{Level: config.LevelError, Message: "TOML 格式错误。"},
-			{Level: config.LevelHint, Message: "未完成相关配置检查。"},
-		}},
-		{Path: "/srv/mybot/skills/agent/agent_skill_creator/SKILL.md", Issues: []config.Issue{
-			{Level: config.LevelHint, Message: "内容与当前内置版本不同，需要查看差异。"},
-		}},
-	}}
-	want := `发现 1 项错误、2 项提示，涉及 2 个文件。请复制以下内容给 Elbot：
-
-请参考以下资料，处理列出的 ElBot 配置问题：
-配置说明：https://raw.githubusercontent.com/Elflare/elbot/main/docs/configuration.md
-默认模板：https://raw.githubusercontent.com/Elflare/elbot/main/internal/config/assets.go
-
-主配置：/srv/mybot/custom.toml
-
-检查结果：
-1. /srv/mybot/custom.toml
-   - [错误] TOML 格式错误。
-   - [提示] 未完成相关配置检查。
-
-2. /srv/mybot/skills/agent/agent_skill_creator/SKILL.md
-   - [提示] 内容与当前内置版本不同，需要查看差异。
-
-修改前请备份；补齐必要配置及对应注释，保留已有配置值和注释；可选项先说明作用，由用户决定是否补充；格式错误、重复定义和未知字段先说明处理建议，Skill 差异只说明、不覆盖。`
-	if got := report.Text(); got != want {
-		t.Fatalf("unexpected text:\n%s", got)
 	}
 }
 
@@ -398,8 +366,8 @@ func TestContentComparisonIgnoresOnlyNewlines(t *testing.T) {
 			report := check(t, service)
 			if tc.wantDifference {
 				requireIssue(t, report, path, config.LevelHint, "内容与当前内置版本不同")
-			} else if report.Text() != "Everything is OK" {
-				t.Fatal(report.Text())
+			} else if len(report.Files) != 0 {
+				t.Fatalf("unexpected issues: %+v", report.Files)
 			}
 			after, err := os.ReadFile(path)
 			if err != nil || string(after) != changed {
@@ -431,7 +399,7 @@ func TestPartialMainParseDoesNotSupplyPaths(t *testing.T) {
 	requireErrorCount(t, report, 1)
 	for _, file := range report.Files {
 		if file.Path != main {
-			t.Fatal(report.Text())
+			t.Fatalf("unexpected issues: %+v", report.Files)
 		}
 	}
 }
