@@ -67,17 +67,17 @@ func (a *Adapter) BeginClose() {
 }
 
 func (a *Adapter) Wait(ctx context.Context) error {
+	return waitDone(ctx, a.done)
+}
+
+// waitDone 在完成和取消都可见时优先报告完成。
+func waitDone(ctx context.Context, done <-chan struct{}) error {
 	select {
-	case <-a.done:
-		return nil
-	default:
-	}
-	select {
-	case <-a.done:
+	case <-done:
 		return nil
 	case <-ctx.Done():
 		select {
-		case <-a.done:
+		case <-done:
 			return nil
 		default:
 			return ctx.Err()
@@ -100,22 +100,7 @@ func (a *Adapter) Close(ctx context.Context) error {
 		go a.closeResources()
 	}
 	a.mu.Unlock()
-	select {
-	case <-a.closeDone:
-		return nil
-	default:
-	}
-	select {
-	case <-a.closeDone:
-		return nil
-	case <-ctx.Done():
-		select {
-		case <-a.closeDone:
-			return nil
-		default:
-			return ctx.Err()
-		}
-	}
+	return waitDone(ctx, a.closeDone)
 }
 
 func (a *Adapter) closeResources() {

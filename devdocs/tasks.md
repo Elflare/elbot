@@ -29,7 +29,7 @@
     - [x] platform 根部（不含子包）
     - [x] dispatch、notification、headless
     - [x] refcontext（结合平台适配器核对引用恢复）
-    - [ ] qq-onebot
+    - [x] qq-onebot
     - [ ] qqofficial
     - [ ] telegram
     - [ ] cli

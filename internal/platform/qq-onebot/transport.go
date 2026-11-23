@@ -175,22 +175,10 @@ func (t *Transport) Close(ctx context.Context) error {
 		go t.closeResources(conn)
 	}
 	t.mu.Unlock()
-	select {
-	case <-t.closeDone:
-		return t.closeErr
-	default:
+	if err := waitDone(ctx, t.closeDone); err != nil {
+		return err
 	}
-	select {
-	case <-t.closeDone:
-		return t.closeErr
-	case <-ctx.Done():
-		select {
-		case <-t.closeDone:
-			return t.closeErr
-		default:
-			return ctx.Err()
-		}
-	}
+	return t.closeErr
 }
 
 func (t *Transport) closeResources(conn *websocket.Conn) {
@@ -272,32 +260,29 @@ func (t *Transport) readResponses(ctx context.Context) {
 	}
 }
 
+func callData[T any](ctx context.Context, t *Transport, action string, params map[string]any) (T, error) {
+	var data T
+	resp, err := t.Call(ctx, action, params)
+	if err != nil {
+		return data, err
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		var zero T
+		return zero, fmt.Errorf("decode %s response: %w", action, err)
+	}
+	return data, nil
+}
+
 func (t *Transport) GetMessage(ctx context.Context, messageID string) (getMessageData, error) {
 	id, err := strconv.ParseInt(messageID, 10, 64)
 	if err != nil {
 		return getMessageData{}, fmt.Errorf("parse message id: %w", err)
 	}
-	resp, err := t.Call(ctx, "get_msg", map[string]any{"message_id": id})
-	if err != nil {
-		return getMessageData{}, err
-	}
-	var data getMessageData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return getMessageData{}, fmt.Errorf("decode get_msg response: %w", err)
-	}
-	return data, nil
+	return callData[getMessageData](ctx, t, "get_msg", map[string]any{"message_id": id})
 }
 
 func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, error) {
-	resp, err := t.Call(ctx, "get_image", map[string]any{"file": file})
-	if err != nil {
-		return getImageData{}, err
-	}
-	var data getImageData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return getImageData{}, fmt.Errorf("decode get_image response: %w", err)
-	}
-	return data, nil
+	return callData[getImageData](ctx, t, "get_image", map[string]any{"file": file})
 }
 
 func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]forwardNode, error) {
@@ -305,20 +290,17 @@ func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]
 	if forwardID == "" {
 		return nil, fmt.Errorf("forward resource id is empty")
 	}
-	// OneBot calls this parameter message_id, but requires the forward resource ID.
-	resp, err := t.Call(ctx, "get_forward_msg", map[string]any{"message_id": forwardID})
-	if err != nil {
-		return nil, err
-	}
-	var data struct {
+	type getForwardData struct {
 		Messages []struct {
 			Message json.RawMessage `json:"message"`
 			Content json.RawMessage `json:"content"`
 			Sender  Sender          `json:"sender"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return nil, fmt.Errorf("decode get_forward_msg response: %w", err)
+	// OneBot calls this parameter message_id, but requires the forward resource ID.
+	data, err := callData[getForwardData](ctx, t, "get_forward_msg", map[string]any{"message_id": forwardID})
+	if err != nil {
+		return nil, err
 	}
 	nodes := make([]forwardNode, 0, len(data.Messages))
 	for _, node := range data.Messages {
@@ -332,25 +314,13 @@ func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]
 }
 
 func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, error) {
-	resp, err := t.Call(ctx, "get_file", map[string]any{"file": file, "download": true})
-	if err != nil {
-		return getFileData{}, err
-	}
-	var data getFileData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return getFileData{}, fmt.Errorf("decode get_file response: %w", err)
-	}
-	return data, nil
+	return callData[getFileData](ctx, t, "get_file", map[string]any{"file": file, "download": true})
 }
 
 func (t *Transport) getLoginInfo(ctx context.Context) (Sender, error) {
-	resp, err := t.Call(ctx, "get_login_info", map[string]any{})
+	data, err := callData[Sender](ctx, t, "get_login_info", map[string]any{})
 	if err != nil {
 		return Sender{}, err
-	}
-	var data Sender
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return Sender{}, fmt.Errorf("decode get_login_info response: %w", err)
 	}
 	if data.UserID == 0 {
 		return Sender{}, fmt.Errorf("get_login_info response missing user_id")
@@ -359,15 +329,7 @@ func (t *Transport) getLoginInfo(ctx context.Context) (Sender, error) {
 }
 
 func (t *Transport) GetGroupMemberInfo(ctx context.Context, groupID, userID int64) (Sender, error) {
-	resp, err := t.Call(ctx, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
-	if err != nil {
-		return Sender{}, err
-	}
-	var data Sender
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return Sender{}, fmt.Errorf("decode get_group_member_info response: %w", err)
-	}
-	return data, nil
+	return callData[Sender](ctx, t, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
 }
 
 func (t *Transport) sendMessage(ctx context.Context, action string, params map[string]any) (string, error) {
