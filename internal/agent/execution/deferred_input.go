@@ -73,7 +73,11 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 	if admitted.Status != operationresult.Success {
 		return fmt.Errorf("异步结果投递: %s", admitted.Message)
 	}
-	stream := c.deps.Output.StartStream(ctx)
+	var out agentshare.Output = foregroundTurnOutput{ExecutionSender: c.deps.Output}
+	if memberOutput, ok := ctx.Value(coagentOutputKey{}).(agentshare.Output); ok {
+		out = memberOutput
+	}
+	stream := out.StartStream(ctx)
 	_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolCall, ToolCallID: call.ID, ToolCall: &delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}})
 	_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolResult, ToolCallID: call.ID, ToolResult: &outcome})
 	if admitted.Data == nil {
@@ -81,7 +85,7 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 	}
 	defer c.deps.Turns.ReleaseReservation(sid, admitted.Data)
 	ctx = agentshare.WithInboundTurnInput(turn.WithExecution(ctx, admitted.Data), in)
-	_, r, err := c.Run(ctx, row, "", foregroundTurnOutput{ExecutionSender: c.deps.Output})
+	_, r, err := c.Run(ctx, row, "", out)
 	if err == nil && r.Status != operationresult.Success {
 		return fmt.Errorf("异步结果续跑: %s", r.Message)
 	}

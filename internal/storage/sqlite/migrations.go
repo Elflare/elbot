@@ -736,6 +736,7 @@ UPDATE messages SET
  END
 WHERE CASE WHEN json_valid(metadata) THEN json_type(metadata)='object' ELSE 0 END;
 `},
+	{version: 33, name: "coagent_boards", sql: coagentSchema},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

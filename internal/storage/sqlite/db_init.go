@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 32. Update both together when refreshing this snapshot.
+// migration 33. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -424,6 +424,7 @@ CREATE TRIGGER release_native_seed_media AFTER DELETE ON native_seeds BEGIN
  DELETE FROM media_references WHERE owner_type='native_seed' AND owner_id=OLD.id;
 END;
 
+` + coagentSchema + `
 INSERT INTO schema_migrations(version, name, applied_at)
 SELECT column1, column2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM (VALUES
@@ -458,7 +459,8 @@ FROM (VALUES
     (29, 'shared_id_sequences'),
     (30, 'remove_unused_record_ids'),
     (31, 'structured_identity'),
-    (32, 'structured_message_content')
+    (32, 'structured_message_content'),
+    (33, 'coagent_boards')
 );
 `
 

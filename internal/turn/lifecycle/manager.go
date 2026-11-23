@@ -90,8 +90,9 @@ const (
 )
 
 type Input struct {
-	Reports  []*storage.Message // 已完成的异步调用对，随输入交付，不走用户消息 Hook。
-	InputIDs []string           // 各原始输入的回显 ID，按追加顺序合并。
+	BoardNotice bool               // 允许留言在模型执行期间延迟投递。
+	Reports     []*storage.Message // 已完成的异步调用对，随输入交付，不走用户消息 Hook。
+	InputIDs    []string           // 各原始输入的回显 ID，按追加顺序合并。
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string

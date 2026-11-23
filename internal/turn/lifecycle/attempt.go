@@ -45,7 +45,7 @@ func (m *Manager) CompleteTurn(sessionID, attempt string, failed bool) (Input, b
 		return Input{}, false
 	}
 	pending := mergeInputs(turn.pending)
-	if failed && len(pending.Reports) == 0 {
+	if failed && len(pending.Reports) == 0 && !pending.BoardNotice {
 		beginStopTurn(m.turns, sessionID, turn)
 		return Input{}, false
 	}
@@ -110,7 +110,7 @@ func (m *Manager) StartAttempt(sessionID string, input Input, e Execution, attem
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var pending []Input
-	if old := m.turns[sessionID]; old == nil && len(input.Reports) > 0 {
+	if old := m.turns[sessionID]; old == nil && (input.BoardNotice || len(input.Reports) > 0) {
 		return false
 	} else if old != nil {
 		if !old.reserved || old.execution != e || old.phase != PhaseLLM {

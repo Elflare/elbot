@@ -21,6 +21,66 @@ import (
 
 type foregroundOnlyTestTool struct{}
 
+func TestCoagentToolDiscoveryAndCalls(t *testing.T) {
+	permission := security.NewPermission("low", "medium", nil)
+	registry := toolregistry.NewRegistry(permission)
+	manager := newTestManager(registry, permission)
+	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "member", Mode: storage.SessionModeWork, TaskType: "coagent"})
+	var cached []toolshare.DiscoveredTool
+	for _, name := range []string{"ask_user", "coagent_create", "coagent_pin", "coagent_post", "coagent_board"} {
+		def := fakeTool{name: name}.Definition()
+		if err := registerTestTools(registry, def); err != nil {
+			t.Fatal(err)
+		}
+		cached = append(cached, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: def.Schema()})
+	}
+	available, err := registry.Query(ctx, toolshare.ToolQuery{Scope: toolshare.QueryAvailable})
+	if err != nil || len(available) != 2 {
+		t.Fatal(available, err)
+	}
+	schemas, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeWork}, cached)
+	if err != nil || len(schemas) != 2 || schemas[0].Name != "coagent_post" || schemas[1].Name != "coagent_board" {
+		t.Fatal(schemas, err)
+	}
+	for _, item := range cached[:3] {
+		resolved, err := manager.resolve(ctx, item.Name, nil, storage.SessionModeWork)
+		if err != nil || resolved.Status != operationresult.Forbidden {
+			t.Fatal(item.Name, resolved, err)
+		}
+	}
+	for _, risk := range []toolshare.RiskLevel{toolshare.RiskSafe, toolshare.RiskLow, toolshare.RiskMedium, toolshare.RiskHigh, toolshare.RiskCritical} {
+		def := fakeTool{name: "test_" + string(risk), risk: risk}.Definition()
+		if err := registerTestTools(registry, def); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		taskType string
+		role     contextinfo.Role
+		risk     toolshare.RiskLevel
+		executed bool
+		prompt   bool
+	}{
+		{"coagent", contextinfo.RoleUser, toolshare.RiskSafe, true, false},
+		{"coagent", contextinfo.RoleUser, toolshare.RiskLow, true, false},
+		{"coagent", contextinfo.RoleSuperadmin, toolshare.RiskMedium, true, false},
+		{"coagent", contextinfo.RoleSuperadmin, toolshare.RiskHigh, true, false},
+		{"coagent", contextinfo.RoleSuperadmin, toolshare.RiskCritical, true, false},
+		{"coagent", contextinfo.RoleUser, toolshare.RiskHigh, false, false},
+		{"", contextinfo.RoleSuperadmin, toolshare.RiskHigh, true, true},
+	} {
+		deps := &runnerTestDeps{}
+		row := &storage.Session{ID: "s", Mode: storage.SessionModeWork, TaskType: tc.taskType}
+		result := manager.Run(t.Context(), deps, toolshare.RunRequest{
+			Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: tc.role},
+			Calls: []llm.ToolCallRequest{{ID: "call", Name: "test_" + string(tc.risk), Arguments: "{}"}},
+		})
+		if result.Err != nil || deps.toolResultCall != "call" || deps.toolResult.Success != tc.executed || deps.confirmed != tc.prompt {
+			t.Fatalf("role=%s risk=%s result=%+v prompt=%t err=%v", tc.role, tc.risk, deps.toolResult, deps.confirmed, result.Err)
+		}
+	}
+}
+
 func (foregroundOnlyTestTool) Name() string { return "foreground_only" }
 func (foregroundOnlyTestTool) Info() toolshare.Info {
 	return toolshare.NewBuilder("foreground_only").ForegroundOnly().Risk(toolshare.RiskLow).BuildInfo()

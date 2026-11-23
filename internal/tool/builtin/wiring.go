@@ -17,6 +17,7 @@ import (
 )
 
 type Deps struct {
+	Coagents            coagentOperations
 	CreateQuestions     func([]storage.Question) *storage.QuestionGroup       // Assign IDs and save one question group.
 	QuestionCommands    func() (string, string)                               // Configured answer and submit commands.
 	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
@@ -61,6 +62,9 @@ func NewTools(deps Deps) []share.ToolDefinition {
 	deps.ChatHistory.ViewImageAvailable = deps.ViewImageAvailable
 	definitions = append(definitions, chat_history.Definitions(deps.ChatHistory)...)
 	definitions = append(definitions, NewResidentMemoryTools(deps.ResidentMemory)...)
+	if deps.Coagents != nil {
+		definitions = append(definitions, coagentTools(deps.Coagents)...)
+	}
 	definitions = append(definitions, long_memory.NewLongMemoryTools(deps.LongMemoryDir)...)
 	return append(definitions, NewCronTools(deps.Cron, deps.ValidateModel, deps.Now)...)
 }

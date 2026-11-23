@@ -39,7 +39,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		return nil, fmt.Errorf("platform build: %w", err)
 	}
 	toolSupervisor, err := tool.NewSupervisor(ctx, cfg, tool.SupervisorDeps{CreateQuestions: controller.CreateQuestions,
-		Store: resources.store, Models: resources.models, Media: resources.media, Permission: resources.permission,
+		Coagents: controller,
+		Store:    resources.store, Models: resources.models, Media: resources.media, Permission: resources.permission,
 		Platform: platformSupervisor, ChatHistory: history,
 	})
 	if err != nil {

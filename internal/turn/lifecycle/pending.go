@@ -15,7 +15,7 @@ func (m *Manager) AppendPendingInput(sessionID string, input Input) bool {
 	if !ok {
 		return false
 	}
-	deferred := len(input.Reports) > 0
+	deferred := len(input.Reports) > 0 || input.BoardNotice
 	switch turn.phase {
 	case PhaseLLM:
 		if !deferred && len(turn.originalInput.Reports) == 0 {
@@ -73,14 +73,16 @@ func mergeInputs(inputs []Input) Input {
 	platformTexts := make([]string, 0, len(clean))
 	var ids []string
 	needsElyphRules := false
+	boardNotice := false
 	for i, input := range clean {
 		ids = append(ids, input.InputIDs...)
 		needsElyphRules = needsElyphRules || input.NeedsElyphRules
+		boardNotice = boardNotice || input.BoardNotice
 		segments = llm.AppendSegmentText(segments, fmt.Sprintf("\n%d. ", i+1))
 		segments = append(segments, input.Segments...)
 		platformTexts = append(platformTexts, input.PlatformText)
 	}
-	return Input{InputIDs: ids, Reports: reports, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules}
+	return Input{InputIDs: ids, Reports: reports, Text: llm.SegmentsTextOnly(segments), PlatformText: mergeTextInputs(platformTexts), Segments: segments, NeedsElyphRules: needsElyphRules, BoardNotice: boardNotice}
 }
 func normalizeInput(input Input) Input {
 	input.Text = strings.TrimSpace(input.Text)

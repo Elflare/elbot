@@ -5,10 +5,13 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
+	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
 
 type ControlCapabilities interface {
+	Coagent(context.Context, session.CoagentAction, bool) (operationresult.Result[storage.CoagentBoard], error)
 	ListQuestions(context.Context, string) (operationresult.Result[[]control.Question], error)
 	SaveQuestionDraft(context.Context, string, int64, control.QuestionDraft) (operationresult.Result[control.Question], error)
 	ConfirmAnswers(context.Context, string) (operationresult.Result[control.ConfirmAnswersResult], error)

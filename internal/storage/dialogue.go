@@ -96,6 +96,7 @@ type NativeWindowRecords struct {
 // SessionMaterialCreate is the narrow atomic boundary for a new session and
 // its prepared material. It exposes neither a transaction nor callbacks.
 type SessionMaterialCreate struct {
+	CompactFrom          string // 压缩交接时原会话的 ID，同时转移其协作成员关系。
 	Session              *Session
 	Messages             []*Message
 	ToolCallRecords      []ToolCallRecord // 复制的调用记录，与新 Session 一并原子提交。

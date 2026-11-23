@@ -22,10 +22,11 @@ import (
 
 // SupervisorDeps 只借用能力，不取得提供方组件或生命周期。
 type SupervisorDeps struct {
-	Tools              ToolCapabilities                                                             // 原始工具目录查询。
-	Skills             SkillCapabilities                                                            // 技能重载与删除。
-	FileRollback       FileRollbackCapabilities                                                     // 原始备份记录与撤销。
-	PrepareFileContext func(context.Context, bool) (operationresult.Result[context.Context], error) // Agent 提供绑定与提交准入，bool 表示写入。
+	Coagents           func(context.Context, session.CoagentAction, bool) (operationresult.Result[storage.CoagentBoard], error) // Agent 提供的协作入口。
+	Tools              ToolCapabilities                                                                                         // 原始工具目录查询。
+	Skills             SkillCapabilities                                                                                        // 技能重载与删除。
+	FileRollback       FileRollbackCapabilities                                                                                 // 原始备份记录与撤销。
+	PrepareFileContext func(context.Context, bool) (operationresult.Result[context.Context], error)                             // Agent 提供绑定与提交准入，bool 表示写入。
 
 	Sessions      SessionCapabilities                                                 // 会话业务裁决，包含其自身的写入准入。
 	History       HistoryCapabilities                                                 // 会话快照和分支原始消息读取。

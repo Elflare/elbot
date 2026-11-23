@@ -246,7 +246,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.RouterSource{Router: m.commands},
 	)
 	m.handler = handler
-	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
+	collaboration := coagentHandler{sessions: m.sessions, execution: m.execution, identity: identity, models: deps.Models, platform: deps.Platform, lifetime: m.ctx}
+	if err := deps.Control.ConnectAgent(control.AgentDeps{Coagents: collaboration.handle, Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
 		cancel()
 		return nil, err
 	}

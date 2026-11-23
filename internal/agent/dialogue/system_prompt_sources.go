@@ -60,13 +60,20 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 		}
 		fields = append(fields, field.name+"="+value)
 	}
+	if req.Session != nil && req.Session.ID != "" {
+		fields = append(fields, "session_id="+req.Session.ID)
+	}
 	if req.Session != nil && !req.Session.CreatedAt.IsZero() {
 		fields = append(fields, "session_created_at="+req.Session.CreatedAt.Format("2006-01-02T15:04:05"))
 	}
 	if len(fields) == 0 {
 		return nil, nil
 	}
-	return []SystemPromptPart{{Name: "conversation_meta", Content: "meta: " + strings.Join(fields, ", ") + "."}}, nil
+	content := "meta: " + strings.Join(fields, ", ") + "."
+	if req.Session != nil && req.Session.TaskType == "coagent" {
+		content += "\n你是协作成员。按置顶名册中的 session_id 找到自己的名字和分工。普通回复署名展示给用户。通过 coagent_board 读板、coagent_post 联系其他成员。遇到其他成员的改动先在板上协调。"
+	}
+	return []SystemPromptPart{{Name: "conversation_meta", Content: content}}, nil
 }
 
 type SoulSystemPromptSource struct {

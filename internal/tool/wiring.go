@@ -50,6 +50,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		history.ResolveMedia = deps.Platform.ResolveMedia
 	}
 	definitions := builtin.NewTools(builtin.Deps{
+		Coagents:         deps.Coagents,
 		CreateQuestions:  deps.CreateQuestions,
 		QuestionCommands: func() (string, string) { prefix := cfg.Commands.Prefixes[0]; return prefix + "a", prefix + "ac" },
 		Media:            mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},

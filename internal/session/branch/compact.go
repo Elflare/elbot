@@ -106,12 +106,11 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 		}
 		messages = append(messages, message)
 	}
-	if req.Seed == nil && len(messages) == 0 {
-		err = s.deps.Sessions.Create(ctx, row)
-	} else {
-		err = s.deps.Sessions.CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Messages: messages, Seed: req.Seed,
-			SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})
+	material := storage.SessionMaterialCreate{Session: row, Messages: messages, Seed: req.Seed, CompactFrom: sourceID}
+	if req.Seed != nil || len(messages) > 0 {
+		material.SourceSessionID, material.ExpectedCheckpointID = sourceID, req.ExpectedCheckpointID
 	}
+	err = s.deps.Sessions.CreateMaterial(ctx, material)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}

@@ -6,11 +6,13 @@ import (
 
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
+	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
 
 // AgentDeps 由 Agent 根部在构造阶段接入；组件生命周期仍由 Agent 持有。
 type AgentDeps struct {
+	Coagents           func(context.Context, session.CoagentAction, bool) (operationresult.Result[storage.CoagentBoard], error)
 	Tools              ToolCapabilities                                                             // 工具目录。
 	Skills             SkillCapabilities                                                            // 技能管理。
 	FileRollback       FileRollbackCapabilities                                                     // 文件编辑撤销。
@@ -49,6 +51,7 @@ func (m *Supervisor) ConnectAgent(deps AgentDeps) error {
 	m.workspaces = deps.Workspaces
 	m.deps.Execution, m.deps.Confirmations = deps.Execution, deps.Confirmations
 	m.deps.Scope, m.deps.Status, m.deps.Commands = deps.Scope, deps.Status, deps.Commands
+	m.deps.Coagents = deps.Coagents
 	return nil
 }
 

@@ -49,7 +49,7 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 			if !m.BackgroundToolAllowed(item) {
 				continue
 			}
-		} else if !m.InfoAvailableInContext(ctx, share.Info{ForegroundOnly: item.ForegroundOnly}) {
+		} else if !m.InfoAvailableInContext(ctx, share.Info{Name: item.Name, ForegroundOnly: item.ForegroundOnly}) {
 			continue
 		}
 		appendSchema(item.Schema)

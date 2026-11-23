@@ -47,6 +47,7 @@ func DefaultModules() []Module {
 		HookModule{},
 		ConfirmationModule{},
 		questionsModule{},
+		coagentModule{},
 	}
 }
 

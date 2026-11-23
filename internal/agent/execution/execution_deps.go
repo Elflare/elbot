@@ -35,6 +35,7 @@ type ExecutionSender interface {
 }
 
 type ExecutionSessions interface {
+	ReadCoagentBoard(context.Context, *session.Binding, int64) (operationresult.Result[storage.CoagentBoard], error)
 	EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 	AllocateID(context.Context, *storage.Session) (string, error)
 	CreateCompacted(context.Context, session.Scope, string, session.CompactedRequest) (operationresult.Result[*storage.Session], error)

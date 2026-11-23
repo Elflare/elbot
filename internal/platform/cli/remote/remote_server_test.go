@@ -279,6 +279,15 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	server.removeClient(client)
 	selectID(ha.APIToken, "S1", 401)
 	selectID(hb.APIToken, "S2", 204)
+	reconnected, hello := dialTestConnection(t, server)
+	selectID(hello.APIToken, "S1", 204)
+	if _, err := server.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("[验收员]：交付完成")}); err != nil {
+		t.Fatal(err)
+	}
+	got := readTestRemote(t, reconnected)
+	if got.Type != remoteMsgChat || got.SessionID != "S1" || got.Text != "[验收员]：交付完成" {
+		t.Fatalf("reconnected view: %+v", got)
+	}
 }
 func TestSessionBindingChangeTargetsOldViewWithoutMovingIt(t *testing.T) {
 	s := testRemoteServer(t)

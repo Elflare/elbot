@@ -459,6 +459,7 @@ type SessionSummary struct {
 type Store interface {
 	NextIDSequence(context.Context) (int64, error) // Shared non-Session sequence; allocated before business transactions.
 	Sessions() SessionRepository
+	Coagents() CoagentRepository
 	Messages() MessageRepository
 	Dialogues() DialogueRepository
 	Media() MediaRepository

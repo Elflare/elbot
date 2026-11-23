@@ -76,6 +76,14 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 	if err := createSession(ctx, tx, req.Session); err != nil {
 		return err
 	}
+	if req.CompactFrom != "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE coagent_members SET session_id=? WHERE session_id=?`, req.Session.ID, req.CompactFrom); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE coagent_boards SET main_session_id=? WHERE main_session_id=?`, req.Session.ID, req.CompactFrom); err != nil {
+			return err
+		}
+	}
 	for _, message := range req.Messages {
 		if message == nil || message.SessionID != req.Session.ID {
 			return fmt.Errorf("copied message session mismatch")

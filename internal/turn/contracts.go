@@ -53,8 +53,9 @@ type Snapshot struct {
 }
 
 type Input struct {
-	Reports  []*storage.Message // 已完成的异步调用对，随输入交付，不走用户消息 Hook。
-	InputIDs []string
+	BoardNotice bool               // 组内留言可以在 LLM 执行期间排队，交付为带署名的用户消息。
+	Reports     []*storage.Message // 已完成的异步调用对，随输入交付，不走用户消息 Hook。
+	InputIDs    []string
 	// NeedsElyphRules travels with queued input until its destination session is known.
 	NeedsElyphRules bool
 	Text            string

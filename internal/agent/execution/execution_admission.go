@@ -43,6 +43,9 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 			return ctx, result, nil
 		}
 	}
+	if result.Data.TaskType == "coagent" {
+		return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Rejected, Message: "请在主会话的留言板联系协作成员"}, nil
+	}
 	bound, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, result.Data.ID)
 	if err != nil || captured.Status != operationresult.Success {
 		return ctx, captured, err

@@ -64,7 +64,7 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		if mode == storage.SessionModeBackground && !m.BackgroundToolAllowed(discoveredTool) {
 			continue
 		}
-		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredTool.ForegroundOnly}) {
+		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{Name: discoveredTool.Name, ForegroundOnly: discoveredTool.ForegroundOnly}) {
 			return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: "tool is unavailable in this context"}, nil
 		}
 		if discoveredTool.Source == toolshare.SourceKindELwisp {

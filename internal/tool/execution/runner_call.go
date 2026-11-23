@@ -91,7 +91,7 @@ func (b *runBatch) startCall(index int) toolshare.RunResult {
 	b.deps.AddToolUse(b.sessionID, call.Name)
 	var confirmation operationresult.Result[toolshare.ConfirmResult]
 	waitErr := b.await(func() {
-		confirmation, err = b.manager.confirm(toolCtx, b.deps, actor, b.sessionID, call, resolvedTool, assessment, preparedCall.Details())
+		confirmation, err = b.manager.confirm(toolCtx, b.deps, actor, &snapshot, call, resolvedTool, assessment, preparedCall.Details())
 	})
 	if extra := strings.TrimSpace(confirmation.Data.Extra); err == nil && confirmation.Status == operationresult.Success && extra != "" {
 		b.confirmationExtra = append(b.confirmationExtra, extra)
@@ -195,11 +195,12 @@ func (b *runBatch) launch(index int, toolCtx context.Context, snapshot *storage.
 	return nil
 }
 
-func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
+func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, session *storage.Session, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	if resolvedTool.Source == toolshare.SourceKindELwisp {
 		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 	}
 	info := resolvedTool.Native.Definition
+	sessionID := session.ID
 	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, toolshare.PolicyFromContext(ctx).AutoConfirmShell)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -230,7 +231,8 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 			return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Forbidden, Message: fmt.Sprintf("tool call %s denied: risk %s is above your allowed tool level", call.Name, assessment.Level)}, nil
 		}
 	}
-	if permission.NeedsConfirmation {
+	coagent := session.Mode == storage.SessionModeWork && session.TaskType == "coagent"
+	if permission.NeedsConfirmation && !coagent {
 		return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 	}
 	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
