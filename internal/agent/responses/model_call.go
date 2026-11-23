@@ -22,7 +22,7 @@ import (
 )
 
 func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, stream delivery.MessageStream) (final operationresult.Result[agentshare.CallOutput], err error) {
-	client := s.selection.Client.(api.Streamer)
+	client := s.Selection.Client.(api.Streamer)
 	ctx = agentshare.WithReadOnlyCalls(ctx)
 	var request api.Request
 	var inputs []storage.NativeInput
@@ -30,12 +30,12 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 	var usageID media.UsageID
 	var result nativeCallResult
 	var calls []llm.ToolCallRequest
-	origin := s.selection.Origin
+	origin := s.Selection.Origin
 	defer func() { s.route.Preparer.FinishMaterials(ctx, usageID) }()
 	prepare := func(ctx context.Context, projection agentshare.CallInput) (operationresult.Result[struct{}], error) {
 		s.projection, s.tools = projection.Messages, projection.Tools
 		var err error
-		inputs, err = s.route.Repository.PendingInputs(ctx, s.session.ID)
+		inputs, err = s.route.Repository.PendingInputs(ctx, s.Session.ID)
 		if err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
@@ -58,9 +58,9 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 		if err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
-		store := client.StoreForModel(s.selection.Model)
+		store := client.StoreForModel(s.Selection.Model)
 		request = api.Request{
-			Model:        s.selection.Model,
+			Model:        s.Selection.Model,
 			Instructions: instructions,
 			AllowedTools: s.allowedToolNames(),
 			Store:        &store,
@@ -86,11 +86,11 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 						EventName:    "responses_switching_to_stateless_replay",
 						Module:       "agent",
 						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
+						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.Selection.Provider, s.Selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
 						ContentLimit: 4096,
 					}
 					record.Identity = globalevents.LogIdentityFromContext(ctx)
-					record.Identity.SessionID = s.session.ID
+					record.Identity.SessionID = s.Session.ID
 					globalevents.Log(ctx, record)
 				}
 				store = false
@@ -134,7 +134,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	attempt := func(ctx context.Context, observation agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error) {
-		compatible, err := s.route.View.CheckSelection(s.session, s.selection)
+		compatible, err := s.route.Shared.View.CheckSelection(s.Session, s.Selection)
 		if err != nil {
 			return operationresult.Result[agentshare.CallOutput]{}, err
 		}
@@ -184,13 +184,13 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 			seen[item.CallID] = true
 			calls = append(calls, llm.ToolCallRequest{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
 		}
-		if s.session.Mode == storage.SessionModeChat && len(calls) > 0 {
+		if s.Session.Mode == storage.SessionModeChat && len(calls) > 0 {
 			return operationresult.Result[agentshare.CallOutput]{}, fmt.Errorf("unexpected function call with tools disabled")
 		}
 		final.ToolCalls = calls
 		return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: final}, nil
 	}
-	final, err = s.route.Calls.Call(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, prepare, attempt)
+	final, err = s.route.Calls.Call(ctx, s.Session, s.Selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, prepare, attempt)
 	s.sourceText = outputText(result.Items)
 	if err != nil {
 		return operationresult.Result[agentshare.CallOutput]{}, err
@@ -204,11 +204,11 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingInput, 
 
 func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (operationresult.Result[api.Request], media.UsageID, error) {
 	if s.window == nil {
-		records, err := s.route.Repository.LoadNativeWindow(ctx, s.session, s.checkpoint)
+		records, err := s.route.Repository.LoadNativeWindow(ctx, s.Session, s.checkpoint)
 		if err != nil {
 			return operationresult.Result[api.Request]{}, "", err
 		}
-		loaded, err := s.route.Context.Load(ctx, s.session, s.checkpoint, records)
+		loaded, err := s.route.Context.Load(ctx, s.Session, s.checkpoint, records)
 		if err != nil {
 			return operationresult.Result[api.Request]{}, "", err
 		}

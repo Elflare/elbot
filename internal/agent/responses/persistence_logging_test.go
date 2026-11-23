@@ -18,16 +18,16 @@ func TestNativeToolPreparationReturnsInternalFailure(t *testing.T) {
 		t.Run(map[bool]string{false: "allocation", true: "metadata"}[malformed], func(t *testing.T) {
 			failure := errors.New("message ID database unavailable")
 			state := &turnState{
-				route: &Loop{LoopDeps: LoopDeps{NewMessageID: func(context.Context) (string, error) {
+				route: &Loop{LoopDeps: LoopDeps{Shared: agentshare.LoopDeps{NewMessageID: func(context.Context) (string, error) {
 					if malformed {
 						return "message", nil
 					}
 					return "", failure
-				}}},
-				session:  &storage.Session{ID: "session"},
-				exchange: &storage.NativeExchange{ID: "exchange"},
-				response: &api.Response{ID: "response"},
-				calls:    []llm.ToolCallRequest{{ID: "call", Name: "tool"}},
+				}}}},
+				LoopState: agentshare.LoopState{LoopInput: agentshare.LoopInput{Session: &storage.Session{ID: "session"}}},
+				exchange:  &storage.NativeExchange{ID: "exchange"},
+				response:  &api.Response{ID: "response"},
+				calls:     []llm.ToolCallRequest{{ID: "call", Name: "tool"}},
 			}
 			committer := &toolCommitter{state: state}
 			head := agentshare.ToolCallStorageMessage("session", "", "", state.calls, "")

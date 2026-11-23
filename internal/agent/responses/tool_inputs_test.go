@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"reflect"
 	"testing"
 
@@ -64,9 +65,9 @@ func TestQueueToolDefinitionsKeepsHistoricalDefinitions(t *testing.T) {
 func TestQueueToolDefinitionsAddsNewNamesOnce(t *testing.T) {
 	committer := &toolInputCommitter{}
 	s := &turnState{
-		route:   &Loop{LoopDeps: LoopDeps{Messages: committer}},
-		session: &storage.Session{ID: "session"},
-		tools:   []llm.ToolSchema{{Name: "first"}, {Name: "first", Description: "duplicate"}, {Name: "second"}},
+		route:     &Loop{LoopDeps: LoopDeps{Messages: committer}},
+		LoopState: agentshare.LoopState{LoopInput: agentshare.LoopInput{Session: &storage.Session{ID: "session"}}},
+		tools:     []llm.ToolSchema{{Name: "first"}, {Name: "first", Description: "duplicate"}, {Name: "second"}},
 	}
 	inputs, err := s.queueToolDefinitions(t.Context(), nil)
 	if err != nil {
@@ -76,7 +77,7 @@ func TestQueueToolDefinitionsAddsNewNamesOnce(t *testing.T) {
 		t.Fatalf("inputs=%+v commits=%d", inputs, len(committer.commits))
 	}
 	commit := committer.commits[0]
-	if commit.SessionID != s.session.ID || commit.Native == nil || !reflect.DeepEqual(commit.Native.Inputs, inputs) {
+	if commit.SessionID != s.Session.ID || commit.Native == nil || !reflect.DeepEqual(commit.Native.Inputs, inputs) {
 		t.Fatalf("commit=%+v inputs=%+v", commit, inputs)
 	}
 	item, _, err := decodeQueuedInput(inputs[0])

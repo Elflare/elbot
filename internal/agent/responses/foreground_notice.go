@@ -23,7 +23,7 @@ func isForegroundNotice(input storage.NativeInput, expected *storage.NativeInput
 }
 
 func (s *turnState) queueForegroundNotice(ctx context.Context, inputs []storage.NativeInput) ([]storage.NativeInput, error) {
-	notice, err := foregroundNoticeInput(s.session)
+	notice, err := foregroundNoticeInput(s.Session)
 	if err != nil || notice == nil {
 		return inputs, err
 	}
@@ -33,7 +33,7 @@ func (s *turnState) queueForegroundNotice(ctx context.Context, inputs []storage.
 		}
 	}
 	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{*notice}}
-	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_foreground_notice"); err != nil {
+	if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.Session.ID, Native: &native}, "append_foreground_notice"); err != nil {
 		return nil, err
 	}
 	return append(inputs, *notice), nil

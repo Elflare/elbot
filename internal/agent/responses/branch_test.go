@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -126,7 +127,7 @@ func TestPrepareCopyPreservesStoppedInputs(t *testing.T) {
 					t.Fatalf("load copy: %+v %v", loaded, err)
 				}
 				next := copyInput(t, "next", "", "continue please", false)
-				state := &turnState{session: row, seed: seed, window: loaded.Data, route: &Loop{Context: c}}
+				state := &turnState{LoopState: agentshare.LoopState{LoopInput: agentshare.LoopInput{Session: row}}, seed: seed, window: loaded.Data, route: &Loop{Context: c}}
 				replayed, _, err := state.replayRequest(t.Context(), api.Request{PreviousResponseID: seed.ResponseID}, []storage.NativeInput{next}, []string{next.ID}, loaded.Data.Origin)
 				if err != nil || replayed.Status != operationresult.Success || replayed.Data.PreviousResponseID != "" {
 					t.Fatalf("replay copy: %+v %v", replayed, err)

@@ -127,18 +127,16 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	selectionForTurn := func(ctx context.Context, row *storage.Session) modelmgr.Selection {
 		return modelmgr.SelectionForTurn(ctx, deps.Models, row)
 	}
+	shared := agentshare.LoopDeps{NewMessageID: newMessageID, SelectionForTurn: selectionForTurn,
+		View: view, Turns: m.turns, Tools: runner.Preparer.Tools}
 	chat := chatroute.NewLoop(chatroute.LoopDeps{
-		NewMessageID:     newMessageID,
-		Identity:         identity,
-		SelectionForTurn: selectionForTurn,
+		Shared:   shared,
+		Identity: identity,
 		NewToolTranscriptCommitter: func() agentshare.ToolTranscriptCommitter {
 			return &dialogue.ToolTranscriptCommitter{Messages: runner.Messages}
 		},
 		Status:   status,
-		Turns:    m.turns,
-		View:     view,
 		Preparer: runner.Preparer,
-		Tools:    runner.Preparer.Tools,
 		Messages: runner.Messages,
 		Caller: &chatroute.Caller{
 			Calls: runner.Calls, Messages: runner.Messages, Preparer: runner.Preparer,
@@ -150,20 +148,16 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Loader:    contextmgr.Loader{Store: deps.Store},
 	})
 	response := responseroute.NewLoop(responseroute.LoopDeps{
-		NewMessageID:     newMessageID,
-		Identity:         identity,
-		Gate:             runner.Messages.Gate,
-		SessionRows:      deps.Store.Sessions(),
-		SelectionForTurn: selectionForTurn,
-		Status:           status,
-		Repository:       deps.Store.Dialogues(),
-		Turns:            m.turns,
-		View:             view,
-		Preparer:         runner.Preparer,
-		Tools:            runner.Preparer.Tools,
-		Messages:         runner.Messages,
-		Calls:            runner.Calls,
-		System:           runner.System,
+		Shared:      shared,
+		Identity:    identity,
+		Gate:        runner.Messages.Gate,
+		SessionRows: deps.Store.Sessions(),
+		Status:      status,
+		Repository:  deps.Store.Dialogues(),
+		Preparer:    runner.Preparer,
+		Messages:    runner.Messages,
+		Calls:       runner.Calls,
+		System:      runner.System,
 	})
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{

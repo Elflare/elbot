@@ -24,17 +24,9 @@ func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 
 func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[storage.DialogueCommit], error) {
 	r := p.route
-	s := &chatTurnState{
-		ctx:        ctx,
-		requestCtx: requestCtx,
-		session:    in.Session,
-		output:     out,
-		selection:  in.Selection,
-		requestID:  in.RequestID,
-		startedAt:  in.StartedAt,
-	}
+	s := &chatTurnState{LoopState: agentshare.LoopState{LoopInput: in, Ctx: ctx, RequestCtx: requestCtx}, output: out}
 	p.state = s
-	ctx = s.requestCtx
+	ctx = s.RequestCtx
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
@@ -46,25 +38,26 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	if userMessage != nil {
 		messages = append(messages, *userMessage)
 	}
-	r.Status.Record(s.ctx, runtimestatus.Snapshot{
-		SessionID:      s.session.ID,
+	snapshot := runtimestatus.Snapshot{
+		SessionID:      s.Session.ID,
 		Phase:          runtimestatus.PhasePreparing,
-		Provider:       s.selection.Provider,
-		Model:          s.selection.Model,
-		Mode:           s.session.Mode,
-		TurnStartedAt:  s.startedAt,
-		StageStartedAt: s.startedAt,
-	})
+		Provider:       s.Selection.Provider,
+		Model:          s.Selection.Model,
+		Mode:           s.Session.Mode,
+		TurnStartedAt:  s.StartedAt,
+		StageStartedAt: s.StartedAt,
+	}
+	r.Status.Record(s.Ctx, snapshot)
 	scope := r.Identity.Scope(ctx)
 	var err error
-	s.messages, err = r.PromptBuilder.Build(ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
+	s.messages, err = r.PromptBuilder.Build(ctx, PromptBuildRequest{Session: s.Session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	s.tools, err = r.Tools.Schemas(ctx, s.session)
+	s.tools, err = r.Shared.Tools.Schemas(ctx, s.Session)
 	if err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
@@ -72,33 +65,23 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	if userMessage == nil {
-		return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: p.materials.Input.Reports}}, nil
+		return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: p.materials.InputCommit(nil, false)}, nil
 	}
 	canonicalUserSegments, tools, elyphRulesShown, err := r.Preparer.PrepareInput(ctx, in, userMessage, p.materials.Input.PlatformText, userSegments, s.messages, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
 	s.tools = tools
-	r.Status.Record(s.ctx, runtimestatus.Snapshot{
-		SessionID:      s.session.ID,
-		Phase:          runtimestatus.PhasePreparing,
-		Provider:       s.selection.Provider,
-		Model:          s.selection.Model,
-		Mode:           s.session.Mode,
-		TurnStartedAt:  s.startedAt,
-		StageStartedAt: s.startedAt,
-	})
+	r.Status.Record(s.Ctx, snapshot)
 	promptUserSegments := canonicalUserSegments
 	if p.summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
-	userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
-	userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[storage.DialogueCommit]{}, err
 	}
-	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: storage.DialogueCommit{SessionID: in.Session.ID, Messages: append(p.materials.Input.Reports, userMessage), ElyphRulesShown: elyphRulesShown}}, nil
+	return operationresult.Result[storage.DialogueCommit]{Status: operationresult.Success, Data: p.materials.InputCommit(canonicalUserSegments, elyphRulesShown)}, nil
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

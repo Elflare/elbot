@@ -62,9 +62,9 @@ func (s *turnState) queueToolDefinitions(ctx context.Context, inputs []storage.N
 		if err != nil {
 			return nil, err
 		}
-		input := storage.NativeInput{ID: storage.NewID(), SessionID: s.session.ID, ItemJSON: string(item.Raw), MediaJSON: "[]"}
+		input := storage.NativeInput{ID: storage.NewID(), SessionID: s.Session.ID, ItemJSON: string(item.Raw), MediaJSON: "[]"}
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}}
-		if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, Native: &native}, "append_tool_definitions"); err != nil {
+		if err := s.commit(ctx, storage.DialogueCommit{SessionID: s.Session.ID, Native: &native}, "append_tool_definitions"); err != nil {
 			return nil, err
 		}
 		inputs = append(inputs, input)

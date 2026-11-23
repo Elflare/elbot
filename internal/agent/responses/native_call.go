@@ -180,15 +180,15 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	if err != nil {
 		return result, err
 	}
-	origin := s.selection.Origin
+	origin := s.Selection.Origin
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	ids, _ := json.Marshal(consumed)
 	exchange := &storage.NativeExchange{
-		SessionID:            s.session.ID,
+		SessionID:            s.Session.ID,
 		APIType:              string(origin.APIType),
 		Provider:             origin.Provider,
 		BaseURL:              origin.BaseURL,
-		Model:                s.selection.Model,
+		Model:                s.Selection.Model,
 		RequestID:            facts.RequestID,
 		RunID:                facts.RunID,
 		Attempt:              facts.Attempt,
@@ -196,7 +196,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		RequestJSON:          audit,
 		InputIDsJSON:         string(ids),
 	}
-	locked, release, err := s.route.Gate.Enter(ctx, s.session.ID)
+	locked, release, err := s.route.Gate.Enter(ctx, s.Session.ID)
 	if err != nil {
 		return result, err
 	}
@@ -357,7 +357,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if err != nil {
 			failure = err.Error()
 		}
-		saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
+		saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.Ctx), exchange.ID, status, raw, string(encoded), failure)
 		if saveErr != nil {
 			return fmt.Errorf("save native response: %w", saveErr)
 		} else {

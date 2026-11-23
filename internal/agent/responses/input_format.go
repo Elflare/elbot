@@ -46,7 +46,7 @@ func incompatibleInputFormat() operationresult.Result[struct{}] {
 // Stamp new sessions after execution admission and before their first input.
 // Fork/compact roots carry their own version, so they survive source deletion.
 func (s *turnState) ensureInputFormat(ctx context.Context) (operationresult.Result[struct{}], error) {
-	version, err := sessionInputVersion(s.session)
+	version, err := sessionInputVersion(s.Session)
 	if err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
@@ -56,13 +56,13 @@ func (s *turnState) ensureInputFormat(ctx context.Context) (operationresult.Resu
 	if version != 0 {
 		return incompatibleInputFormat(), nil
 	}
-	locked, release, err := s.route.Gate.Enter(ctx, s.session.ID)
+	locked, release, err := s.route.Gate.Enter(ctx, s.Session.ID)
 	if err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
 	defer release()
 	result := operationresult.Result[struct{}]{Status: operationresult.Success}
-	row, err := s.route.SessionRows.Mutate(locked, s.session.ID, func(row *storage.Session) error {
+	row, err := s.route.SessionRows.Mutate(locked, s.Session.ID, func(row *storage.Session) error {
 		version, err := sessionInputVersion(row)
 		if err != nil {
 			return err
@@ -87,7 +87,7 @@ func (s *turnState) ensureInputFormat(ctx context.Context) (operationresult.Resu
 	if result.Status != operationresult.Success {
 		return result, nil
 	}
-	*s.session = *row
+	*s.Session = *row
 	return result, nil
 }
 

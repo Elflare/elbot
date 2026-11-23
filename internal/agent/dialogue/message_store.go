@@ -22,13 +22,6 @@ type MessageStore struct {
 	Preparer *Preparer
 }
 
-func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) error {
-	if message == nil {
-		return nil
-	}
-	return s.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}}, operation)
-}
-
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (err error) {
 	if commit.ToolBatch != nil {
 		seen := map[string]bool{}

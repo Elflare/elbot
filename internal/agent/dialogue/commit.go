@@ -119,18 +119,12 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	for i, call := range head.ToolCalls {
 		c.calls[i] = llm.ToolCallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 	}
-	c.results = make([]*storage.Message, len(c.calls))
 	c.remaining = len(c.calls)
-	for i, call := range c.calls {
-		stored := agentshare.ToolResultStorageMessage(c.head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved")})
-		stored.ToolResultStatus = "pending"
-		c.results[i] = &stored
-	}
-	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls, c.results)
+	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls)
 	if err != nil {
 		return err
 	}
-	head.ToolBatchStatus = "pending"
+	c.results = batch.Results
 	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.head.SessionID, ToolBatch: batch}, "begin_tool_transcript")
 }
 func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
@@ -164,18 +158,8 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	}
 	return err
 }
-func (c *ToolTranscriptCommitter) Flush(ctx context.Context) error {
-	if c.remaining != 0 {
-		return fmt.Errorf("tool batch has unfinished results")
-	}
-	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
-		message, err := agentshare.MessageFromStorage(*stored)
-		if err != nil {
-			return err
-		}
-		c.committed = append(c.committed, message)
-	}
-	return nil
+func (c *ToolTranscriptCommitter) Flush(context.Context) error {
+	return agentshare.AppendToolTranscript(&c.committed, c.head, c.results, c.remaining)
 }
 
 func (c *ToolTranscriptCommitter) Committed() []llm.LLMMessage { return c.committed }

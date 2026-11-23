@@ -47,6 +47,17 @@ type TurnMaterials struct {
 	UserMessage *storage.Message
 	Loaded      *contextmgr.LoadedContext
 }
+
+// InputCommit stores canonical segments, not a protocol's decorated prompt.
+func (m TurnMaterials) InputCommit(segments []llm.MessageSegment, rulesShown bool) storage.DialogueCommit {
+	commit := storage.DialogueCommit{SessionID: m.Session.ID, Messages: m.Input.Reports, ElyphRulesShown: rulesShown}
+	if user := m.UserMessage; user != nil {
+		user.Content, user.Segments = MessageContent(segments), StoredMessageSegments(segments)
+		commit.Messages = append(commit.Messages, user)
+	}
+	return commit
+}
+
 type LoopInput struct {
 	Session   *storage.Session
 	Selection modelmgr.Selection
@@ -172,22 +183,25 @@ type MessageCommitter interface {
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.
-func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, error), head *storage.Message, calls []llm.ToolCallRequest, results []*storage.Message) (*storage.ToolBatch, error) {
+func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, error), head *storage.Message, calls []llm.ToolCallRequest) (*storage.ToolBatch, error) {
 	if err := storage.PrepareMessageID(ctx, allocate, head); err != nil {
 		return nil, err
 	}
 	head.CreatedAt = storage.Now()
-	ids := make([]string, len(results))
+	head.ToolBatchStatus = "pending"
+	results := make([]*storage.Message, len(calls))
+	ids := make([]string, len(calls))
 	head.ToolCalls = make([]storage.ToolCall, len(calls))
 	for i, call := range calls {
 		head.ToolCalls[i] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
-	}
-	for i, result := range results {
-		if err := storage.PrepareMessageID(ctx, allocate, result); err != nil {
+		row := ToolResultStorageMessage(head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved")})
+		row.ToolResultStatus = "pending"
+		results[i] = &row
+		if err := storage.PrepareMessageID(ctx, allocate, &row); err != nil {
 			return nil, err
 		}
-		ids[i] = result.ID
-		result.CreatedAt = head.CreatedAt
+		ids[i] = row.ID
+		row.CreatedAt = head.CreatedAt
 	}
 	fields, err := storage.DecodeSessionMetadata(head.Metadata)
 	if err != nil {
@@ -196,6 +210,21 @@ func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, e
 	_ = fields.Set(storage.ToolResultMessageKey, ids)
 	head.Metadata, _ = fields.Encode()
 	return &storage.ToolBatch{Call: head, Results: results}, nil
+}
+
+// AppendToolTranscript projects committed slots in original call order, not completion order.
+func AppendToolTranscript(dst *[]llm.LLMMessage, head *storage.Message, results []*storage.Message, remaining int) error {
+	if remaining != 0 {
+		return fmt.Errorf("tool batch has unfinished results")
+	}
+	for _, stored := range append([]*storage.Message{head}, results...) {
+		message, err := MessageFromStorage(*stored)
+		if err != nil {
+			return err
+		}
+		*dst = append(*dst, message)
+	}
+	return nil
 }
 
 // MessageFromStorage is the sole projection of archived business messages.

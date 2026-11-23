@@ -2,28 +2,26 @@ package responses
 
 import (
 	"context"
+
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/operationresult"
-	"elbot/internal/session"
-	"elbot/internal/tool"
-
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	runtimestatus "elbot/internal/runtime"
+	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/turn"
 )
 
 // LoopDeps contains protocol collaborators, never another protocol implementation.
 type LoopDeps struct {
-	NewMessageID func(context.Context) (string, error) // 根部注入，建立原生材料引用前分配消息身份。
-	Identity     interface {
+	Shared   agentshare.LoopDeps
+	Identity interface {
 		Scope(context.Context) session.Scope
 	}
-	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection
-	Gate             interface {
+
+	Gate interface {
 		Enter(context.Context, string) (context.Context, func(), error)
 	}
 	SessionRows interface {
@@ -42,26 +40,11 @@ type LoopDeps struct {
 		PendingInputs(context.Context, string) ([]storage.NativeInput, error)
 		Calls(context.Context, string) ([]storage.NativeCall, error)
 	}
-	Turns interface {
-		StartToolPhase(string, string) bool
-		DrainMergedInput(string, string) turn.Input
-	}
-	View interface {
-		Context(context.Context) context.Context
-		RefreshSession(context.Context, *storage.Session) (context.Context, error)
-		WithModel(context.Context, modelmgr.Selection) context.Context
-		CheckSelection(*storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error)
-	}
 	Preparer interface {
 		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, bool, error)
 		ArchiveMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, error)
 		PrepareMaterials(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 		FinishMaterials(context.Context, media.UsageID)
-	}
-	Tools interface {
-		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)
-		MaxRoundsPerTurn() int
-		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
 	}
 	Messages interface {
 		Commit(context.Context, storage.DialogueCommit, string) error

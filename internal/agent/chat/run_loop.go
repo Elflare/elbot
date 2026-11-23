@@ -1,21 +1,15 @@
 package chat
 
 import (
-	agentshare "elbot/internal/agent/share"
-	"elbot/internal/operationresult"
-
 	"context"
-	"fmt"
 	"strings"
 
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/delivery"
-	"elbot/internal/llm"
-
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
-	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/turn"
 )
 
 func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (result operationresult.Result[agentshare.LoopResult], runErr error) {
@@ -26,253 +20,121 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			continue
 		}
 		head.ToolBatchStatus = "interrupted"
-		if err := r.Messages.Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
+		if err := r.Messages.Commit(s.RequestCtx, storage.DialogueCommit{SessionID: s.Session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
 			return failedLoop(err)
 		}
 	}
 	defer func() {
 		if result.Status == operationresult.Success {
-			result.Data.Usage, result.Data.Selection = s.usage, s.selection
+			result.Data.Usage, result.Data.Selection = s.usage, s.Selection
 		}
 	}()
-	var finalRawText string
-	var platformFinalText string
-	var finalReasoningContent string
-	var stream delivery.MessageStream
-	var deferredOutputs []delivery.Output
-	toolRounds := 0
-	inToolPhase := false
-	foregroundPrepared := false
+	summarizing := false
 	for {
-		var refreshErr error
-		s.requestCtx, refreshErr = r.View.RefreshSession(s.requestCtx, s.session)
-		if refreshErr != nil {
-			return failedLoop(refreshErr)
-		}
-		s.ctx = r.View.Context(s.ctx)
-		if sessionpkg.WasPromoted(s.session) && !foregroundPrepared {
-			foregroundPrepared = true
-			s.selection = r.SelectionForTurn(s.requestCtx, s.session)
-			if checked := r.CheckSelection(s.selection); checked.Status != operationresult.Success {
+		if !summarizing {
+			checked, err := s.RefreshSession(r.Shared, r.CheckSelection, func() error {
+				prompt, err := r.PromptBuilder.Build(s.RequestCtx, PromptBuildRequest{Session: s.Session, Scope: r.Identity.Scope(s.RequestCtx)})
+				if err != nil {
+					return err
+				}
+				s.messages = agentshare.ReplaceSystemMessages(s.messages, prompt)
+				s.tools, err = r.Shared.Tools.Schemas(s.RequestCtx, s.Session)
+				return err
+			})
+			if err != nil {
+				return failedLoop(err)
+			}
+			if checked.Status != operationresult.Success {
 				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 			}
-			s.requestCtx = r.View.WithModel(s.requestCtx, s.selection)
-			s.ctx = r.View.WithModel(s.ctx, s.selection)
-			scope := r.Identity.Scope(s.requestCtx)
-			prompt, err := r.PromptBuilder.Build(s.requestCtx, PromptBuildRequest{Session: s.session, Scope: scope})
-			if err != nil {
-				return failedLoop(err)
-			}
-			updated := make([]llm.LLMMessage, 0, len(s.messages)+len(prompt))
-			for _, message := range prompt {
-				if message.Role == llm.RoleSystem {
-					updated = append(updated, message)
-				}
-			}
-			for _, message := range s.messages {
-				if message.Role != llm.RoleSystem {
-					updated = append(updated, message)
-				}
-			}
-			s.messages = updated
-			s.tools, err = r.Tools.Schemas(s.requestCtx, s.session)
-			if err != nil {
-				return failedLoop(err)
-			}
 		}
-		compatible, err := r.View.CheckSelection(s.session, s.selection)
-		if err != nil {
-			return failedLoop(err)
+		pending, stream := s.StartCall(r.Shared, out)
+		var snapshot runtimestatus.Snapshot
+		if !summarizing {
+			snapshot = s.LLMSnapshot(s.usage)
+			snapshot.Kind, snapshot.Label = request.KindTurn, "chat"
+			r.Status.Record(s.Ctx, snapshot)
 		}
-		if compatible.Status != operationresult.Success {
-			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
-		}
-		pending := agentshare.DrainPending(r.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-		stream = s.output.StartStream(s.requestCtx)
-		llmStageStartedAt := storage.Now()
-		r.Status.Record(s.ctx, runtimestatus.Snapshot{
-			SessionID:      s.session.ID,
-			Phase:          runtimestatus.PhaseLLM,
-			Provider:       s.selection.Provider,
-			Model:          s.selection.Model,
-			Mode:           s.session.Mode,
-			RequestID:      s.requestID,
-			Kind:           request.KindTurn,
-			Label:          "chat",
-			TurnStartedAt:  s.startedAt,
-			StageStartedAt: llmStageStartedAt,
-			Usage:          s.usage,
-		})
-		called, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream)
+		called, err := r.Caller.Call(s.RequestCtx, s.Session, s.Selection, s.messages, s.tools, pending, stream)
 		if err != nil {
 			return failedLoop(err)
 		}
 		if called.Status != operationresult.Success {
 			return operationresult.Result[agentshare.LoopResult]{Status: called.Status, Message: called.Message}, nil
 		}
-		result := called.Data
-		if len(result.Messages) > 0 {
-			s.messages = result.Messages
+		reply := called.Data
+		if reply.Usage != nil {
+			s.usage = reply.Usage
 		}
-		if err := s.requestCtx.Err(); err != nil {
-			return failedLoop(err)
-		}
-		if result.Usage != nil {
-			s.usage = result.Usage
-		}
-		r.Status.Record(s.ctx, runtimestatus.Snapshot{
-			SessionID:      s.session.ID,
-			Phase:          runtimestatus.PhaseLLM,
-			Provider:       s.selection.Provider,
-			Model:          s.selection.Model,
-			Mode:           s.session.Mode,
-			RequestID:      s.requestID,
-			Kind:           request.KindTurn,
-			Label:          "chat",
-			TurnStartedAt:  s.startedAt,
-			StageStartedAt: llmStageStartedAt,
-			Usage:          s.usage,
-		})
-		immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(result.Outputs)
-		if len(result.ToolCalls) == 0 {
-			deferredOutputs = append(deferredOutputs, laterOutputs...)
-		}
-		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediateOutputs}); err != nil {
-			return failedLoop(err)
-		}
-		if len(result.ToolCalls) == 0 {
-			finalReasoningContent = result.ReasoningContent
-			finalRawText = strings.TrimSpace(result.RawText)
-			platformFinalText = strings.TrimSpace(result.Text)
-			break
-		}
-		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: result.Text}); err != nil {
-			return failedLoop(err)
-		}
-		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: laterOutputs}); err != nil {
-			return failedLoop(err)
-		}
-		if !inToolPhase {
-			if !r.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
-				return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Stopped}}, nil
+		if !summarizing {
+			if len(reply.Messages) > 0 {
+				s.messages = reply.Messages
 			}
-			inToolPhase = true
-		}
-		if toolRounds >= r.Tools.MaxRoundsPerTurn() {
-			s.output.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 跳过后续工具，生成总结", r.Tools.MaxRoundsPerTurn()))
-			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
-			committer := r.NewToolTranscriptCommitter()
-			head := agentshare.ToolCallStorageMessage(s.session.ID, result.RawText, result.RawText, result.ToolCalls, result.ReasoningContent)
-			if err := committer.Begin(s.requestCtx, &head); err != nil {
+			if err := s.RequestCtx.Err(); err != nil {
 				return failedLoop(err)
 			}
-			for i, message := range skipped {
-				stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
-				if err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &storage.ToolResultCommit{Result: &stored}); err != nil {
-					return failedLoop(err)
+			snapshot.Usage = s.usage
+			r.Status.Record(s.Ctx, snapshot)
+		} else {
+			if len(reply.ToolCalls) > 0 {
+				// TODO: force tool_choice=none when supported; ignore calls in this tool-free summary.
+				out.SendPreview(s.Ctx, "总结中的工具调用已忽略")
+			}
+			if reply.Text == "" {
+				reply.Text = "工具调用轮次已达到上限，当前流程已停止。"
+				if reply.RawText == "" {
+					reply.RawText = reply.Text
 				}
 			}
-			if err := committer.Flush(s.requestCtx); err != nil {
-				return failedLoop(err)
-			}
-			s.messages = append(s.messages, committer.Committed()...)
-			summaryInput := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "工具调用次数已达上限，可请求继续或者总结当前进度。"}
-			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, summaryInput); err != nil {
-				return failedLoop(err)
-			}
-			if err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
-				return failedLoop(err)
-			}
-			projected, err := agentshare.MessageFromStorage(*summaryInput)
-			if err != nil {
-				return failedLoop(err)
-			}
-			s.messages = append(s.messages, projected)
-			summaryPending := agentshare.DrainPending(r.Turns, s.session.ID, turn.AttemptFromContext(s.ctx))
-			s.tools = nil
-			stream = s.output.StartStream(s.requestCtx)
-			summarized, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)
-			if err != nil {
-				return failedLoop(err)
-			}
-			if summarized.Status != operationresult.Success {
-				return operationresult.Result[agentshare.LoopResult]{Status: summarized.Status, Message: summarized.Message}, nil
-			}
-			summary := summarized.Data
-			if len(summary.ToolCalls) > 0 {
-				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
-				s.output.SendPreview(s.ctx, "总结中的工具调用已忽略")
-			}
-			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
-			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediateOutputs}); err != nil {
-				return failedLoop(err)
-			}
-			summaryText := summary.Text
-			summaryRawText := summary.RawText
-			finalReasoningContent = summary.ReasoningContent
-			if summaryText == "" {
-				summaryText = "工具调用轮次已达到上限，当前流程已停止。"
-				if summaryRawText == "" {
-					summaryRawText = summaryText
-				}
-			}
-			if summary.Usage != nil {
-				s.usage = summary.Usage
-			}
-			finalRawText = strings.TrimSpace(summaryRawText)
-			platformFinalText = strings.TrimSpace(summaryText)
-			break
 		}
-		toolRounds++
+		immediate, later := delivery.SplitByDeliveryTiming(reply.Outputs)
+		if _, err := out.Send(s.Ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediate}); err != nil {
+			return failedLoop(err)
+		}
+		if summarizing || len(reply.ToolCalls) == 0 {
+			if err := s.RequestCtx.Err(); err != nil {
+				return failedLoop(err)
+			}
+			raw := strings.TrimSpace(reply.RawText)
+			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{
+				Outcome: agentshare.Completed,
+				Commit: agentshare.ReplyCommitInput{
+					Persistence: r.Messages.Committer("append_assistant_message"), Session: s.Session,
+					Text: raw, RawText: raw, PlatformText: strings.TrimSpace(reply.Text),
+					ReasoningContent: reply.ReasoningContent, Stream: stream, Outputs: later,
+				},
+			}}, nil
+		}
+		if err := s.SendToolOutput(out, stream, reply.Text, later); err != nil {
+			return failedLoop(err)
+		}
 		committer := r.NewToolTranscriptCommitter()
-		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, result.RawText, result.RawText, result.ReasoningContent, s.output, committer)
+		execution, limit := s.RunTools(r.Shared, out, reply.ToolCalls, reply.RawText, reply.ReasoningContent, committer, true, s.skippedToolText)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}
 		if execution.Stopped {
-			if err := s.requestCtx.Err(); err != nil {
-				return failedLoop(err)
-			}
 			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Stopped}}, nil
 		}
 		s.messages = append(s.messages, committer.Committed()...)
-		s.tools, err = r.Tools.Schemas(s.ctx, s.session)
+		if limit {
+			if err := s.AppendUserText(r.Shared, r.Messages.Committer("append_summary_input"), &s.messages, "工具调用次数已达上限，可请求继续或者总结当前进度。"); err != nil {
+				return failedLoop(err)
+			}
+			s.tools = nil
+			summarizing = true
+			continue
+		}
+		s.tools, err = r.Shared.Tools.Schemas(s.Ctx, s.Session)
 		if err != nil {
 			return failedLoop(err)
 		}
 		if execution.ConfirmationExtra != "" {
-			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
-			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, message); err != nil {
+			if err := s.AppendUserText(r.Shared, r.Messages.Committer("append_confirmation_input"), &s.messages, "补充："+execution.ConfirmationExtra); err != nil {
 				return failedLoop(err)
 			}
-			if err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
-				return failedLoop(err)
-			}
-			projected, err := agentshare.MessageFromStorage(*message)
-			if err != nil {
-				return failedLoop(err)
-			}
-			s.messages = append(s.messages, projected)
 		}
 	}
-	if err := s.requestCtx.Err(); err != nil {
-		return failedLoop(err)
-	}
-
-	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{
-		Outcome: agentshare.Completed,
-		Commit: agentshare.ReplyCommitInput{
-			Persistence:      r.Messages.Committer("append_assistant_message"),
-			Session:          s.session,
-			Text:             finalRawText,
-			RawText:          finalRawText,
-			ReasoningContent: finalReasoningContent,
-			PlatformText:     platformFinalText,
-			Stream:           stream,
-			Outputs:          deferredOutputs,
-		},
-	}}, nil
 }
 
 func failedLoop(err error) (operationresult.Result[agentshare.LoopResult], error) {

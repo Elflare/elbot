@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -112,7 +113,7 @@ func TestArchiveFailureDoesNotReplaceRequestFailure(t *testing.T) {
 					compactor := &Compactor{Context: &Context{Repository: repo}, Gate: archiveGate{}}
 					_, err = compactor.compactOnce(ctx, row, selection, client, api.PreparedCompactRequest{}, "", "{}")
 				} else {
-					state := &turnState{ctx: ctx, session: row, selection: selection, route: &Loop{LoopDeps: LoopDeps{Repository: repo, Gate: archiveGate{}, View: dialogue.ExecutionView{}}}}
+					state := &turnState{LoopState: agentshare.LoopState{Ctx: ctx, LoopInput: agentshare.LoopInput{Session: row, Selection: selection}}, route: &Loop{LoopDeps: LoopDeps{Repository: repo, Gate: archiveGate{}, Shared: agentshare.LoopDeps{View: dialogue.ExecutionView{}}}}}
 					stream := delivery.StreamFunc(func(context.Context, delivery.StreamEvent) (delivery.Receipt, error) { return delivery.Receipt{}, nil })
 					_, err = state.nativeCall(ctx, client, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin(row.ID, selection))
 				}
@@ -165,7 +166,7 @@ func streamFixture(t testing.TB, events []api.Event) (*turnState, eventClient) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &turnState{ctx: t.Context(), session: &storage.Session{ID: "session"}, route: &Loop{LoopDeps: LoopDeps{Repository: &archiveRepository{}, Gate: archiveGate{}}}}, eventClient{client, events}
+	return &turnState{LoopState: agentshare.LoopState{Ctx: t.Context(), LoopInput: agentshare.LoopInput{Session: &storage.Session{ID: "session"}}}, route: &Loop{LoopDeps: LoopDeps{Repository: &archiveRepository{}, Gate: archiveGate{}}}}, eventClient{client, events}
 }
 
 func TestPartialStreamDeliveryAndArchive(t *testing.T) {
@@ -191,7 +192,7 @@ func TestPartialStreamDeliveryAndArchive(t *testing.T) {
 			got = append(got, string(e.Type)+":"+e.Text)
 			return delivery.Receipt{}, nil
 		})
-		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.Selection))
 		if (success && err != nil) || (!success && !errors.Is(err, failure)) || !reflect.DeepEqual(got, wantEvents) || len(r.Items) != 1 {
 			t.Fatalf("success=%v events=%v items=%v err=%v", success, got, r.Items, err)
 		}
@@ -226,7 +227,7 @@ func TestItemDoneReplacesBufferedDeltas(t *testing.T) {
 		}
 		s, c := streamFixture(t, events)
 		stream := delivery.StreamFunc(func(context.Context, delivery.StreamEvent) (delivery.Receipt, error) { return delivery.Receipt{}, nil })
-		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		r, err := s.nativeCall(t.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.Selection))
 		if (success && err != nil) || (!success && !errors.Is(err, failure)) || len(r.Items) != 1 || outputText(r.Items) != wantText {
 			t.Fatalf("items=%v err=%v", r.Items, err)
 		}
@@ -247,7 +248,7 @@ func BenchmarkNativeCallDeltas(b *testing.B) {
 	stream := delivery.StreamFunc(func(context.Context, delivery.StreamEvent) (delivery.Receipt, error) { return delivery.Receipt{}, nil })
 	b.ReportAllocs()
 	for b.Loop() {
-		_, err := s.nativeCall(b.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.selection))
+		_, err := s.nativeCall(b.Context(), c, api.Request{Model: "model"}, nil, stream, new(dialogue.CallProcessor).Begin("session", s.Selection))
 		if err != nil {
 			b.Fatal(err)
 		}
