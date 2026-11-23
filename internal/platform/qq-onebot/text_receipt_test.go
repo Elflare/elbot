@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/platform/share"
 )
 
 func TestTextReceiptsKeepActualTarget(t *testing.T) {
@@ -55,10 +54,6 @@ func TestTextPagesReturnOneForwardReceipt(t *testing.T) {
 	receipt, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 30000))})
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
-	}
-	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), "group", "9", "88")
-	if err != nil || !row.IsAssistant || row.Text != strings.Repeat("a", 30000) {
-		t.Fatalf("forward history: %v, %v", row, err)
 	}
 	if sent := receipt.SentMessages[0]; sent.Platform != "qqonebot" || (sent.ChatType != "group" || sent.ChatID != "9") || sent.PlatformMessageID != "88" {
 		t.Fatalf("source=%#v", sent)

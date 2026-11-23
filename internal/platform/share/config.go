@@ -17,9 +17,6 @@ type CommonConfig struct {
 
 // DecodeConfig decodes a raw [platform.<name>] app.toml section into an adapter-owned config struct.
 func DecodeConfig(raw map[string]any, out any) error {
-	if out == nil {
-		return fmt.Errorf("platform config output is nil")
-	}
 	if raw == nil {
 		return nil
 	}

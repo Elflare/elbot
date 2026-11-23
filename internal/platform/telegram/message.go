@@ -272,10 +272,6 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		Bot:             bot,
 		Mentions:        append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords: append([]string(nil), a.cfg.TriggerKeywords...),
-		Meta: map[string]any{
-			"telegram.message_id": formatMessageID(msg.MessageID),
-			"telegram.chat_id":    strconv.FormatInt(msg.Chat.ID, 10),
-		},
 	}
 	history := share.InboundMessage{Conversation: messageCtx.Conversation, Segments: normalized.Segments, Raw: firstNonEmpty(msg.Text, msg.Caption)}
 	if msg.Date > 0 {
@@ -301,24 +297,10 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			EventQuote: share.ReferencedMessage{SenderID: messageCtx.ReplyToSenderID, SenderName: displayNamePtr(original.From), Text: share.SegmentsText(quote.Segments), Segments: quote.Segments},
 		})
 		if err != nil {
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryLog,
-				Level:        slog.LevelError,
-				EventName:    "platform_context_failed",
-				Module:       a.Name(),
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			globalevents.Log(context.WithoutCancel(msgCtx), record)
+			share.LogContextFailure(msgCtx, a.Name(), err)
 			return
 		}
-		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
-		messageCtx.ResumeSessionID = ref.ResumeSessionID
-		messageCtx.ContextText = ref.Text
-		messageCtx.Reply = ref.Reply
-		messageCtx.ContextSegments = ref.DisplaySegments
+		messageCtx.ApplyReference(ref)
 	}
 	share.RecordInboundMessage(ctx, a.chatHistory, history, messageCtx.Reply)
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {

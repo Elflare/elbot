@@ -141,12 +141,6 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10), Username: a.botIdentity().Username},
 		Mentions:              append([]share.Mention(nil), normalized.Mentions...),
 		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),
-		Meta: map[string]any{
-			"qq_onebot.message_id":   strconv.FormatInt(event.MessageID, 10),
-			"qq_onebot.message_type": event.MessageType,
-			"qq_onebot.group_id":     strconv.FormatInt(event.GroupID, 10),
-			"qq_onebot.user_id":      strconv.FormatInt(event.UserID, 10),
-		},
 	}
 	history := share.InboundMessage{Conversation: messageCtx.Conversation, Segments: currentSegments, Raw: text}
 	if event.Time > 0 {
@@ -192,15 +186,11 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			share.RecordInboundMessage(ctx, a.chatHistory, history, share.ReplyContext{})
 			return
 		}
-		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
-		messageCtx.ResumeSessionID = ref.ResumeSessionID
-		messageCtx.ContextText = ref.Text
-		messageCtx.Reply = ref.Reply
+		messageCtx.ApplyReference(ref)
 		messageCtx.ReplyToSenderID = ref.Reply.SenderID
 		if ref.Reply.IsAssistant {
 			messageCtx.ReplyToSenderID = messageCtx.Bot.UserID
 		}
-		messageCtx.ContextSegments = ref.DisplaySegments
 	}
 	share.RecordInboundMessage(ctx, a.chatHistory, history, messageCtx.Reply)
 	msgCtx = share.WithMessageContext(ctx, messageCtx)
@@ -303,9 +293,5 @@ func scopeID(event Event) string {
 }
 
 func (a *Adapter) logContextFailure(ctx context.Context, err error) {
-	globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{
-		Category: globalevents.LogCategoryLog, Level: slog.LevelError, EventName: "platform_context_failed",
-		Module: a.Name(), Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
-		ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,
-	})
+	share.LogContextFailure(ctx, a.Name(), err)
 }

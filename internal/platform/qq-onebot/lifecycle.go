@@ -157,7 +157,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 	defer close(a.connectDone)
 	ctx := a.workCtx
 	interval := time.Duration(a.cfg.ReconnectIntervalSeconds) * time.Second
-	backoff := share.NewBackoff(interval, 10*time.Second)
+	backoff := share.NewBackoff(interval)
 	for {
 		if err := ctx.Err(); err != nil {
 			return

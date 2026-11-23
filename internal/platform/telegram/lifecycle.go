@@ -158,7 +158,7 @@ func (a *Adapter) beginOperation(ctx context.Context) (context.Context, func(), 
 func (a *Adapter) runPolling(handler share.MessageHandler) {
 	defer close(a.pollDone)
 	ctx := a.workCtx
-	backoff := share.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
+	backoff := share.NewBackoff(a.cfg.reconnectInterval())
 	var offset int64
 	for {
 		if err := ctx.Err(); err != nil {

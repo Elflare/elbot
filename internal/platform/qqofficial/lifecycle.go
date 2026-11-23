@@ -156,7 +156,7 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 	defer close(a.gatewayDone)
 	ctx := a.workCtx
 	state := gatewayState{}
-	backoff := share.NewBackoff(a.cfg.reconnectInterval(), 10*time.Second)
+	backoff := share.NewBackoff(a.cfg.reconnectInterval())
 	for {
 		if err := ctx.Err(); err != nil {
 			return

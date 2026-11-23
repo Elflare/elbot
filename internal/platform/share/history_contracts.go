@@ -71,8 +71,3 @@ func appendHistory(ctx context.Context, w ChatHistoryWriter, m *storage.ChatMess
 		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "record_chat_message_failed", Module: m.Platform, Content: fmt.Sprintf("record chat message %s: %v", m.PlatformMessageID, err), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 	}
 }
-
-// ChatHistoryReader 只按平台消息身份查询单条历史。
-type ChatHistoryReader interface {
-	GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
-}

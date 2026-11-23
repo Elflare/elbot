@@ -9,7 +9,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
 	"encoding/json"
-	"maps"
 	"slices"
 	"strings"
 )
@@ -116,7 +115,6 @@ type MessageContext struct {
 	ContextText              string                 // 引用上下文正文。
 	ContextSegments          []MessageSegment       // 引用上下文片段。
 	Reply                    ReplyContext           // 原始引用事实。
-	Meta                     map[string]any         // 协议侧附加数据。
 	RawText                  string                 // 平台原始正文。
 	PlatformMessage          json.RawMessage        // 平台原始消息 JSON。
 	Bot                      Identity               // 平台机器人身份。
@@ -134,7 +132,6 @@ func cloneMessageContext(msg MessageContext) MessageContext {
 	msg.Mentions = slices.Clone(msg.Mentions)
 	msg.TriggerKeywords = slices.Clone(msg.TriggerKeywords)
 	msg.PlatformMessage = slices.Clone(msg.PlatformMessage)
-	msg.Meta = maps.Clone(msg.Meta)
 	return msg
 }
 
@@ -152,15 +149,7 @@ func MessageContextFrom(ctx context.Context) (MessageContext, bool) {
 	return cloneMessageContext(msg), ok
 }
 
-func WithoutMessageContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, messageContextKey{}, struct{}{})
-}
-
 // RestoreMessageContext 只恢复平台私有状态，不修改目标的公共会话事实或取消信号。
 func RestoreMessageContext(ctx, source context.Context) context.Context {
-	msg, ok := source.Value(messageContextKey{}).(MessageContext)
-	if !ok {
-		return WithoutMessageContext(ctx)
-	}
-	return context.WithValue(ctx, messageContextKey{}, cloneMessageContext(msg))
+	return context.WithValue(ctx, messageContextKey{}, source.Value(messageContextKey{}))
 }

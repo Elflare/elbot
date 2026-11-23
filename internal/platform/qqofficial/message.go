@@ -16,14 +16,6 @@ import (
 	"elbot/internal/platform/share"
 )
 
-const (
-	metaMsgID     = "qqofficial.msg_id"
-	metaEventID   = "qqofficial.event_id"
-	metaEventType = "qqofficial.event_type"
-	metaGroupID   = "qqofficial.group_openid"
-	metaMemberID  = "qqofficial.member_openid"
-)
-
 var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
 
 func (a *Adapter) handleC2CMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
@@ -141,13 +133,6 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		Bot:                   bot,
 		Mentions:              mentions,
 		TriggerKeywords:       append([]string(nil), a.cfg.TriggerKeywords...),
-		Meta: map[string]any{
-			metaMsgID:     strings.TrimSpace(msg.ID),
-			metaEventID:   strings.TrimSpace(p.ID),
-			metaEventType: p.Type,
-			metaGroupID:   strings.TrimSpace(msg.GroupOpenID),
-			metaMemberID:  strings.TrimSpace(msg.Author.MemberOpenID),
-		},
 	}
 	msgCtx := share.WithMessageContext(ctx, messageCtx)
 	var ref share.ReferenceResult
@@ -165,25 +150,11 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		})
 	}
 	if err != nil {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogCategoryLog,
-			Level:        slog.LevelError,
-			EventName:    "platform_context_failed",
-			Module:       a.Name(),
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("prepare platform context failed: %v", err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		globalevents.Log(context.WithoutCancel(msgCtx), record)
+		share.LogContextFailure(msgCtx, a.Name(), err)
 		return
 	}
 	if replyID != "" || ref.Reply.Display != "" {
-		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
-		messageCtx.ResumeSessionID = ref.ResumeSessionID
-		messageCtx.ContextText = ref.Text
-		messageCtx.Reply = ref.Reply
-		messageCtx.ContextSegments = ref.DisplaySegments
+		messageCtx.ApplyReference(ref)
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
 	createdAt, _ := time.Parse(time.RFC3339Nano, strings.TrimSpace(msg.Timestamp))

@@ -16,7 +16,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage"
 )
 
 func TestReconnectKeepsAcceptedMessageBotIdentity(t *testing.T) {
@@ -114,7 +113,7 @@ func TestCommandCatalogSnapshots(t *testing.T) {
 	}
 }
 
-func TestCallbackUsesInjectedReferenceAndWritesHistory(t *testing.T) {
+func TestCallbackUsesInjectedReference(t *testing.T) {
 	var answers atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/answerCallbackQuery") {
@@ -144,12 +143,5 @@ func TestCallbackUsesInjectedReferenceAndWritesHistory(t *testing.T) {
 	}, update{CallbackQuery: &callbackQuery{ID: "callback", Data: "/confirm", From: user{ID: 5}, Message: &message{MessageID: 7, Chat: chat{ID: 9, Type: "private"}, ReplyToMessage: &message{MessageID: 6, Text: "original"}}}}, share.Identity{UserID: "123"})
 	if answers.Load() != 1 || got.ForkFromMessageID != "fork" || got.ResumeSessionID != "resume" || got.ContextText != "context" || got.Reply.MessageID != "6" || got.Bot.UserID != "123" {
 		t.Fatalf("message=%#v answers=%d", got, answers.Load())
-	}
-	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(context.Background(), config.PlatformTelegram, "private", "9", "7")
-	if err != nil || row.Text != "/confirm" || row.SenderID != "5" {
-		t.Fatalf("row=%#v err=%v", row, err)
-	}
-	if reply := storage.ChatMessageReply(*row); reply.MessageID != "6" {
-		t.Fatalf("reply=%#v", reply)
 	}
 }

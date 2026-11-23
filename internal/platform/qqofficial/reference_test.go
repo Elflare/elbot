@@ -137,10 +137,6 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 		if h.text != "你好" || got.ContextText != want || len(got.ContextSegments) != 1 || got.ContextSegments[0].Text != want {
 			t.Fatalf("quote context = %q, segments = %+v", got.ContextText, got.ContextSegments)
 		}
-		row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), got.Source.ChatType, got.Source.ChatID, "current")
-		if err != nil || row.Text != "你好" || storage.ChatMessageReply(*row).Display != got.Reply.Display || got.Reply.Display+"\n芙蕾娅："+row.Text != want {
-			t.Fatalf("stored snapshot=%+v, err=%v", row, err)
-		}
 		if got.ReplyToMessageID != "" || got.ReplyToSenderID != "" || got.Reply.MessageID != "" || len(got.Mentions) != 0 {
 			t.Fatalf("unmapped quote acquired identity: %+v", got.Conversation)
 		}

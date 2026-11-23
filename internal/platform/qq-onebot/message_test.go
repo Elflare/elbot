@@ -548,16 +548,12 @@ func TestUnavailableQuotedMessageKeepsCurrentMessage(t *testing.T) {
 	a.transport = transport
 	h := &captureHandler{}
 	a.handleEvent(t.Context(), h.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7, Message: []byte(`[{"type":"reply","data":{"id":"77"}},{"type":"text","data":{"text":"B 的正文"}}]`)})
-	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(t.Context(), a.Name(), "group", "9", "7")
-	if err != nil || row.Text != "B 的正文" {
-		t.Fatalf("current history=%+v err=%v", row, err)
-	}
 	if h.ctx == nil {
 		t.Fatal("current message was not dispatched")
 	}
 	msg, _ := share.MessageContextFrom(h.ctx)
-	if h.text != row.Text || msg.ReplyToSenderID != "" || msg.Reply.IsAssistant || calls.Load() != 1 {
-		t.Fatalf("row=%+v err=%v input=%q reply=%+v calls=%d", row, err, h.text, msg.Reply, calls.Load())
+	if h.text != "B 的正文" || msg.ReplyToSenderID != "" || msg.Reply.IsAssistant || calls.Load() != 1 {
+		t.Fatalf("input=%q reply=%+v calls=%d", h.text, msg.Reply, calls.Load())
 	}
 }
 func TestHandleEventFillsReplyToSenderID(t *testing.T) {

@@ -3,9 +3,13 @@ package share
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
+	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 )
 
 // ReferencedMessage 保留引用内容及原始媒体顺序。
@@ -40,6 +44,23 @@ type ReferenceResult struct {
 	ResumeSessionID   string           // 可选恢复会话。
 	DisplaySegments   []MessageSegment // 给模型的完整有序输入。
 	Reply             ReplyContext     // 原始引用事实。
+}
+
+// ApplyReference 回填引用解析的公共结果，协议特有的发送者修正由适配器处理。
+func (m *MessageContext) ApplyReference(ref ReferenceResult) {
+	m.ForkFromMessageID = ref.ForkFromMessageID
+	m.ResumeSessionID = ref.ResumeSessionID
+	m.ContextText = ref.Text
+	m.ContextSegments = ref.DisplaySegments
+	m.Reply = ref.Reply
+}
+
+func LogContextFailure(ctx context.Context, platform string, err error) {
+	events.Log(context.WithoutCancel(ctx), events.LogRecord{
+		Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "platform_context_failed",
+		Module: platform, Type: events.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
+		ContentLimit: 4096, ResultStatus: events.ResultFailed,
+	})
 }
 
 // FormatReferenceSegments 只加引用标记，保留正文、媒体和展开片段的顺序。
