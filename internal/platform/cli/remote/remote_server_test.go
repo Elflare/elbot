@@ -97,7 +97,7 @@ func TestRemoteServerSendsStatusAndNoticeToOriginalClient(t *testing.T) {
 	ctx := server.messageContext(t.Context(), clients[0])
 	status := runtimestatus.Snapshot{SessionID: "session", Phase: runtimestatus.PhaseLLM}
 	target := remoteDisplayTarget{server: server, client: clients[0]}
-	if err := target.PresentStatus(ctx, clishare.Status{Snapshot: status}); err != nil {
+	if err := target.PresentStatus(ctx, status); err != nil {
 		t.Fatal(err)
 	}
 	if err := server.PresentNotice(ctx, clishare.Notice{Text: "notice", Level: "WARN", Destination: delivery.Target{}}); err != nil {
@@ -260,7 +260,7 @@ func TestSessionSubscriptionRoutesRunningStream(t *testing.T) {
 	read(a, remoteMsgStream, "S1")
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	target := info.PlatformData.(remoteDisplayTarget)
-	if err := target.PresentStatus(ctx, clishare.Status{Snapshot: runtimestatus.Snapshot{SessionID: "S1"}}); err != nil {
+	if err := target.PresentStatus(ctx, runtimestatus.Snapshot{SessionID: "S1"}); err != nil {
 		t.Fatal(err)
 	}
 	read(a, remoteMsgStatus, "S1")

@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	clishare "elbot/internal/platform/cli/share"
 	platformshare "elbot/internal/platform/share"
 )
 
@@ -32,14 +31,9 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	streamRuntime, ok := a.runtime.(clishare.StreamRuntime)
-	if !ok {
-		return nil, fmt.Errorf("cli message stream is unavailable")
-	}
-	return streamRuntime.StartStream(ctx)
+	return a.runtime.StartStream(ctx)
 }
 
 func (a *Adapter) SupportsToolCallEvents() bool {
-	runtime, ok := a.runtime.(clishare.ToolCallEventRuntime)
-	return ok && runtime.SupportsToolCallEvents()
+	return a.runtime.SupportsToolCallEvents()
 }

@@ -99,13 +99,13 @@ func (m tuiModel) updateCopyMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.moveCopyCursor(0, -1)
 		return m, nil
 	case "w":
-		m.moveCopyCursorWordForward()
+		m.moveCopyWord(nextWordStart)
 		return m, nil
 	case "e":
-		m.moveCopyCursorWordEnd()
+		m.moveCopyWord(nextWordEnd)
 		return m, nil
 	case "b":
-		m.moveCopyCursorWordBackward()
+		m.moveCopyWord(previousWordStart)
 		return m, nil
 	case "pgdown", "ctrl+d":
 		m.pageCopy(1)
@@ -261,31 +261,9 @@ func (m *tuiModel) moveCopyCursor(dx, dy int) {
 	m.refreshCopyRegion()
 }
 
-func (m *tuiModel) moveCopyCursorWordForward() {
+func (m *tuiModel) moveCopyWord(find func([]string, copyCursor) (copyCursor, bool)) {
 	lines := m.copyLines(m.copyState.Region)
-	cursor, ok := nextWordStart(lines, clampCursor(m.copyState.Cursor, lines))
-	if !ok {
-		return
-	}
-	m.copyState.Cursor = cursor
-	m.ensureCopyCursorVisible()
-	m.refreshCopyRegion()
-}
-
-func (m *tuiModel) moveCopyCursorWordEnd() {
-	lines := m.copyLines(m.copyState.Region)
-	cursor, ok := nextWordEnd(lines, clampCursor(m.copyState.Cursor, lines))
-	if !ok {
-		return
-	}
-	m.copyState.Cursor = cursor
-	m.ensureCopyCursorVisible()
-	m.refreshCopyRegion()
-}
-
-func (m *tuiModel) moveCopyCursorWordBackward() {
-	lines := m.copyLines(m.copyState.Region)
-	cursor, ok := previousWordStart(lines, clampCursor(m.copyState.Cursor, lines))
+	cursor, ok := find(lines, clampCursor(m.copyState.Cursor, lines))
 	if !ok {
 		return
 	}

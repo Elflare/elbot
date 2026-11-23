@@ -42,9 +42,6 @@ type osc52ClipboardWriter struct {
 }
 
 func (w osc52ClipboardWriter) WriteAll(text string) error {
-	if w.out == nil {
-		return fmt.Errorf("osc52 output is nil")
-	}
 	maxBytes := w.maxBytes
 	if maxBytes <= 0 {
 		maxBytes = osc52ClipboardMaxBytes
@@ -71,36 +68,17 @@ func newClipboardWriter() clipboardWriter {
 }
 
 func (w autoClipboardWriter) WriteAll(text string) error {
+	first, second := w.system, w.osc52
 	if w.remoteSession() {
-		if err := w.writeOSC52(text); err == nil {
-			return nil
-		}
-		return w.writeSystem(text)
+		first, second = second, first
 	}
-	if err := w.writeSystem(text); err == nil {
-		return nil
+	if err := first.WriteAll(text); err != nil {
+		return second.WriteAll(text)
 	}
-	return w.writeOSC52(text)
-}
-
-func (w autoClipboardWriter) writeSystem(text string) error {
-	if w.system == nil {
-		return fmt.Errorf("system clipboard is nil")
-	}
-	return w.system.WriteAll(text)
-}
-
-func (w autoClipboardWriter) writeOSC52(text string) error {
-	if w.osc52 == nil {
-		return fmt.Errorf("osc52 clipboard is nil")
-	}
-	return w.osc52.WriteAll(text)
+	return nil
 }
 
 func (w autoClipboardWriter) remoteSession() bool {
 	env := w.env
-	if env == nil {
-		env = os.Getenv
-	}
 	return env("SSH_CONNECTION") != "" || env("SSH_TTY") != "" || env("TMUX") != "" || env("STY") != ""
 }

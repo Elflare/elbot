@@ -52,7 +52,7 @@ func newStatusDisplay(platformName string) *statusDisplay {
 	return &statusDisplay{
 		platformName: platformName,
 		send: func(ctx context.Context, target share.DisplayTarget, snapshot runtimestatus.Snapshot) error {
-			return target.PresentStatus(ctx, share.Status{Snapshot: snapshot})
+			return target.PresentStatus(ctx, snapshot)
 		},
 		pending:  make(map[statusTarget]statusProjection),
 		versions: make(map[statusTarget]uint64),

@@ -23,6 +23,7 @@ import (
 	"elbot/internal/delivery"
 	clishare "elbot/internal/platform/cli/share"
 	platformshare "elbot/internal/platform/share"
+	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 )
 
@@ -93,6 +94,24 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 			return ctx.Err()
 		}
 	}
+	var reader io.Reader
+	if !isTerminal(r.input) {
+		info, err := r.input.Stat()
+		if err != nil {
+			r.mu.Unlock()
+			return err
+		}
+		reader = r.input
+		if !info.Mode().IsRegular() {
+			cancellable, err := cancelreader.NewReader(r.input)
+			if err != nil {
+				r.mu.Unlock()
+				return err
+			}
+			r.inputReader = cancellable
+			reader = cancellable
+		}
+	}
 	r.started = true
 	r.workCtx, r.workCancel = context.WithCancel(ctx)
 	renderCtx, renderCancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -104,9 +123,6 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 		r.startErr = err
 		close(r.startDone)
 		r.mu.Unlock()
-		if err != nil {
-			r.BeginClose()
-		}
 	}()
 
 	submit := func(text string) error {
@@ -123,28 +139,8 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 		return handler(contextinfo.WithConversation(r.workCtx, info), text, msg)
 	}
 
-	if !isTerminal(r.input) {
+	if reader != nil {
 		close(r.renderDone)
-		info, statErr := r.input.Stat()
-		if statErr != nil {
-			r.finishInput(nil)
-			return statErr
-		}
-		var reader io.Reader = r.input
-		if !info.Mode().IsRegular() {
-			cancellable, readErr := cancelreader.NewReader(r.input)
-			if readErr != nil {
-				r.finishInput(nil)
-				return readErr
-			}
-			r.mu.Lock()
-			r.inputReader = cancellable
-			if r.closing {
-				cancellable.Cancel()
-			}
-			r.mu.Unlock()
-			reader = cancellable
-		}
 		go r.scan(reader, submit)
 	} else {
 		ready := make(chan struct{})
@@ -378,12 +374,12 @@ func (r *Runtime) StartStream(context.Context) (delivery.MessageStream, error) {
 
 func (r *Runtime) SupportsToolCallEvents() bool { return r.interactive }
 
-func (r *Runtime) PresentStatus(ctx context.Context, status clishare.Status) error {
+func (r *Runtime) PresentStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
 	if !r.interactive {
-		_, err := fmt.Fprintln(os.Stdout, FormatCompact(status.Snapshot, time.Now(), 0))
+		_, err := fmt.Fprintln(os.Stdout, FormatCompact(snapshot, time.Now(), 0))
 		return err
 	}
-	return r.enqueue(ctx, tuiStatusMsg(status.Snapshot))
+	return r.enqueue(ctx, tuiStatusMsg(snapshot))
 }
 
 func (r *Runtime) PresentNotice(ctx context.Context, notice clishare.Notice) error {

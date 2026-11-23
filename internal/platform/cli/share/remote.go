@@ -16,6 +16,7 @@ import (
 // Runtime 是 local/remote 实现向 CLI 根包提供的平台运行能力。
 type Runtime interface {
 	platformshare.Runtime
+	delivery.ToolCallEventSender
 	// PresentNotice 接收根包完成 binding 过滤后的通知事实。
 	PresentNotice(context.Context, Notice) error
 	SetCompleter(func(context.Context, completion.Request) ([]completion.Item, error))
@@ -26,17 +27,6 @@ type LocalRuntime interface {
 	Runtime
 	DisplayTarget
 	WaitExit(context.Context) error
-}
-
-// StreamRuntime 为没有原始会话目标的本地输入创建消息流。
-type StreamRuntime interface {
-	StartStream(context.Context) (delivery.MessageStream, error)
-}
-
-// ToolCallEventRuntime identifies runtimes that deliver complete structured
-// tool-call updates to the active CLI client.
-type ToolCallEventRuntime interface {
-	SupportsToolCallEvents() bool
 }
 
 // DisplayEvent 是 remote client 接收并交给终端呈现的业务事件。

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	clishare "elbot/internal/platform/cli/share"
+	runtimestatus "elbot/internal/runtime"
 )
 
 func startTestDisplay(t *testing.T) (*statusDisplay, func()) {
@@ -20,5 +20,5 @@ func startTestDisplay(t *testing.T) (*statusDisplay, func()) {
 
 type testDisplayTarget struct{ id string }
 
-func (t testDisplayTarget) TargetID() string                                   { return t.id }
-func (testDisplayTarget) PresentStatus(context.Context, clishare.Status) error { return nil }
+func (t testDisplayTarget) TargetID() string                                          { return t.id }
+func (testDisplayTarget) PresentStatus(context.Context, runtimestatus.Snapshot) error { return nil }

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	clishare "elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 	"github.com/coder/websocket"
 )
@@ -198,7 +197,7 @@ func TestRemoteStreamAndStatusFollowReconnectedClient(t *testing.T) {
 		}
 	}
 	status := runtimestatus.Snapshot{SessionID: "session", Phase: runtimestatus.PhaseLLM}
-	if err := (remoteDisplayTarget{server: server, client: clients[0]}).PresentStatus(ctx, clishare.Status{Snapshot: status}); err != nil {
+	if err := (remoteDisplayTarget{server: server, client: clients[0]}).PresentStatus(ctx, status); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestRemote(t, newConn); got.Type != remoteMsgStatus || got.Snapshot != status {

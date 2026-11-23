@@ -13,6 +13,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	clishare "elbot/internal/platform/cli/share"
+	runtimestatus "elbot/internal/runtime"
 )
 
 func (s *RemoteServer) originalTarget(ctx context.Context) (remoteDisplayTarget, bool) {
@@ -102,9 +103,9 @@ func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageS
 	return remoteMessageStream{server: t.server, clientID: t.client.id, sessionID: t.sessionID, id: remoteStreamID.Add(1)}, nil
 }
 
-func (t remoteDisplayTarget) PresentStatus(ctx context.Context, status clishare.Status) error {
+func (t remoteDisplayTarget) PresentStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
 	clients := t.server.sessionClients(t.client.id, t.sessionID)
-	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, SessionID: t.sessionID, Snapshot: status.Snapshot})
+	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, SessionID: t.sessionID, Snapshot: snapshot})
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {
