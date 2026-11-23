@@ -46,11 +46,10 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 		}
 		who := user(m.SenderID, m.SenderName, m.SenderAvatarURL, m.IsAssistant)
 		body := m.Text
-		marker := "...[单条消息过长，已截断]"
 		if m.Quote != "" {
-			body = truncateChatHistoryReference(m.Quote, full, marker) + "\n" + truncateChatHistoryReference(body, full, marker)
+			body = truncateChatHistoryReference(m.Quote, full) + "\n" + truncateChatHistoryReference(body, full)
 		} else {
-			body = truncateChatHistoryMessage(body, full, marker)
+			body = truncateChatHistoryMessage(body, full)
 		}
 		id := fmt.Sprintf("h%d", m.Seq)
 		prefix := ""
@@ -86,23 +85,23 @@ func formatHistoryRows(messages []Message, target int64, full, avatars bool) []s
 	return lines
 }
 
-func truncateChatHistoryReference(text string, full bool, marker string) string {
+func truncateChatHistoryReference(text string, full bool) string {
 	if full {
 		return text
 	}
-	return truncatePreview(strings.TrimSpace(strings.ReplaceAll(text, "\r", "")), marker)
+	return truncatePreview(strings.TrimSpace(strings.ReplaceAll(text, "\r", "")))
 }
-func truncateChatHistoryMessage(text string, full bool, marker string) string {
+func truncateChatHistoryMessage(text string, full bool) string {
 	if full {
 		return text
 	}
-	return truncatePreview(strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(text)), marker)
+	return truncatePreview(strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(text)))
 }
-func truncatePreview(text, marker string) string {
+func truncatePreview(text string) string {
 	n := 0
 	for i := range text {
 		if n == chatHistoryMessageLimit {
-			return text[:i] + marker
+			return text[:i] + "...[单条消息过长，已截断]"
 		}
 		n++
 	}

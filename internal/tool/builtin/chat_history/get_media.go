@@ -16,15 +16,10 @@ type getMediaArgs struct {
 }
 
 func (t GetMediaTool) Definition() toolshare.ToolDefinition {
-	builder := getMediaBuilder()
-
-	schema := builder.BuildSchema()
-	properties := schema.Parameters["properties"].(map[string]any)
+	definition := getMediaBuilder().Build(t.PrepareCall)
+	properties := definition.Parameters["properties"].(map[string]any)
 	properties["message_id"].(map[string]any)["minItems"] = 1
 	properties["media_index"] = map[string]any{"type": "array", "minItems": 1, "description": "长度同message_id；第i项选消息i的媒体编号(不计文字)，1-based；省略→每消息[1]。", "items": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}}}
-	definition := builder.Build(t.PrepareCall)
-	definition.Parameters = schema.Parameters
-
 	return definition
 }
 func getMediaBuilder() *toolshare.Builder {

@@ -40,7 +40,7 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
 		toolshare.ConfirmationField{Key: "message_id", Label: "引用消息", Value: args.MessageID},
 		toolshare.ConfirmationField{Key: "message", Label: "回复", Value: args.Message},
-	)}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == 0 {
 			message := "message_id 必须是历史消息短号，例如 h8121 或 8121。"
@@ -66,11 +66,10 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			out.ReplyReferenceIndex = target.Data.ReferenceIndex
 		}
 		result := &toolshare.Result{
-			Content: fmt.Sprintf("已引用回复 [h%d] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.Data.Seq, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false, "...[单条消息过长，已截断]")),
+			Content: fmt.Sprintf("已引用回复 [h%d] %s(%s): %s\n回复内容已发送，勿重复发送。", target.Data.Seq, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false)),
 			Outputs: []delivery.Output{out},
 		}
-		logContent = fmt.Sprintf("已引用回复 h%d", messageID)
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("已引用回复 h%d", messageID), nil
 	})}, nil
 }
 func (m Deps) replyMessage(ctx context.Context, seq int64) (operationresult.Result[*storage.ChatMessage], error) {

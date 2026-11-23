@@ -22,19 +22,14 @@ type viewImageArgs struct {
 }
 
 func (t ViewImageTool) Definition() toolshare.ToolDefinition {
-	builder := viewImageBuilder()
-
-	schema := builder.BuildSchema()
-	properties := schema.Parameters["properties"].(map[string]any)
+	definition := viewImageBuilder().Build(t.PrepareCall)
+	properties := definition.Parameters["properties"].(map[string]any)
 	properties["message_id"].(map[string]any)["minItems"] = 1
 	properties["media_index"] = map[string]any{
 		"type": "array", "minItems": 1,
 		"description": "长度同message_id；第i项选消息i的图片媒体编号，沿用历史编号，1-based；省略→每消息首图。",
 		"items":       map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}},
 	}
-	definition := builder.Build(t.PrepareCall)
-	definition.Parameters = schema.Parameters
-
 	return definition
 }
 func viewImageBuilder() *toolshare.Builder {
@@ -183,10 +178,11 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (op
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
+	logContent := fmt.Sprintf("requested_messages=%d returned_items=%d failed_items=%d", len(args.MessageIDs), len(results.Data), failed)
 	if failed > 0 && failed == len(results.Data) {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: llm.SegmentsContentText(segments)}, fmt.Sprintf("requested_messages=%d returned_items=%d failed_items=%d", len(args.MessageIDs), len(results.Data), failed), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: llm.SegmentsContentText(segments)}, logContent, nil
 	}
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Segments: segments}}, fmt.Sprintf("requested_messages=%d returned_items=%d failed_items=%d", len(args.MessageIDs), len(results.Data), failed), nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Segments: segments}}, logContent, nil
 }
 
 func imageResultSegment(item toolshare.MediaInfo) llm.MessageSegment {
