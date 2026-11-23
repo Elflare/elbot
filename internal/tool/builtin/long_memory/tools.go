@@ -157,7 +157,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 		})}, nil
 	case "update":
-		prepared, err := t.store.previewUpdate(ctx, longMemoryUpdateArgsFromWrite(args))
+		prepared, err := t.store.previewUpdate(ctx, args)
 		if err != nil {
 			return operationresult.Result[*toolshare.PreparedCall]{}, err
 		}
@@ -250,25 +250,6 @@ func longMemoryUpdateRiskDetails(preview longMemoryUpdatePreview) []toolshare.Co
 		),
 		toolshare.FileDiffConfirmationDetail(filePreview.Diff),
 	}
-}
-func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArgs {
-	update := longMemoryUpdateArgs{ID: args.ID, ContentEdits: args.ContentEdits}
-	if args.Category != "" {
-		update.Category = &args.Category
-	}
-	if args.Title != "" {
-		update.Title = &args.Title
-	}
-	if args.Summary != "" {
-		update.Summary = &args.Summary
-	}
-	if args.Keywords != "" {
-		update.Keywords = &args.Keywords
-	}
-	if args.Content != "" {
-		update.Content = &args.Content
-	}
-	return update
 }
 
 func longMemoryBuilder(name, description string) *toolshare.Builder {

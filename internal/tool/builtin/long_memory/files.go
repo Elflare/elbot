@@ -73,16 +73,11 @@ func parseLongMemoryText(text string) (parsedLongMemoryFile, error) {
 		remaining = remaining[1:]
 	}
 	idx := strings.Index(remaining, "\n+++")
-	sepLen := 4
-	if idx < 0 {
-		idx = strings.Index(remaining, "\r\n+++")
-		sepLen = 5
-	}
 	if idx < 0 {
 		return parsedLongMemoryFile{}, fmt.Errorf("缺少结束 TOML front matter 分隔符 +++，无法可靠区分元数据和正文")
 	}
 	front := remaining[:idx]
-	after := remaining[idx+sepLen:]
+	after := remaining[idx+len("\n+++"):]
 	if strings.HasPrefix(after, "\r\n") {
 		after = after[2:]
 	} else if strings.HasPrefix(after, "\n") {

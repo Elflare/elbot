@@ -569,14 +569,8 @@ func TestLongMemoryUpdateRejectsContentAndContentEditsTogether(t *testing.T) {
 	store := newLongMemoryStore(t.TempDir())
 	t.Cleanup(func() { _ = store.close() })
 	writeTool := LongMemoryWriteTool{store: store}
-	ctx := context.Background()
-
-	result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"正文"}`)})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
 	args := []byte(`{"operation":"update","id":1,"content":"整段正文","content_edits":[{"operation":"insert","line":2,"new_text":"追加"}]}`)
-	prepared, err := writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: args})
+	prepared, err := writeTool.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: args})
 	if err != nil || prepared.Status == operationresult.Success || !strings.Contains(prepared.Message, "content and content_edits cannot be used together") {
 		t.Fatalf("expected conflict error, got %v", err)
 	}

@@ -31,14 +31,13 @@ func (s *longMemoryStore) close() error {
 	}
 	err := s.db.Close()
 	s.db = nil
-	s.initialized = false
 	s.lastSync = time.Time{}
 	s.formatErrors = nil
 	return err
 }
 
 func (s *longMemoryStore) ensureLocked(ctx context.Context) (operationresult.Result[struct{}], error) {
-	if s.initialized {
+	if s.db != nil {
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	if strings.TrimSpace(s.rootDir) == "" {
@@ -86,7 +85,6 @@ func (s *longMemoryStore) ensureLocked(ctx context.Context) (operationresult.Res
 		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory FTS table: %w", err)
 	}
 	s.db = db
-	s.initialized = true
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 

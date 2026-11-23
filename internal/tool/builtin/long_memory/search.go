@@ -19,9 +19,6 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	if args.Keywords == "" && args.Category == "" {
-		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "keywords 和 category 不能同时为空"}, nil
-	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

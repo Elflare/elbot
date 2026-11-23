@@ -15,16 +15,6 @@ import (
 	"time"
 )
 
-type longMemoryUpdateArgs struct {
-	ID           int64
-	Category     *string
-	Title        *string
-	Summary      *string
-	Keywords     *string
-	Content      *string
-	ContentEdits []fileops.Edit
-}
-
 type longMemoryUpdatePreview struct {
 	Before longMemoryRecord
 	After  longMemoryRecord
@@ -50,10 +40,9 @@ type longMemoryStore struct {
 	memoriesDir string // 记忆 Markdown 文件目录。
 	indexPath   string // SQLite 索引文件路径。
 
-	mu          sync.Mutex // 保护数据库访问、同步状态及文件变更。
-	db          *sql.DB    // 当前打开的索引数据库。
-	initialized bool       // 索引表是否已初始化。
-	lastSync    time.Time  // 最近成功同步时间，用于同步冷却。
+	mu       sync.Mutex // 保护数据库访问、同步状态及文件变更。
+	db       *sql.DB    // 当前打开的索引数据库。
+	lastSync time.Time  // 最近成功同步时间，用于同步冷却。
 	// formatErrors remembers file-local validation failures for this open store.
 	// Reuse requires matching persisted error and file attributes; mu protects it.
 	formatErrors map[string]longMemoryInvalidFile
@@ -141,23 +130,19 @@ func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePr
 	return operationresult.Result[longMemoryRecord]{Status: operationresult.Success, Data: preview.After}, nil
 }
 
-func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryUpdateArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
+func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryWriteArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[longMemoryUpdatePreview]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.previewUpdateLocked(ctx, args)
-}
-
-func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemoryUpdateArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
 	if args.ID <= 0 {
 		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "id is required"}, nil
 	}
-	if args.Content != nil && len(args.ContentEdits) > 0 {
+	if args.Content != "" && len(args.ContentEdits) > 0 {
 		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "content and content_edits cannot be used together"}, nil
 	}
-	if !args.hasChanges() {
+	if args.Category == "" && args.Title == "" && args.Summary == "" && args.Keywords == "" && args.Content == "" && len(args.ContentEdits) == 0 {
 		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "update requires at least one changed field or content_edits"}, nil
 	}
 	ready, err := s.ensureLocked(ctx)
@@ -188,20 +173,20 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		}
 		record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
 		next := record
-		if args.Category != nil {
-			next.Category = cleanLongMemoryText(*args.Category)
+		if args.Category != "" {
+			next.Category = cleanLongMemoryText(args.Category)
 		}
-		if args.Title != nil {
-			next.Title = cleanLongMemoryText(*args.Title)
+		if args.Title != "" {
+			next.Title = cleanLongMemoryText(args.Title)
 		}
-		if args.Summary != nil {
-			next.Summary = cleanLongMemoryText(*args.Summary)
+		if args.Summary != "" {
+			next.Summary = cleanLongMemoryText(args.Summary)
 		}
-		if args.Keywords != nil {
-			next.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
+		if args.Keywords != "" {
+			next.Keywords = strings.Join(splitLongMemoryKeywords(args.Keywords), " ")
 		}
-		if args.Content != nil {
-			next.Content = strings.TrimSpace(*args.Content)
+		if args.Content != "" {
+			next.Content = strings.TrimSpace(args.Content)
 		}
 		if len(args.ContentEdits) > 0 {
 			content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
@@ -213,7 +198,7 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		if err := validateLongMemoryRecord(next, true); err != nil {
 			return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		if next.Category == record.Category && next.Title == record.Title && next.Summary == record.Summary && next.Keywords == record.Keywords && next.Content == record.Content {
+		if next == record {
 			return operationresult.Result[string]{Status: operationresult.Rejected, Message: "edit produced no changes"}, nil
 		}
 		next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -232,10 +217,6 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 	}
 	preview.File = file.Data
 	return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.Success, Data: preview}, nil
-}
-
-func (args longMemoryUpdateArgs) hasChanges() bool {
-	return args.Category != nil || args.Title != nil || args.Summary != nil || args.Keywords != nil || args.Content != nil || len(args.ContentEdits) > 0
 }
 
 func (s *longMemoryStore) delete(ctx context.Context, approved longMemoryRecord, target, revision string) (operationresult.Result[string], error) {
