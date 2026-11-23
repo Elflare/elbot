@@ -50,21 +50,13 @@ type NormalizedMessage struct {
 }
 
 func normalizeMessage(raw json.RawMessage, rawMessage string, selfID int64) NormalizedMessage {
-	if msg, ok := normalizeMessageSegments(raw, selfID); ok {
-		return msg
+	if segments, ok := decodeMessageSegments(raw); ok {
+		return convertSegments(segments, selfID, ordinaryInput)
 	}
 	if len(raw) > 0 {
 		return normalizePlainText(messageString(raw))
 	}
 	return normalizePlainText(rawMessage)
-}
-
-func normalizeMessageSegments(raw json.RawMessage, selfID int64) (NormalizedMessage, bool) {
-	segments, ok := decodeMessageSegments(raw)
-	if !ok {
-		return NormalizedMessage{}, false
-	}
-	return convertSegments(segments, selfID, ordinaryInput), true
 }
 
 func decodeMessageSegments(raw json.RawMessage) ([]Segment, bool) {
@@ -301,10 +293,6 @@ func (a *Adapter) referenceFetcher(event Event, getMessage func() (getMessageDat
 		}
 		return share.ReferencedMessage{SenderID: id, IsAssistant: data.Sender.UserID != 0 && data.Sender.UserID == event.SelfID, SenderName: senderName(data.Sender), Text: ref.text(), Segments: ref.Segments}, true, nil
 	}
-}
-
-func (a *Adapter) isMessageEvent(event Event) bool {
-	return event.PostType == "message" && (event.MessageType == "private" || event.MessageType == "group")
 }
 
 func scopeID(event Event) string {

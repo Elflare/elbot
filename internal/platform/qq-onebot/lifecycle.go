@@ -269,30 +269,27 @@ func (a *Adapter) readLoop(ctx context.Context, handler share.MessageHandler) er
 		if err != nil {
 			return err
 		}
-		if event.PostType == "" {
+		if event.PostType != "message" || (event.MessageType != "private" && event.MessageType != "group") {
 			continue
 		}
-		if a.isMessageEvent(event) {
-			a.mu.Lock()
-			if a.closing {
+		a.mu.Lock()
+		if a.closing {
+			a.mu.Unlock()
+			continue
+		}
+		if event.MessageID != 0 {
+			if event.MessageID == a.lastMessageID {
 				a.mu.Unlock()
 				continue
 			}
-			if event.MessageID != 0 {
-				if event.MessageID == a.lastMessageID {
-					a.mu.Unlock()
-					continue
-				}
-				a.lastMessageID = event.MessageID
-			}
-			a.work.Add(1)
-			a.mu.Unlock()
-			go func(event Event) {
-				defer a.work.Done()
-				a.handleEvent(a.workCtx, handler, event)
-			}(event)
-			continue
+			a.lastMessageID = event.MessageID
 		}
+		a.work.Add(1)
+		a.mu.Unlock()
+		go func(event Event) {
+			defer a.work.Done()
+			a.handleEvent(a.workCtx, handler, event)
+		}(event)
 	}
 }
 

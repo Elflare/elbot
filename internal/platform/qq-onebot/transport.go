@@ -277,7 +277,7 @@ func (t *Transport) GetMessage(ctx context.Context, messageID string) (getMessag
 	if err != nil {
 		return getMessageData{}, fmt.Errorf("parse message id: %w", err)
 	}
-	resp, err := t.call(ctx, "get_msg", map[string]any{"message_id": id})
+	resp, err := t.Call(ctx, "get_msg", map[string]any{"message_id": id})
 	if err != nil {
 		return getMessageData{}, err
 	}
@@ -289,7 +289,7 @@ func (t *Transport) GetMessage(ctx context.Context, messageID string) (getMessag
 }
 
 func (t *Transport) GetImage(ctx context.Context, file string) (getImageData, error) {
-	resp, err := t.call(ctx, "get_image", map[string]any{"file": file})
+	resp, err := t.Call(ctx, "get_image", map[string]any{"file": file})
 	if err != nil {
 		return getImageData{}, err
 	}
@@ -306,7 +306,7 @@ func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]
 		return nil, fmt.Errorf("forward resource id is empty")
 	}
 	// OneBot calls this parameter message_id, but requires the forward resource ID.
-	resp, err := t.call(ctx, "get_forward_msg", map[string]any{"message_id": forwardID})
+	resp, err := t.Call(ctx, "get_forward_msg", map[string]any{"message_id": forwardID})
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +332,7 @@ func (t *Transport) GetForwardMessage(ctx context.Context, forwardID string) ([]
 }
 
 func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, error) {
-	resp, err := t.call(ctx, "get_file", map[string]any{"file": file, "download": true})
+	resp, err := t.Call(ctx, "get_file", map[string]any{"file": file, "download": true})
 	if err != nil {
 		return getFileData{}, err
 	}
@@ -344,7 +344,7 @@ func (t *Transport) GetFile(ctx context.Context, file string) (getFileData, erro
 }
 
 func (t *Transport) getLoginInfo(ctx context.Context) (Sender, error) {
-	resp, err := t.call(ctx, "get_login_info", map[string]any{})
+	resp, err := t.Call(ctx, "get_login_info", map[string]any{})
 	if err != nil {
 		return Sender{}, err
 	}
@@ -359,7 +359,7 @@ func (t *Transport) getLoginInfo(ctx context.Context) (Sender, error) {
 }
 
 func (t *Transport) GetGroupMemberInfo(ctx context.Context, groupID, userID int64) (Sender, error) {
-	resp, err := t.call(ctx, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
+	resp, err := t.Call(ctx, "get_group_member_info", map[string]any{"group_id": groupID, "user_id": userID})
 	if err != nil {
 		return Sender{}, err
 	}
@@ -370,12 +370,8 @@ func (t *Transport) GetGroupMemberInfo(ctx context.Context, groupID, userID int6
 	return data, nil
 }
 
-func (t *Transport) Call(ctx context.Context, action string, params map[string]any) (response, error) {
-	return t.call(ctx, action, params)
-}
-
 func (t *Transport) sendMessage(ctx context.Context, action string, params map[string]any) (string, error) {
-	resp, err := t.call(ctx, action, params)
+	resp, err := t.Call(ctx, action, params)
 	if err != nil {
 		return "", err
 	}
@@ -389,7 +385,7 @@ func (t *Transport) sendMessage(ctx context.Context, action string, params map[s
 	return strconv.FormatInt(data.MessageID, 10), nil
 }
 
-func (t *Transport) call(ctx context.Context, action string, params map[string]any) (_ response, callErr error) {
+func (t *Transport) Call(ctx context.Context, action string, params map[string]any) (_ response, callErr error) {
 	active := false
 	defer func() {
 		if active {

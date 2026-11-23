@@ -585,33 +585,14 @@ func TestHandleEventFillsReplyToSenderID(t *testing.T) {
 	}
 }
 
-func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "elbot.db"))
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-	defer store.Close()
-
-	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Platform: "qqonebot", ChatType: "group", ChatID: "9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	assistant := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "stored answer"}
-	if err := store.Messages().Append(ctx, assistant); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}}}); err != nil {
-		t.Fatalf("map platform message: %v", err)
-	}
-
-	transport := newTestTransport(t, func(req request) response {
-		return response{Status: "ok", Data: []byte(`{"sender":{"user_id":2,"nickname":"用户"},"message":[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]}`), Echo: req.Echo}
+func TestReferenceFetcherReturnsSenderAndImage(t *testing.T) {
+	fetch := (&Adapter{}).referenceFetcher(Event{SelfID: 1000}, func() (getMessageData, error) {
+		return getMessageData{
+			Sender:  Sender{UserID: 2, Nickname: "用户"},
+			Message: []byte(`[{"type":"image","data":{"file":"a.jpg","url":"https://example.com/a.jpg"}}]`),
+		}, nil
 	})
-	adapter := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, store, nil)
-	adapter.transport = transport
-
-	ref, ok, err := adapter.referenceFetcher(Event{MessageType: "group", SelfID: 1000, GroupID: 9}, func() (getMessageData, error) { return adapter.transport.GetMessage(ctx, "77") })(ctx)
+	ref, ok, err := fetch(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
