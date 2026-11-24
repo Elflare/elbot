@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/memory/resident"
+	"elbot/internal/residentmemory"
 	"elbot/internal/tool/builtin"
 )
 
@@ -20,10 +20,10 @@ func raw(text string) json.RawMessage {
 }
 
 func TestResidentMemoryToolsUseActorScope(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
-	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
-	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	coreTool := builtin.NewResidentMemoryTools(store)[3]
+	normalTool := builtin.NewResidentMemoryTools(store)[2]
+	readTool := builtin.NewResidentMemoryTools(store)[1]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Role: contextinfo.RoleUser})
 
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil || result.Status != operationresult.Success {
@@ -54,8 +54,8 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 }
 
 func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	normalTool := builtin.NewResidentMemoryTools(store)[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
@@ -65,7 +65,7 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if result.Data.Content != "已追加普通常驻记忆。" {
 		t.Fatalf("append empty content = %q", result.Data.Content)
 	}
-	memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
+	memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
@@ -73,21 +73,21 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("append existing: %v", err)
 	}
-	memory, err = store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
+	memory, err = store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条 第二条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
 	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("delete: %v", err)
 	}
-	if memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
+	if memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after delete, err=%v", err)
 	}
 }
 
 func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	coreTool := builtin.NewResidentMemoryTools(store)[3]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil || result.Status != operationresult.Success {
@@ -96,7 +96,7 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("clear core: %v", err)
 	}
-	if memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
+	if memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after clear, err=%v", err)
 	}
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{}`)}); err != nil || result.Status == operationresult.Success {
@@ -105,14 +105,14 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 }
 
 func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
-	store := resident.NewStoreWithLimits("unused.toml", resident.Limits{Core: 200, Normal: 300})
-	entry := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[0]
+	store := residentmemory.NewStoreWithLimits("unused.toml", residentmemory.Limits{Core: 200, Normal: 300})
+	entry := builtin.NewResidentMemoryTools(store)[0]
 	if entry.Definition.Risk != toolshare.RiskLow || len(entry.Definition.DependsOn) != 3 {
 		t.Fatalf("entry info = %#v", entry.Definition)
 	}
-	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
-	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
-	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
+	readTool := builtin.NewResidentMemoryTools(store)[1]
+	normalTool := builtin.NewResidentMemoryTools(store)[2]
+	coreTool := builtin.NewResidentMemoryTools(store)[3]
 	if readTool.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("read risk not low")
 	}
@@ -142,13 +142,26 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 }
 
 func TestResidentMemoryValidation(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
-	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	readTool := builtin.NewResidentMemoryTools(store)[1]
+	normalTool := builtin.NewResidentMemoryTools(store)[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
-	if result, _, err := callTool(context.Background(), readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)}); err != nil || result.Status == operationresult.Success {
-		t.Fatalf("expected missing actor error")
+	for _, tc := range []struct {
+		tool toolshare.ToolDefinition
+		args string
+	}{
+		{readTool, `{"section":"all"}`},
+		{normalTool, `{"action":"append","content":"normal"}`},
+		{builtin.NewResidentMemoryTools(store)[3], `{"content":"core"}`},
+	} {
+		prepared, err := tc.tool.PrepareCall(ctx, toolshare.CallRequest{Arguments: raw(tc.args)})
+		if err != nil || prepared.Status != operationresult.Success {
+			t.Fatalf("prepare %s: %v, %v", tc.tool.Definition.Name, prepared, err)
+		}
+		if result, _, err := prepared.Data.Call(context.Background()); err != nil || result.Status != operationresult.Unavailable {
+			t.Fatalf("%s without execution actor: %v, %v", tc.tool.Definition.Name, result, err)
+		}
 	}
 	if result, _, err := callTool(ctx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"bad"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatalf("expected invalid section error")

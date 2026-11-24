@@ -11,8 +11,8 @@ import (
 
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/memory/resident"
 	"elbot/internal/operationresult"
+	"elbot/internal/residentmemory"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/tool/discovery"
@@ -28,7 +28,7 @@ import (
 type Supervisor struct {
 	registry            *toolregistry.Registry
 	resolver            *discovery.Resolver
-	residentMemoryStore *resident.Store
+	residentMemoryStore *residentmemory.Store
 	skillManager        *skill.Manager
 	fileRollback        *fileops.Service
 	engine              *execution.Manager
@@ -244,7 +244,7 @@ func (m *Supervisor) Remove(ctx context.Context, name string) (operationresult.R
 	return m.skillManager.Remove(ctx, name)
 }
 func (m *Supervisor) Reload(ctx context.Context) error { return m.skillManager.Reload(ctx) }
-func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (resident.Memory, error) {
+func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (residentmemory.Memory, error) {
 	return m.residentMemoryStore.Read(ctx, scope)
 }
 func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, admission ...fileops.CommitAdmission) context.Context {

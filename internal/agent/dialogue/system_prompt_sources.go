@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/memory/resident"
+	"elbot/internal/residentmemory"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
@@ -75,7 +75,7 @@ type SoulSystemPromptSource struct {
 
 type ResidentMemorySystemPromptSource struct {
 	Store interface {
-		Read(context.Context, session.Scope) (resident.Memory, error)
+		Read(context.Context, session.Scope) (residentmemory.Memory, error)
 	}
 }
 

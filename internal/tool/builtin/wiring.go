@@ -8,6 +8,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
+	"elbot/internal/residentmemory"
 	"elbot/internal/storage"
 	"elbot/internal/tool/builtin/chat_history"
 	"elbot/internal/tool/builtin/long_memory"
@@ -19,8 +20,7 @@ import (
 type Deps struct {
 	CreateQuestions     func([]storage.Question) *storage.QuestionGroup       // Assign IDs and save one question group.
 	QuestionCommands    func() (string, string)                               // Configured answer and submit commands.
-	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
-	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。
+	ResidentMemory      *residentmemory.Store                                 // 工具按执行时的调用者身份访问的常驻记忆存储。
 	LongMemoryDir       string                                                // 长期记忆资产与索引目录。
 	DraftRoot           string                                                // 各会话草稿所在的根目录。
 	FileRollback        *fileops.Service                                      // 与总管共享的编辑和回滚服务。
@@ -41,7 +41,7 @@ type Deps struct {
 }
 
 func NewTools(deps Deps) []share.ToolDefinition {
-	guard := FileGuard{NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
+	guard := FileGuard{NewResidentMemoryFileGuardRule(deps.ResidentMemory.Path), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
 	deps.FileRollback.CheckWrite = guard.CheckWrite
 	definitions := []share.ToolDefinition{
 		weave.Definition(deps.ProcessEnv),

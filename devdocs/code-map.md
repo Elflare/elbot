@@ -110,7 +110,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `tool/builtin/web/`：`extract.go` 网页提取入口；`extract_fetch.go` 提取请求与响应；`extract_html.go` 直抓文本与链接；`extract_cache.go` 提取缓存；`search.go` 网页搜索。
 - `tool/builtin/`：`send_file.go` 文件发送。
 - `tool/builtin/`：`cron.go` 任务；`resident_memory.go` 常驻记忆；`elwisp_creator.go` Elwisp 创建指引。
-- `tool/`：`cron_bridge.go` Cron 适配；`config_bridge.go` 配置适配；`resident_memory_bridge.go` 记忆适配。
+- `tool/`：`cron_bridge.go` Cron 适配；`config_bridge.go` 配置适配。
+- `residentmemory/store.go`：按身份读写常驻记忆的 TOML 存储。
 - `tool/builtin/chat_history/`：`tools.go` 注册和依赖；`search.go`、`around.go`、`reply.go` 历史工具；`format.go` 展示；`get_media.go`、`view_image.go`、`media.go` 媒体选择和获取。
 - `tool/discovery/resolve.go`：发现与依赖解析。
 - `tool/state/`：`state.go` 状态更新；`discovered.go` 已发现声明。

@@ -10,8 +10,8 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/fileops"
-	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
+	"elbot/internal/residentmemory"
 	"elbot/internal/signal"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/builtin/chat_history"
@@ -35,7 +35,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	environment := processenv.New(os.Environ()).Fill(dotEnv)
 	registry := toolregistry.NewRegistry(deps.Permission)
 	resolver := discovery.NewResolver(registry)
-	residentStore := resident.NewStoreWithLimits(filepath.Join(configDir, "memories.toml"), resident.Limits{
+	residentStore := residentmemory.NewStoreWithLimits(filepath.Join(configDir, "memories.toml"), residentmemory.Limits{
 		Core:   cfg.ResidentMemory.CoreMaxUnits,
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
 	})
@@ -52,9 +52,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	definitions := builtin.NewTools(builtin.Deps{
 		CreateQuestions:  deps.CreateQuestions,
 		QuestionCommands: func() (string, string) { prefix := cfg.Commands.Prefixes[0]; return prefix + "a", prefix + "ac" },
-		Media:            mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
-		ResidentMemoryPath: residentStore.Path, ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
-		ChatHistory: history, LongMemoryDir: filepath.Join(configDir, "long_memory"),
+		Media:            mediaRuntime, ResidentMemory: residentStore,
+		ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
+		ChatHistory:         history, LongMemoryDir: filepath.Join(configDir, "long_memory"),
 		DraftRoot:    filepath.Join(filepath.Dir(cfg.Sandbox.Root), "draft"),
 		FileRollback: fileRollback, ProcessEnv: environment,
 		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,

@@ -7,10 +7,10 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/request"
+	"elbot/internal/residentmemory"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -249,7 +249,7 @@ type RunnerDeps struct {
 	MaxRounds int
 	SoulPath  string
 	Memory    interface {
-		Read(context.Context, session.Scope) (resident.Memory, error)
+		Read(context.Context, session.Scope) (residentmemory.Memory, error)
 	}
 	Preloader interface {
 		TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)

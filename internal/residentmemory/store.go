@@ -1,4 +1,4 @@
-package resident
+package residentmemory
 
 import (
 	"bytes"

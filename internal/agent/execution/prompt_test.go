@@ -16,8 +16,8 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/memory/resident"
 	"elbot/internal/operationresult"
+	"elbot/internal/residentmemory"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool/preload"
@@ -27,7 +27,7 @@ import (
 )
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	scope := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
 	if result, err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("WriteCore: %+v %v", result, err)
@@ -64,7 +64,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 }
 
 func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
-	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
@@ -181,7 +181,7 @@ func (s tagPromptTestService) TagPrompts(ctx context.Context, tags []string) ([]
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
 	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
-	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	memoryStore := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	if result, err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("WriteCore: %+v %v", result, err)
 	}

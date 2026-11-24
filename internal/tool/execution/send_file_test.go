@@ -13,7 +13,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/media"
-	"elbot/internal/memory/resident"
+	"elbot/internal/residentmemory"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -44,7 +44,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: sendFileMemory{}, FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished)})); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml")), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished)})); err != nil {
 		t.Fatal(err)
 	}
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})
@@ -130,7 +130,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 func TestSendFileDirectCallRejectsLocalForRegularUser(t *testing.T) {
 	permission := security.NewPermission("critical", "high", nil)
 	registry := toolregistry.NewRegistry(permission)
-	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: sendFileMemory{}, FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir()})); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml")), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir()})); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, permission)
@@ -139,10 +139,4 @@ func TestSendFileDirectCallRejectsLocalForRegularUser(t *testing.T) {
 	if err != nil || result.Status != operationresult.Forbidden || !strings.Contains(result.Message, "发送本地文件需要超级管理员权限") {
 		t.Fatalf("direct local call error = %v", err)
 	}
-}
-
-type sendFileMemory struct{ builtin.ResidentMemoryService }
-
-func (sendFileMemory) LimitsOrDefault() resident.Limits {
-	return resident.Limits{Core: 300, Normal: 1000}
 }

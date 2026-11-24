@@ -3,8 +3,8 @@ package tool
 import (
 	"context"
 	"elbot/internal/fileops"
-	"elbot/internal/memory/resident"
 	"elbot/internal/operationresult"
+	"elbot/internal/residentmemory"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/share"
 	"path/filepath"
@@ -41,7 +41,7 @@ func preparedRisk(ctx context.Context, tool share.ToolDefinition, req share.Call
 func builtinTestTool(t *testing.T, name string, deps builtin.Deps) share.ToolDefinition {
 	t.Helper()
 	deps.FileRollback = fileops.NewService(nil)
-	deps.ResidentMemory = residentMemoryBridge{store: resident.NewStore(filepath.Join(t.TempDir(), "memory.toml"))}
+	deps.ResidentMemory = residentmemory.NewStore(filepath.Join(t.TempDir(), "memory.toml"))
 	deps.LongMemoryDir = t.TempDir()
 	deps.Now = time.Now
 	for _, definition := range builtin.NewTools(deps) {
