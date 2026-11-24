@@ -27,7 +27,7 @@
         - [x] builtin/web
     - [x] discovery
     - [x] execution
-    - [ ] media
+    - [x] media
     - [ ] preload
     - [ ] registry
     - [ ] skill

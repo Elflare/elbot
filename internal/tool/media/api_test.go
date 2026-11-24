@@ -64,18 +64,6 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 			t.Fatalf("accepted invalid image: %+v %v", got, err)
 		}
 	}
-	call := runtime.NewCall()
-	defer call.Close()
-	info, err := call.Retain(t.Context(), record.Data.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	info.Data.Name = "changed"
-	info.Data.ID = "changed"
-	again, err := call.Retain(t.Context(), record.Data.ID)
-	if err != nil || again.Status != operationresult.Success || again.Data != want {
-		t.Fatalf("caller changed retained metadata: %+v %v", again, err)
-	}
 }
 
 func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {

@@ -45,11 +45,8 @@ func mediaFilename(metadata share.MediaInfo) string {
 // Export 将持有的媒体写入调用私有目录，返回相对 base 的路径和通用信息。
 func (c *MediaCall) Export(ctx context.Context, id, base string) (string, operationresult.Result[share.MediaInfo], error) {
 	metadata, err := c.Retain(ctx, id)
-	if err != nil {
-		return "", operationresult.Result[share.MediaInfo]{}, err
-	}
-	if metadata.Status != operationresult.Success {
-		return "", metadata, nil
+	if err != nil || metadata.Status != operationresult.Success {
+		return "", metadata, err
 	}
 	relative, err := c.Workspace(base)
 	if err != nil {
@@ -110,7 +107,7 @@ func (c *MediaCall) Import(ctx context.Context, base, path string, input share.M
 	return c.Retain(ctx, metadata.Data.ID)
 }
 
-func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedia) (err error) {
+func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedia) error {
 	reader, err := held.Open(ctx)
 	if err != nil {
 		return err
