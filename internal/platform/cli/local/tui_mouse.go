@@ -45,6 +45,21 @@ func (m tuiModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft && (region == regionChat || region == regionNotice) {
+		if region == regionChat {
+			offset := m.viewport.YOffset
+			for _, block := range m.content {
+				if block.kind == tuiContentTool && block.toolHeaderLine == offset+event.Y-1 {
+					block.toolExpanded = !block.toolExpanded
+					if m.copyState.active() && m.copyState.Region == regionChat {
+						m.exitCopyMode()
+					} else {
+						m.refreshContent()
+					}
+					m.viewport.SetYOffset(offset)
+					return m, nil
+				}
+			}
+		}
 		m.enterCopyMode(region)
 		m.copyState.Cursor = m.copyCursorFromMouse(region, event.X, event.Y)
 		m.ensureCopyCursorVisible()

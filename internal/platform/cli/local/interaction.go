@@ -365,7 +365,18 @@ func (r *Runtime) SendTo(ctx context.Context, target delivery.Target, outputs []
 
 func (r *Runtime) SendCommandResult(ctx context.Context, result command.Result, failure error) (delivery.Receipt, error) {
 	outputs := platformshare.CommandResultOutputs(result, failure)
-	return r.SendTo(ctx, delivery.Target{}, outputs)
+	if !r.interactive {
+		return r.SendTo(ctx, delivery.Target{}, outputs)
+	}
+	level := slog.LevelInfo
+	if failure != nil {
+		level = slog.LevelError
+	}
+	text := delivery.FallbackOutput(outputs).Text
+	if text == "" {
+		return delivery.Receipt{}, nil
+	}
+	return delivery.Receipt{}, r.enqueue(ctx, tuiNoticeMsg{Text: text, Level: level})
 }
 
 func (r *Runtime) StartStream(context.Context) (delivery.MessageStream, error) {

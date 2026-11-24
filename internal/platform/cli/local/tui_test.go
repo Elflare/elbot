@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
+	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -20,7 +21,7 @@ import (
 )
 
 func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
-	m := tuiModel{viewport: viewport.New(80, 24)}
+	m := tuiModel{viewport: viewport.New(80, 2)}
 	m.applyStreamEvent(tuiStreamMsg{ID: 2, Event: delivery.StreamEvent{
 		Type: delivery.StreamToolCall, ToolCallID: "call-1",
 		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
@@ -49,6 +50,21 @@ func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
 	}})
 	if len(m.content) != 2 || m.content[1] == card || m.content[1].toolCall.Arguments != `{"cmd":"date"}` {
 		t.Fatalf("reused tool call ID reused old card: %#v", m.content)
+	}
+	closed := m.wrappedContent()
+	before, _, found := strings.Cut(closed, "▸ shell · 完成")
+	if !found || strings.Contains(closed, "pwd") || strings.Contains(closed, "/work") || strings.Contains(closed, "date") {
+		t.Fatalf("collapsed cards: %q", closed)
+	}
+	click := tea.MouseMsg{X: 1, Y: 1 + strings.Count(before, "\n") - m.viewport.YOffset, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+	updated, _ := m.Update(click)
+	m = updated.(tuiModel)
+	if got := m.wrappedContent(); !strings.Contains(got, "pwd") || !strings.Contains(got, "/work") || strings.Contains(got, "date") || m.copyState.active() {
+		t.Fatalf("expanded cards: %q", got)
+	}
+	updated, _ = m.Update(click)
+	if got := updated.(tuiModel).wrappedContent(); got != closed {
+		t.Fatalf("second click did not restore collapsed cards: %q", got)
 	}
 }
 
@@ -349,19 +365,6 @@ func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 	}
 }
 
-func TestAppendNoticeContentUsesSeparator(t *testing.T) {
-	m := tuiModel{width: 80}
-	m.appendUserContent("hello")
-	m.appendNoticeLevel("notice one", slog.LevelInfo)
-
-	if !strings.Contains(m.wrappedContent(), "\n"+m.separatorLine()+"\n[notice] notice one") {
-		t.Fatalf("notice content not separated:\n%s", m.wrappedContent())
-	}
-	if strings.HasSuffix(m.wrappedContent(), "\n") {
-		t.Fatalf("notice content should not end with newline: %q", m.wrappedContent())
-	}
-}
-
 func TestTUINoticeLevelStyles(t *testing.T) {
 	tests := []struct {
 		level slog.Level
@@ -379,7 +382,7 @@ func TestTUINoticeLevelStyles(t *testing.T) {
 	}
 }
 
-func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
+func TestNoticeLevelPreservedInWideAndNarrowLayouts(t *testing.T) {
 	wide := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	wide.resizeViewports()
 	wide.appendNoticeLevel("first\nsecond", slog.LevelError)
@@ -393,11 +396,12 @@ func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
 	narrow := tuiModel{input: newTUIInput(), width: 80, height: 20}
 	narrow.resizeViewports()
 	narrow.appendNoticeLevel("problem\ndetail", slog.LevelWarn)
-	if len(narrow.content) != 1 || narrow.content[0].level != slog.LevelWarn {
-		t.Fatalf("inline notice = %#v", narrow.content)
+	if len(narrow.content) != 0 || len(narrow.notices) != 1 || narrow.notices[0].Level != slog.LevelWarn {
+		t.Fatalf("chat=%#v notices=%#v", narrow.content, narrow.notices)
 	}
-	if !strings.Contains(narrow.wrappedContent(), "[notice] problem\ndetail") {
-		t.Fatalf("inline content = %q", narrow.wrappedContent())
+	updated, _ := narrow.Update(tea.WindowSizeMsg{Width: 120, Height: 20})
+	if !strings.Contains(updated.(tuiModel).noticeViewport.View(), "problem") {
+		t.Fatal("notice received while narrow was not visible after widening")
 	}
 }
 
@@ -406,7 +410,12 @@ func TestCommandNoticeStaysOutOfChat(t *testing.T) {
 	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()
 
-	updated, _ := m.Update(tuiNoticeMsg{Text: text, Level: slog.LevelInfo})
+	r := Runtime{interactive: true, output: make(chan tea.Msg, 1)}
+	result := command.Result{Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: text}}}
+	if _, err := r.SendCommandResult(t.Context(), result, nil); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := m.Update(<-r.output)
 	m = updated.(tuiModel)
 	if m.wrappedContent() != "" || len(m.notices) != 1 || m.notices[0].Text != strings.TrimSpace(text) {
 		t.Fatalf("chat=%q notices=%#v", m.wrappedContent(), m.notices)

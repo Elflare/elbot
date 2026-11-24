@@ -44,11 +44,11 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 	}
 }
 
-func TestRemoteClientPresentsCommandResultAsIndependentReply(t *testing.T) {
+func TestRemoteClientPresentsCommandResultAsNotice(t *testing.T) {
 	client := &RemoteClient{output: make(chan clishare.DisplayEvent, 1)}
 	client.handleServerMessage(remoteMessage{Type: remoteMsgCommandResult, Result: &command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "confirm?"}}, Actions: []delivery.Action{{Label: "yes", Command: "/confirm"}}}})
 	event := <-client.output
-	if event.Kind != clishare.DisplayChat || event.Text != "confirm?\n\n/confirm yes" {
+	if event.Kind != clishare.DisplayNotice || event.Text != "confirm?\n\n/confirm yes" {
 		t.Fatalf("event=%+v", event)
 	}
 }

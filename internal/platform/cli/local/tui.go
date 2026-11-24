@@ -39,7 +39,6 @@ type tuiContentKind uint8
 const (
 	tuiContentUser tuiContentKind = iota
 	tuiContentAssistant
-	tuiContentNotice
 	tuiContentSeparator
 	tuiContentTool
 )
@@ -47,9 +46,10 @@ const (
 type tuiContentBlock struct {
 	kind            tuiContentKind // Determines presentation without interpreting text.
 	text, reasoning string         // Body and independent reasoning of this message.
-	level           slog.Level     // Severity of an inline notice.
 	toolCall        delivery.ToolCall
 	toolStatus      string
+	toolExpanded    bool // Whether the tool arguments and result are visible.
+	toolHeaderLine  int  // Zero-based row in the wrapped chat content, used for mouse clicks.
 }
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
@@ -894,23 +894,11 @@ func (m *tuiModel) appendNoticeLevel(text string, level slog.Level) {
 	if text == "" {
 		return
 	}
-	if m.layoutNoticeVisible() {
-		m.notices = append(m.notices, tuiNotice{Text: text, Level: level})
-		if len(m.notices) > 50 {
-			m.notices = m.notices[len(m.notices)-50:]
-		}
-		m.refreshNotices()
-		return
+	m.notices = append(m.notices, tuiNotice{Text: text, Level: level})
+	if len(m.notices) > 50 {
+		m.notices = m.notices[len(m.notices)-50:]
 	}
-	m.appendNoticeContent(text, level)
-}
-
-func (m *tuiModel) appendNoticeContent(text string, level slog.Level) {
-	if len(m.content) != 0 {
-		m.content = append(m.content, &tuiContentBlock{kind: tuiContentSeparator, text: m.separatorLine()})
-	}
-	m.content = append(m.content, &tuiContentBlock{kind: tuiContentNotice, text: text, level: level})
-	m.refreshContent()
+	m.refreshNotices()
 }
 
 func (m tuiModel) layoutNoticeVisible() bool {
@@ -1002,26 +990,42 @@ func (m tuiModel) renderContent(styled bool) string {
 		return text
 	}
 	var content strings.Builder
+	line := 0
+	write := func(text string) {
+		content.WriteString(text)
+		line += strings.Count(text, "\n")
+	}
 	for _, block := range m.content {
 		switch block.kind {
 		case tuiContentUser:
-			content.WriteString(speaker(m.userName, block.text, tuiUserStyle) + "\n")
+			write(speaker(m.userName, block.text, tuiUserStyle) + "\n")
 		case tuiContentAssistant:
 			if block.reasoning != "" {
-				content.WriteString("\n" + render("thinking: "+block.reasoning, tuiReasoningStyle))
+				write("\n" + render("thinking: "+block.reasoning, tuiReasoningStyle))
 			}
 			if block.text != "" {
-				content.WriteString("\n" + speaker("assistant", block.text, tuiAssistantStyle))
+				write("\n" + speaker("assistant", block.text, tuiAssistantStyle))
 			}
-		case tuiContentNotice:
-			content.WriteString(render("[notice] "+block.text, tuiNoticeLevelStyle(block.level)))
 		case tuiContentSeparator:
-			content.WriteString("\n" + render(block.text, tuiSeparatorStyle) + "\n")
+			write("\n" + render(block.text, tuiSeparatorStyle) + "\n")
 		case tuiContentTool:
-			header := fmt.Sprintf("🔧 %s %s · %s", block.toolCall.Name, block.toolCall.Arguments, block.toolStatus)
-			content.WriteString("\n" + render(header, tuiStatusStyle))
-			if block.text != "" {
-				content.WriteString("\n" + render(block.text, tuiAssistantStyle))
+			marker := "▸"
+			if block.toolExpanded {
+				marker = "▾"
+			}
+			header := fmt.Sprintf("%s %s · %s", marker, block.toolCall.Name, block.toolStatus)
+			if m.viewport.Width > 0 {
+				header = runewidth.Truncate(header, m.viewport.Width, "…")
+			}
+			block.toolHeaderLine = line + 1
+			write("\n" + render(header, tuiStatusStyle))
+			if block.toolExpanded {
+				if block.toolCall.Arguments != "" {
+					write("\n" + render(block.toolCall.Arguments, tuiStatusStyle))
+				}
+				if block.text != "" {
+					write("\n" + render(block.text, tuiAssistantStyle))
+				}
 			}
 		}
 	}
