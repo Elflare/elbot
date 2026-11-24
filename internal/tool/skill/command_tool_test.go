@@ -87,7 +87,7 @@ func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "echo.sh"), []byte("#!/bin/sh\necho input=$2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "echo_skill", Description: "echo", Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
 	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestCommandToolUsesWorkspaceForCommandAndMedia(t *testing.T) {
 		Command:        []string{"sh", "run.sh"},
 		Parameters:     map[string]any{"type": "object", "properties": map[string]any{}},
 	}
-	tool := commandTool{media: newTestMediaRuntime(t), record: record{Name: "workspace_skill", Kind: KindAgent, Root: skillRoot}, manifest: manifest}
+	tool := commandTool{media: newTestMediaRuntime(t), record: record{Name: "workspace_skill", Root: skillRoot}, manifest: manifest}
 	ctx := workspace.WithPathScope(context.Background(), workspace.PathScope{Dir: workspaceDir, Restricted: true})
 	result, _, err := callTool(ctx, tool.Definition(), toolshare.CallRequest{Name: "workspace_skill", Arguments: json.RawMessage(`{}`)})
 	if err != nil || result.Status != operationresult.Success || len(result.Data.Segments) != 1 {
@@ -126,7 +126,7 @@ func TestCommandToolUsesWorkspaceForCommandAndMedia(t *testing.T) {
 }
 
 func TestCommandToolWorkspaceRequiresRestrictedDirectory(t *testing.T) {
-	tool := commandTool{record: record{Name: "workspace_skill", Kind: KindAgent, Root: t.TempDir()}, manifest: AgentSkillManifest{UseWorkspace: true}}
+	tool := commandTool{record: record{Name: "workspace_skill", Root: t.TempDir()}, manifest: AgentSkillManifest{UseWorkspace: true}}
 	ctx := workspace.WithPathScope(context.Background(), workspace.PathScope{Restricted: true})
 	prepared, err := tool.PrepareCall(ctx, toolshare.CallRequest{Name: "workspace_skill", Arguments: json.RawMessage(`{}`)})
 	if err != nil || prepared.Status != operationresult.Unavailable {
@@ -142,7 +142,7 @@ func TestCommandToolRunsCommandAndParsesJSONContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "json.sh"), []byte("#!/bin/sh\nprintf '{\"content\":\"ok\"}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "json_skill", Description: "json", Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
 	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)

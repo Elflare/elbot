@@ -18,9 +18,7 @@ ELyph 用固定的语法替代冗长的自然语言说明，让任务描述更�
 
 | 场景 | 文件 | 说明 |
 | --- | --- | --- |
-| AgentSkill | `skills/agent/<skill>/SKILL.elyph` 或 `SKILL.md` | 外置文档型 Skill；`SKILL.elyph` 会覆写 Agent 可读说明，`SKILL.md` 兼容 agentskills.io 风格说明。 |
-| Go Skill | `skills/go/<skill>/SKILL.elyph` | ElBot 原生 Skill；可选 Go 二进制用于执行。 |
-
+| AgentSkill | `skills/<name>/SKILL.elyph` 或 `SKILL.md` | 推荐用 ELyph 描述流程，也支持自然语言 Markdown。 |
 | LLM Cron 任务 | 任务条 | 在 `/cron write` 中用 `#task` 头描述后台任务。 |
 
 ## 语法速查
@@ -278,11 +276,7 @@ each($city in $cities, limit=5) {
 
 ## 与 Skill 的关系
 
-- Skill 的 `SKILL.elyph` 文件使用 `#skill` header。
-- AgentSkill 放在 `skills/agent/<skill>/`，可用 `SKILL.elyph` 覆写 `SKILL.md` 的 Agent 可读说明。
-- Go Skill 放在 `skills/go/<skill>/`，必须使用 `SKILL.elyph`，可选 Go 二进制用于执行。
-- 如果同一 AgentSkill 同时存在 `SKILL.md` 和 `SKILL.elyph`，ELyph 文件的描述会优先被 Agent 使用。
-
+AgentSkill 放在 `skills/<name>/`。`SKILL.elyph` 以 `#skill <name>` 开头，加载时校验全文；若同时存在 `SKILL.md`，优先使用 `SKILL.elyph`。两种说明都可以配 `ELBOT_SKILL.toml` 注册为可执行工具。
 
 更多 skill 管理操作见 [命令速查](commands.md) 的 `/tools` 部分。
 

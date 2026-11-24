@@ -17,6 +17,7 @@ func RuleCardIfNeeded(needsElyphRules, elyphRulesShown bool) string {
 // RuleCard returns the common ELyph rules for skills, tasks and tools.
 func RuleCard() string {
 	return `ELyph v0.3：供LLM理解的任务表示法，非可执行代码。
+AgentSkill 推荐用 ELyph 描述流程，也可使用自然语言 Markdown。
 写作：
 ** 不限中英或混用；以最精确、最简短为准，不因缩短引入歧义。
 ** 逻辑优先用符号、表达式、伪代码；仍须遵守ELyph行首语法。

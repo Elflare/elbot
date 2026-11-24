@@ -80,8 +80,8 @@ func TestMissingAssetsFollowRuntimeRequirements(t *testing.T) {
 		{"plugins/hooks.toml", config.LevelHint},
 		{"plugins/.env", config.LevelHint},
 		{"memories.toml", config.LevelHint},
-		{"skills/agent/write_elbot_hook/SKILL.md", config.LevelHint},
-		{"skills/agent/write_elbot_hook/ELBOT_SKILL.toml", config.LevelHint},
+		{"skills/write_elbot_hook/SKILL.md", config.LevelHint},
+		{"skills/write_elbot_hook/ELBOT_SKILL.toml", config.LevelHint},
 		{".env.example", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -12,10 +12,7 @@ import (
 	"elbot/internal/contextinfo"
 )
 
-const (
-	AgentSkillManagerName = "agent_skill"
-	GoRunnerName          = "go_skill_run"
-)
+const AgentSkillManagerName = "agent_skill"
 
 type descriptor struct {
 	record record // 扫描时确定的技能声明；详情正文按需读取。
@@ -37,24 +34,12 @@ func (d descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, erro
 	if err != nil {
 		return toolshare.DetailBlock{}, err
 	}
-	if d.record.Kind == KindAgent {
-		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx))
-	}
+	block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx))
 	return block, nil
 }
 
 func (d descriptor) ActivateTools() []string {
-	switch d.record.Kind {
-	case KindAgent:
-		return []string{AgentSkillManagerName}
-	case KindGo:
-		if d.record.BinaryPath != "" {
-			return []string{GoRunnerName}
-		}
-		return nil
-	default:
-		return nil
-	}
+	return []string{AgentSkillManagerName}
 }
 
 func agentSkillNotice(ctx context.Context) string {

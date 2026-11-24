@@ -14,7 +14,7 @@ func TestInvalidCommandRegistrationPreservesPreviousCatalog(t *testing.T) {
 	for _, risk := range []string{"", "typo"} {
 		t.Run(risk, func(t *testing.T) {
 			root := t.TempDir()
-			dir := filepath.Join(root, "agent", "guide")
+			dir := filepath.Join(root, "guide")
 			writeSkill(t, dir, "---\nname: guide\ndescription: Guide\n---\n# Document only")
 			catalog := registry.NewRegistry(security.DefaultPermission())
 			manager := NewManager(root, catalog, nil, processenv.Environment{})

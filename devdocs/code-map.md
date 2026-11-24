@@ -137,9 +137,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/elyph/`：ELyph 解析、lint 与规则卡。
 - `internal/tool/discovery/`：发现、详情与激活。
 - `internal/tool/skill/`：`manager.go` 协调；`scanner.go` 扫描；`catalog.go` 活动目录。
-- `internal/tool/skill/`：`command_tool.go` 命令技能；`go_runner.go` Go 技能；`process.go` 进程；`media.go` 媒体。
+- `internal/tool/skill/`：`command_tool.go` 命令技能；`process.go` 进程；`media.go` 媒体。
 - `internal/tool/skill/`：`skill_md_parser.go` SKILL.md；`elbot_skill_manifest.go` manifest。
-- `internal/tool/skill/`：`create_el_skill.go` 创建；`modify_el_skill.go` 修改；`finalize_el_skill.go` 编译注册；`read_el_skill.go` 读取。
 
 <!-- locator:hook -->
 ## Hook 与插件

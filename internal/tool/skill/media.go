@@ -6,81 +6,14 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 )
-
-// prepareGoMedia changes only the stdin copy and only an explicit media_inputs field.
-func prepareGoMedia(ctx context.Context, payload map[string]any, call toolshare.MediaCall, base string) (operationresult.Result[map[string]any], error) {
-	value, ok := payload["media_inputs"]
-	if !ok {
-		return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: payload}, nil
-	}
-	items, ok := value.([]any)
-	if !ok {
-		return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: "media_inputs must be an array"}, nil
-	}
-	type preparedInput struct {
-		MediaID  string `json:"media"`
-		Path     string `json:"path"`
-		Name     string `json:"name"`
-		MIMEType string `json:"mime_type"`
-		Size     int64  `json:"size"`
-		Base64   string `json:"base64,omitempty"`
-	}
-	prepared := make([]preparedInput, 0, len(items))
-	preparedByID := make(map[string]preparedInput, len(items))
-	for _, item := range items {
-		fields, ok := item.(map[string]any)
-		if !ok {
-			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: "media_inputs entries must be objects"}, nil
-		}
-		id, ok := fields["media"].(string)
-		if !ok {
-			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: "media_inputs.media must be a string"}, nil
-		}
-		if entry, ok := preparedByID[id]; ok {
-			if err := ctx.Err(); err != nil {
-				return operationresult.Result[map[string]any]{}, err
-			}
-			prepared = append(prepared, entry)
-			continue
-		}
-		path, metadata, err := call.Export(ctx, id, base)
-		if err != nil {
-			return operationresult.Result[map[string]any]{}, err
-		}
-		if metadata.Status != operationresult.Success {
-			return operationresult.Result[map[string]any]{Status: metadata.Status, Message: metadata.Message}, nil
-		}
-		entry := preparedInput{MediaID: id, Path: filepath.ToSlash(path), Name: metadata.Data.Name, MIMEType: metadata.Data.MIMEType, Size: metadata.Data.Size}
-		if metadata.Data.Size <= 1024*1024 {
-			data, err := os.ReadFile(filepath.Join(base, path))
-			if err != nil {
-				return operationresult.Result[map[string]any]{}, err
-			}
-			entry.Base64 = base64.StdEncoding.EncodeToString(data)
-		}
-		preparedByID[id] = entry
-		prepared = append(prepared, entry)
-	}
-	workspace, err := call.Workspace(base)
-	if err != nil {
-		return operationresult.Result[map[string]any]{}, err
-	}
-	stdin := maps.Clone(payload)
-	stdin["media_inputs"] = prepared
-	stdin["media_workspace"] = filepath.ToSlash(workspace)
-	return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: stdin}, nil
-}
 
 func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call toolshare.MediaCall, base string) (operationresult.Result[json.RawMessage], error) {
 	properties, _ := manifest.Parameters["properties"].(map[string]any)

@@ -19,14 +19,6 @@ func TestMain(m *testing.M) {
 		runOutputTestHelper()
 	case "media":
 		runMediaTestHelper()
-	case "payload":
-		var payload map[string]string
-		if err := json.NewDecoder(os.Stdin).Decode(&payload); err != nil {
-			panic(err)
-		}
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"content": payload["input"]})
-	case "shared-env":
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"content": os.Getenv("ELBOT_GO_SKILL_ENV_TEST")})
 	case "environment":
 		runEnvironmentTestHelper()
 	default:
@@ -95,40 +87,17 @@ func runOutputTestHelper() {
 
 func runMediaTestHelper() {
 	var path, mode, workspace string
-	if len(os.Args) > 1 {
-		for i := 1; i < len(os.Args); i++ {
-			if !strings.HasPrefix(os.Args[i], "--") {
-				path = os.Args[i]
-				continue
-			}
-			if i+1 < len(os.Args) && os.Args[i] == "--mode" {
-				mode = os.Args[i+1]
-				i++
-			}
+	for i := 1; i < len(os.Args); i++ {
+		if !strings.HasPrefix(os.Args[i], "--") {
+			path = os.Args[i]
+			continue
 		}
-		workspace = filepath.Dir(path)
-	} else {
-		var payload struct {
-			MediaInputs []struct{ Path, Base64 string }
+		if i+1 < len(os.Args) && os.Args[i] == "--mode" {
+			mode = os.Args[i+1]
+			i++
 		}
-		var raw map[string]json.RawMessage
-		if err := json.NewDecoder(os.Stdin).Decode(&raw); err != nil {
-			panic(err)
-		}
-		if err := json.Unmarshal(raw["media_inputs"], &payload.MediaInputs); err != nil {
-			panic(err)
-		}
-		if err := json.Unmarshal(raw["media_workspace"], &workspace); err != nil {
-			panic(err)
-		}
-		if err := json.Unmarshal(raw["mode"], &mode); err != nil {
-			panic(err)
-		}
-		if len(payload.MediaInputs) == 0 || payload.MediaInputs[0].Base64 != "aW5wdXQ=" {
-			os.Exit(4)
-		}
-		path = payload.MediaInputs[0].Path
 	}
+	workspace = filepath.Dir(path)
 	if filepath.IsAbs(path) {
 		os.Exit(5)
 	}

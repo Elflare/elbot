@@ -31,7 +31,7 @@ func newBackgroundAgent(t *testing.T) (*Supervisor, SupervisorDeps, *tool.Superv
 	root := t.TempDir()
 	cfg.ConfigPath = filepath.Join(root, "config.toml")
 	cfg.Sandbox.Root = root
-	skillDir := filepath.Join(root, "skills", "agent", "task_notes")
+	skillDir := filepath.Join(root, "skills", "task_notes")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}

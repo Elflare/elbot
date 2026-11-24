@@ -45,11 +45,8 @@ func TestSkillMediaBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "media"})
-	catalog := newCatalog()
-	catalog.Replace([]record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := GoRunner{manager: &Manager{catalog: catalog, processEnv: environment, media: mediaRuntime}}
 	manifest := AgentSkillManifest{TimeoutSeconds: 30, Command: []string{binary}, Positional: []string{"input", "inputs"}, Args: map[string]string{"mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
-	command := commandTool{record: record{Name: "command", Kind: KindAgent, Root: dir}, manifest: manifest, media: mediaRuntime, processEnv: environment}
+	command := commandTool{record: record{Name: "command", Root: dir}, manifest: manifest, media: mediaRuntime, processEnv: environment}
 	schema := command.Definition().Schema()
 	props := schema.Parameters["properties"].(map[string]any)
 	projectedInput := props["input"].(map[string]any)
@@ -83,195 +80,124 @@ func TestSkillMediaBridge(t *testing.T) {
 			t.Fatalf("temporary files survived: %v %v", matches, err)
 		}
 	}
-	for _, kind := range []string{"go", "toml"} {
-		for _, mode := range []string{"ok", "large", "fail", "escape", "wait", "cancel"} {
-			t.Run(kind+"/"+mode, func(t *testing.T) {
-				run := func(t *testing.T) {
-					runCtx := ctx
-					if mode == "cancel" {
-						canceled, cancel := context.WithCancel(ctx)
-						cancel()
-						runCtx = canceled
-					}
-
-					execute := runMediaCommand
-					if mode == "wait" {
-						execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error) {
-							want := 100 * time.Millisecond
-							if kind == "toml" {
-								want = time.Second
-							}
-							deadline, ok := ctx.Deadline()
-							if !ok || time.Until(deadline) > want || ctx.Err() != nil {
-								t.Fatalf("wrong deadline: %v %v %v", deadline, ok, ctx.Err())
-							}
-							assertPrepared(t)
-							<-ctx.Done()
-							return operationresult.Result[*toolshare.Result]{}, commandError(label, ctx.Err(), "", "")
-						}
-					}
-					var raw []byte
-					var result operationresult.Result[*toolshare.Result]
-					var err error
-					if kind == "go" {
-						timeout := 0
-						if mode == "wait" {
-							timeout = 100
-						}
-						raw, _ = json.Marshal(map[string]any{"skill_name": "media", "timeout_ms": timeout, "payload": map[string]any{"mode": mode, "media_inputs": []toolshare.MediaInput{{MediaID: item.Data.ID}}}})
-						args, parseErr := parseGoRunnerArgs(raw)
-						if parseErr != nil {
-							t.Fatal(parseErr)
-						}
-						record, _ := catalog.Get("media")
-						result, _, err = runner.call(runCtx, args, record, execute)
-					} else {
-						current := command
-						if mode == "wait" {
-							current.manifest.TimeoutSeconds = 1
-						}
-						raw, _ = json.Marshal(map[string]any{"input": item.Data.ID, "mode": mode})
-						args, parseErr := commandArguments(current.manifest, raw)
-						if parseErr != nil {
-							t.Fatal(parseErr)
-						}
-						result, _, err = current.call(runCtx, raw, args, current.record.Root, execute)
-					}
-					if mode == "ok" || mode == "large" {
-						if err != nil || result.Status != operationresult.Success || len(result.Data.Segments) != 2 {
-							t.Fatalf("result %#v %v", result, err)
-						}
-						segment := result.Data.Segments[1]
-						data, _, readErr := mediatest.Read(ctx, center, segment.MediaID)
-						if readErr != nil || data.Status != operationresult.Success || string(data.Data) != "output" || segment.URL != "" {
-							t.Fatalf("result media %#v %q %v", segment, data, readErr)
-						}
-						if err := center.Cleanup(ctx); err != nil {
-							t.Fatal(err)
-						}
-						refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
-						if len(refs) != 0 {
-							t.Fatal("output refs leaked")
-
-						}
-						session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "skill-test"}, Platform: "test", ChatID: "test"}
-						if err := store.Sessions().Create(ctx, session); err != nil {
-							t.Fatal(err)
-						}
-						segments, _ := json.Marshal(result.Data.LLMSegments())
-						message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
-						if err := store.Messages().Append(ctx, message); err != nil {
-							t.Fatal(err)
-						}
-						persistent, err := store.MediaReferences().ListByOwner(ctx, "tool_result", message.ID)
-						if err != nil || len(persistent) != 1 || persistent[0].MediaID != segment.MediaID {
-							t.Fatalf("transcript refs %v %v", persistent, err)
-						}
-						if err := store.Sessions().Delete(ctx, session.ID); err != nil {
-							t.Fatal(err)
-						}
-					} else if mode != "wait" && mode != "cancel" && (err != nil || result.Status == operationresult.Success) {
-						t.Fatalf("%s succeeded", mode)
-					}
-
-					if mode == "wait" && !errors.Is(err, context.DeadlineExceeded) {
-						t.Fatalf("not a deadline failure: %v", err)
-					}
-					if mode == "cancel" && !errors.Is(err, context.Canceled) {
-						t.Fatalf("not a cancellation failure: %v", err)
-					}
-					assertCleanup(t)
+	for _, mode := range []string{"ok", "large", "fail", "escape", "wait", "cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			run := func(t *testing.T) {
+				runCtx := ctx
+				if mode == "cancel" {
+					canceled, cancel := context.WithCancel(ctx)
+					cancel()
+					runCtx = canceled
 				}
-				run(t)
-			})
-		}
-		t.Run(kind+"/cancel running", func(t *testing.T) {
-			runCtx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			ready := filepath.Join(t.TempDir(), "ready")
-			environment := environment.Overlay(map[string]string{"ELBOT_SKILL_TEST_READY_FILE": ready})
-			done := make(chan struct {
-				result operationresult.Result[*toolshare.Result]
-				err    error
-			}, 1)
-			exited := make(chan struct{})
-			go func() {
-				defer close(exited)
-				if kind == "go" {
-					current := GoRunner{manager: &Manager{catalog: catalog, processEnv: environment, media: mediaRuntime}}
-					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []toolshare.MediaInput{{MediaID: item.Data.ID}}}})
-					result, _, err := callTool(runCtx, current.Definition(), toolshare.CallRequest{Arguments: raw})
-					done <- struct {
-						result operationresult.Result[*toolshare.Result]
-						err    error
-					}{result, err}
-				} else {
-					current := command
-					current.processEnv = environment
-					raw, _ := json.Marshal(map[string]any{"input": item.Data.ID, "mode": "wait"})
-					result, _, err := callTool(runCtx, current.Definition(), toolshare.CallRequest{Arguments: raw})
-					done <- struct {
-						result operationresult.Result[*toolshare.Result]
-						err    error
-					}{result, err}
+
+				execute := runMediaCommand
+				if mode == "wait" {
+					execute = func(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error) {
+						want := time.Second
+						deadline, ok := ctx.Deadline()
+						if !ok || time.Until(deadline) > want || ctx.Err() != nil {
+							t.Fatalf("wrong deadline: %v %v %v", deadline, ok, ctx.Err())
+						}
+						assertPrepared(t)
+						<-ctx.Done()
+						return operationresult.Result[*toolshare.Result]{}, commandError(label, ctx.Err(), "", "")
+					}
 				}
-			}()
-			waitForSkillHelperReady(t, ready, exited)
-			assertPrepared(t)
-			cancel()
-			if outcome := <-done; outcome.err != nil || outcome.result.Status != operationresult.Canceled {
-				t.Fatalf("running skill cancellation: %+v", outcome)
+				var raw []byte
+				var result operationresult.Result[*toolshare.Result]
+				var err error
+				current := command
+				if mode == "wait" {
+					current.manifest.TimeoutSeconds = 1
+				}
+				raw, _ = json.Marshal(map[string]any{"input": item.Data.ID, "mode": mode})
+				args, parseErr := commandArguments(current.manifest, raw)
+				if parseErr != nil {
+					t.Fatal(parseErr)
+				}
+				result, _, err = current.call(runCtx, raw, args, current.record.Root, execute)
+				if mode == "ok" || mode == "large" {
+					if err != nil || result.Status != operationresult.Success || len(result.Data.Segments) != 2 {
+						t.Fatalf("result %#v %v", result, err)
+					}
+					segment := result.Data.Segments[1]
+					data, _, readErr := mediatest.Read(ctx, center, segment.MediaID)
+					if readErr != nil || data.Status != operationresult.Success || string(data.Data) != "output" || segment.URL != "" {
+						t.Fatalf("result media %#v %q %v", segment, data, readErr)
+					}
+					if err := center.Cleanup(ctx); err != nil {
+						t.Fatal(err)
+					}
+					refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
+					if len(refs) != 0 {
+						t.Fatal("output refs leaked")
+
+					}
+					session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "skill-test"}, Platform: "test", ChatID: "test"}
+					if err := store.Sessions().Create(ctx, session); err != nil {
+						t.Fatal(err)
+					}
+					segments, _ := json.Marshal(result.Data.LLMSegments())
+					message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
+					if err := store.Messages().Append(ctx, message); err != nil {
+						t.Fatal(err)
+					}
+					persistent, err := store.MediaReferences().ListByOwner(ctx, "tool_result", message.ID)
+					if err != nil || len(persistent) != 1 || persistent[0].MediaID != segment.MediaID {
+						t.Fatalf("transcript refs %v %v", persistent, err)
+					}
+					if err := store.Sessions().Delete(ctx, session.ID); err != nil {
+						t.Fatal(err)
+					}
+				} else if mode != "wait" && mode != "cancel" && (err != nil || result.Status == operationresult.Success) {
+					t.Fatalf("%s succeeded", mode)
+				}
+
+				if mode == "wait" && !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("not a deadline failure: %v", err)
+				}
+				if mode == "cancel" && !errors.Is(err, context.Canceled) {
+					t.Fatalf("not a cancellation failure: %v", err)
+				}
+				assertCleanup(t)
 			}
-			assertCleanup(t)
+			run(t)
 		})
 	}
+	t.Run("cancel running", func(t *testing.T) {
+		runCtx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		ready := filepath.Join(t.TempDir(), "ready")
+		environment := environment.Overlay(map[string]string{"ELBOT_SKILL_TEST_READY_FILE": ready})
+		done := make(chan struct {
+			result operationresult.Result[*toolshare.Result]
+			err    error
+		}, 1)
+		exited := make(chan struct{})
+		go func() {
+			defer close(exited)
+			current := command
+			current.processEnv = environment
+			raw, _ := json.Marshal(map[string]any{"input": item.Data.ID, "mode": "wait"})
+			result, _, err := callTool(runCtx, current.Definition(), toolshare.CallRequest{Arguments: raw})
+			done <- struct {
+				result operationresult.Result[*toolshare.Result]
+				err    error
+			}{result, err}
+		}()
+		waitForSkillHelperReady(t, ready, exited)
+		assertPrepared(t)
+		cancel()
+		if outcome := <-done; outcome.err != nil || outcome.result.Status != operationresult.Canceled {
+			t.Fatalf("running skill cancellation: %+v", outcome)
+		}
+		assertCleanup(t)
+	})
 	call := mediaRuntime.NewCall()
 	defer call.Close()
-	raw := map[string]any{"text": item.Data.ID}
-	unchanged, err := prepareGoMedia(ctx, raw, call, dir)
-	if err != nil || unchanged.Status != operationresult.Success || unchanged.Data["text"] != raw["text"] {
-		t.Fatalf("ordinary Go payload changed: %v %v", unchanged, err)
-	}
 	large, err := center.ImportBytes(ctx, []byte(strings.Repeat("x", 1024*1024+1)), media.Input{Name: "large.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
-	}
-	largeRaw := map[string]any{"media_inputs": []any{map[string]any{"media": large.Data.ID}, map[string]any{"media": item.Data.ID}, map[string]any{"media": large.Data.ID}, map[string]any{"media": item.Data.ID}}}
-	prepared, err := prepareGoMedia(ctx, largeRaw, call, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload struct {
-		Inputs []struct {
-			MediaID  string `json:"media"`
-			Path     string `json:"path"`
-			Name     string `json:"name"`
-			MIMEType string `json:"mime_type"`
-			Base64   string `json:"base64"`
-			Size     int64  `json:"size"`
-		} `json:"media_inputs"`
-	}
-	encoded, err := json.Marshal(prepared.Data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(encoded, &payload); err != nil {
-		t.Fatal(err)
-	}
-	if len(payload.Inputs) != 4 || payload.Inputs[0] != payload.Inputs[2] || payload.Inputs[1] != payload.Inputs[3] {
-		t.Fatalf("input order or duplicate entries changed: %#v", payload)
-	}
-	for i, metadata := range []media.MediaInfo{large.Data, item.Data} {
-		input := payload.Inputs[i]
-		if input.MediaID != metadata.ID || input.Name != metadata.Name || input.MIMEType != metadata.MIMEType || input.Size != metadata.Size {
-			t.Fatalf("input metadata %#v, want %#v", input, metadata)
-		}
-		if data, err := os.ReadFile(filepath.Join(dir, input.Path)); err != nil || int64(len(data)) != metadata.Size || (i == 1 && string(data) != "input") {
-			t.Fatalf("exported input size=%d error=%v", len(data), err)
-		}
-	}
-	if payload.Inputs[0].Base64 != "" || payload.Inputs[1].Base64 != "aW5wdXQ=" {
-		t.Fatal("incorrect base64 preparation")
 	}
 	known, err := resultFromStdoutWithMedia(ctx, fmt.Sprintf(`{"segments":[{"type":"file","media":%q}]}`, item.Data.ID), call, dir)
 	if err != nil || known.Data.Segments[0].MediaID != item.Data.ID {
@@ -303,11 +229,6 @@ func TestSkillMediaBridge(t *testing.T) {
 		raw := json.RawMessage(`{"inputs":` + value + `}`)
 		if result, err := prepareCommandMedia(ctx, raw, manifest, call, dir); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted media array %s", value)
-		}
-	}
-	for _, value := range []any{nil, "bad", []any{42}, []any{map[string]any{"media": 42}}} {
-		if result, err := prepareGoMedia(ctx, map[string]any{"media_inputs": value}, call, dir); err != nil || result.Status != operationresult.InvalidArguments {
-			t.Fatalf("accepted invalid media_inputs: %#v, result=%+v err=%v", value, result, err)
 		}
 	}
 	for _, out := range []string{`{"segments":[{"type":"file"}]}`, `{"segments":[{"type":"file","path":"../escape"}]}`, `{"segments":[{"type":"file","path":"x","media":"bad"}]}`} {

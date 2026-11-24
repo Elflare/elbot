@@ -183,7 +183,7 @@ Skill 是可复用任务扩展：可以是一段给 Agent 阅读的任务说明�
 | AgentSkill | 文档描述任务，LLM 按说明使用通用工具完成。 |
 | 工具化 Skill | 注册成普通工具，LLM 通过结构化参数调用。 |
 
-ELyph Task Notation 是描述可复用任务的结构化表示法，用更稳定的格式表达输入、输出、步骤、条件和约束，减少自然语言描述的歧义。
+AgentSkill 推荐用 ELyph 表达输入、输出、步骤和约束，也可以用自然语言 Markdown。发现具体 Skill 时会注入 ELyph 规则，只列目录时不会。
 
 工具化配置见 [AgentSkill 工具化配置](configuration.md#agentskill-工具化配置)，ELyph 与 Skill 的关系及完整语法见 [ELyph 任务表示法](elyph.md)。
 
@@ -206,15 +206,13 @@ bash 脚本通过 `shell` 显式声明输入，例如：
 
 调用工具时，若json字段使用到了媒体id，也会视为该session的引用。纯文本的调用不算。
 
-Go Skill 在 `go_skill_run` 的 `payload.media_inputs` 中使用同样的输入列表。宿主在 stdin 的执行副本中为各项补充 `path`、`name`、`mime_type`、`size`，不超过 1 MiB 的文件还提供 `base64`。`payload.media_workspace` 是相对 Skill 根目录的调用专属目录；可以传空输入列表申请仅用于输出的目录。临时路径和 base64 不写回原始调用参数。
-
-Go/TOML Skill 的 stdout 可以返回媒体结果：
+工具化 AgentSkill的 stdout 可以返回媒体结果：
 
 ```json
 {"content":"处理完成","segments":[{"type":"image","path":"result.png"}]}
 ```
 
-`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media` 或 `path`。路径相对工作目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。Go Skill 的工作目录是 Skill 根目录；工具化 AgentSkill TOML 默认也使用 Skill 根目录，配置 `use_workspace = true` 后使用当前 workspace。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。Go Skill 建议把临时输出写入 `media_workspace`，TOML 脚本可写入收到的媒体输入所在目录。
+`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media` 或 `path`。路径相对工作目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。临时输出可写入收到的媒体输入所在目录。
 
 ## 平台适配
 

@@ -15,7 +15,7 @@ ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行�
 | `memories.toml` | 常驻记忆。 |
 | `long_memory/` | 长期记忆 Markdown 源数据。 |
 | `plugins/` | Hook 与插件配置目录（`hooks.toml`、`<plugin>/hook.toml`、`.env`、`_shared/`）。 |
-| `skills/` | 用户 Skill 目录，含 `skills/agent/` 与 `skills/go/`；AgentSkill 可在根目录放 `ELBOT_SKILL.toml` 配置可见性或注册为普通工具。 |
+| `skills/` | 每个 AgentSkill 占一个直接子目录 `skills/<name>/`，可在其中放 `ELBOT_SKILL.toml` 配置可见性或注册为普通工具。 |
 | `frontend/` | 可选的用户静态前端，入口为 `index.html`，由 CLI 远程服务同端口托管。 |
 | `.env` | 可选本地密钥文件，不建议提交；首次只生成 `.env.example`，不会直接生成 `.env`。 |
 
@@ -76,12 +76,11 @@ ELNIS_HOME_TOKEN=your-elnis-token
 | 进程入口 | 环境来源与优先级 |
 | --- | --- |
 | 内置工具（含 LLM Shell） | 进程环境为基础，配置根 `.env` 只补充尚不存在的普通变量。 |
-| AgentSkill TOML 命令与 Go Skill | 技能 `.env` > 进程环境 > 配置根 `.env`；技能 `.env` 中的空值也覆盖同名变量。 |
+| AgentSkill TOML 命令 | 技能 `.env` > 进程环境 > 配置根 `.env`；技能 `.env` 中的空值也覆盖同名变量。 |
 | 根 Hook 规则 | 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
 | 插件 exec 与 Worker | 根 Hook 环境为基础，插件目录 `.env` 再覆盖同名普通变量。 |
 
 - 默认以技能根目录为工作目录；AgentSkill TOML 可用 `use_workspace = true` 切到当前 workspace。环境合并结果由 ElBot 传给子进程，脚本无需自行加载 `.env`。
-- Go Skill 编译阶段用基础环境，不加载技能 `.env`。
 - 配置根 `.env` 不注入 Hook。共用变量放 `plugins/.env`，单插件变量放插件目录 `.env`；一次性 exec、Persistent / Transient Worker 规则相同。
 - 需要代理时在对应环境层设 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`；子进程是否使用取决于具体程序。
 
@@ -267,7 +266,7 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 AgentSkill 默认只作为说明文档使用，按文档执行脚本的风险由实际调用的 `shell` 等工具承担。
 
-要限制文档型 Skill 的可见性，或把 `skills/agent/<skill>/` 注册成普通工具，在该 Skill 根目录加 `ELBOT_SKILL.toml`：
+要限制文档型 Skill 的可见性，或把 `skills/<name>/` 注册成普通工具，在该 Skill 根目录加 `ELBOT_SKILL.toml`：
 
 - 未写 `command` / `parameters` / `[args]`：只作可见性配置，不注册成工具。
 - 写了任一工具化字段：必须补齐完整工具化配置。
@@ -328,28 +327,6 @@ input = "--input"
 - 位置参数先按 `positional` 数组顺序输出，再输出按参数名排序的 `[args]` flag/value 对；缺失的可选值不输出。必填参数必须由其中一种方式映射，且不能重复映射。
 - 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，可通过 `positional` 或 `[args]` 映射；LLM 传 `media:<sha256>`，宿主执行时导出为相对工作目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
 - 通过 `agent_skill` 元工具写入时，完整 reload 成功后才确认；reload 失败会恢复原 TOML，原先没有该文件则删除本次新建文件。
-
-## Go Skill 编译器路径
-
-修改 Go skill 的 `code_source` 后，ElBot 自动执行 `gofmt`、`go build` 并 reload。可执行文件查找顺序：
-
-1. 系统环境变量 `ELBOT_GO_BINARY`
-2. 配置目录 `.env` 中的 `ELBOT_GO_BINARY`
-3. `GOROOT/bin/go`（service 环境配了 `GOROOT` 时）
-4. 进程 `PATH` 中的 `go`
-
-推荐直接在配置目录 `.env` 指定：
-
-```dotenv
-ELBOT_GO_BINARY=/usr/local/go/bin/go
-```
-
-用 asdf、mise、Nix、Linuxbrew、Snap 或自定义安装路径时，把实际 `go` 路径写入 `ELBOT_GO_BINARY`，不要依赖交互 shell 的初始化脚本。也可在 systemd service 中指定：
-
-```ini
-[Service]
-Environment=ELBOT_GO_BINARY=/usr/local/go/bin/go
-```
 
 ## Session 配置
 

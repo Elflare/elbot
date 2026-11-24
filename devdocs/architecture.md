@@ -162,7 +162,7 @@ Media 管内容寻址对象和使用生命周期：object 管对象／引用／�
 <!-- locator:skill -->
 ## Skill
 
-Skill 将文档或可执行技能接入 Tool 目录。Manager 管扫描、注册、修改及重载；只有注册成功才发布目录，失败保留旧目录。文件修改复用 fileops，重载失败恢复 manifest；普通执行不持修改锁。命令与 Go runner 在技能目录执行，媒体统一交给 Media。
+Skill 将文档或可执行技能接入 Tool 目录。Manager 管扫描、注册、修改及重载；只有注册成功才发布目录，失败保留旧目录。文件修改复用 fileops，重载失败恢复 manifest；普通执行不持修改锁。命令按 manifest 在技能目录或当前 workspace 执行，媒体统一交给 Media。
 
 <!-- locator:hook -->
 ## Hook

@@ -16,12 +16,10 @@ import (
 )
 
 type Manager struct {
-	root     string            // 根部装配传入的技能资产目录。
 	catalog  *catalog          // 当前已成功注册的技能记录。
 	scanner  filesystemScanner // 只读取技能文件并生成候选记录。
 	registry interface {
 		RegisterTools(context.Context, toolshare.Source, toolshare.ToolRegistrationScope, []toolshare.ToolDefinition) (toolshare.StateUpdate, error)
-		Get(string) (toolshare.ToolDefinition, bool)
 	} // 借用 Tool 注册目录，仅替换 Skill 来源的工具。
 	media      interface{ NewCall() toolshare.MediaCall } // 借用 Tool 媒体入口，交给可执行技能使用。
 	processEnv processenv.Environment                     // 启动时的基础环境，技能执行时再叠加自身 .env。
@@ -36,10 +34,8 @@ type Manager struct {
 // NewManager 接收根部已确定的目录与完整依赖，不自行选择默认配置目录或启动加载。
 func NewManager(root string, registry interface {
 	RegisterTools(context.Context, toolshare.Source, toolshare.ToolRegistrationScope, []toolshare.ToolDefinition) (toolshare.StateUpdate, error)
-	Get(string) (toolshare.ToolDefinition, bool)
 }, media interface{ NewCall() toolshare.MediaCall }, environment processenv.Environment) *Manager {
 	return &Manager{
-		root:       root,
 		catalog:    newCatalog(),
 		scanner:    filesystemScanner{root: root},
 		registry:   registry,
@@ -64,7 +60,7 @@ func (m *Manager) reloadLocked(ctx context.Context) error {
 	}
 	replacements := make([]toolshare.ToolDefinition, 0, len(records))
 	for _, record := range records {
-		if record.Kind == KindAgent && record.Manifest.Callable {
+		if record.Manifest.Callable {
 			replacements = append(replacements, (commandTool{record: record, manifest: record.Manifest, media: m.media, processEnv: m.processEnv}).Definition())
 		} else {
 			replacements = append(replacements, (descriptor{record: record}).Definition())
@@ -80,11 +76,6 @@ func (m *Manager) reloadLocked(ctx context.Context) error {
 func NewTools(manager *Manager) []toolshare.ToolDefinition {
 	return []toolshare.ToolDefinition{
 		(AgentSkillTool{manager: manager}).Definition(),
-		(GoRunner{manager: manager}).Definition(),
-		(CreateElSkillTool{manager: manager}).Definition(),
-		(ReadElSkillTool{manager: manager}).Definition(),
-		(ModifyElSkillTool{manager: manager}).Definition(),
-		(FinalizeElSkillTool{manager: manager}).Definition(),
 	}
 }
 
@@ -180,7 +171,7 @@ func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string,
 	if !ok {
 		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("AgentSkill %q not found", name)}, nil
 	}
-	if record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != path {
+	if AgentSkillConfigPath(record.Root) != path {
 		return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "AgentSkill target changed after preflight"}, nil
 	}
 	previous, err := captureFile(path)

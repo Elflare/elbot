@@ -20,8 +20,8 @@ import (
 
 func TestManagerSerializesConcurrentReloads(t *testing.T) {
 	root := t.TempDir()
-	writeSkill(t, filepath.Join(root, "agent", "docs"), "---\nname: docs\ndescription: Docs\n---\n\n# Docs")
-	writeElyphSkill(t, filepath.Join(root, "go", "worker"), "#skill worker - Worker\n")
+	writeSkill(t, filepath.Join(root, "docs"), "---\nname: docs\ndescription: Docs\n---\n\n# Docs")
+	writeElyphSkill(t, filepath.Join(root, "worker"), "#skill worker - Worker\n")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 
@@ -74,7 +74,7 @@ input = "--input"
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			dir := filepath.Join(root, "agent", "docs")
+			dir := filepath.Join(root, "docs")
 			writeSkill(t, dir, "---\nname: docs\ndescription: Docs\n---\n\n# Docs")
 			if tc.manifest != "" {
 				writeAgentSkillConfig(t, dir, tc.manifest)
@@ -91,13 +91,23 @@ input = "--input"
 			if target.Callable() != tc.callable || target.LoadDetail == nil {
 				t.Fatalf("wrong capabilities: %+v", target)
 			}
+			ctx := withSkillAvailability(t, contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), registry)
+			discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
+			listed, _, err := callTool(ctx, discover, toolshare.CallRequest{})
+			if err != nil || listed.Status != operationresult.Success || listed.Data.NeedsElyphRules {
+				t.Fatalf("catalog: %+v %v", listed, err)
+			}
+			detail, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docs"}`)})
+			if err != nil || detail.Status != operationresult.Success || !detail.Data.NeedsElyphRules {
+				t.Fatalf("detail: %+v %v", detail, err)
+			}
 		})
 	}
 }
 
 func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -126,7 +136,7 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 
 func TestManagerLoadsCallableMarkdownDetailOnDemand(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Initial DOCX")
 	writeAgentSkillConfig(t, dir, `risk = "safe"
 command = ["echo"]
@@ -161,7 +171,7 @@ input = "--input"
 
 func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -181,7 +191,7 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 
 func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "private_doc")
+	dir := filepath.Join(root, "private_doc")
 	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
 	writeAgentSkillConfig(t, dir, `risk = "high"
 `)
@@ -212,7 +222,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 
 func TestSuperadminOnlyAgentSkillVisibleToSuperadminDiscovery(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "private_doc")
+	dir := filepath.Join(root, "private_doc")
 	writeSkill(t, dir, "---\nname: private_doc\ndescription: Private doc\n---\n\n# Private")
 	writeAgentSkillConfig(t, dir, `risk = "low"
 superadmin_only = true
@@ -236,29 +246,33 @@ superadmin_only = true
 	}
 }
 
-func TestManagerScansGoTextSkillWithoutBinary(t *testing.T) {
+func TestManagerLoadsElyphBeforeMarkdown(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "go", "notes")
-	writeElyphSkill(t, dir, "#skill notes - Notes workflow\n** risk low\n")
-	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
+	dir := filepath.Join(root, "notes")
+	writeSkill(t, dir, "Markdown fallback")
+	writeElyphSkill(t, dir, "#skill notes - Notes workflow\n> done\n")
+	writeAgentSkillConfig(t, dir, `risk = "medium"`)
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	manager := NewManager(root, registry, nil, processenv.Environment{})
-	err := manager.Reload(context.Background())
-	if err != nil {
+	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	target, ok := registry.Get("notes")
-	if !ok || target.Definition.Source != toolshare.SourceSkill || target.Definition.Risk != toolshare.RiskLow {
-		t.Fatalf("text skill = %#v", target)
+	if !ok || target.Definition.Description != "Notes workflow" || target.Callable() || target.Definition.Risk != toolshare.RiskMedium {
+		t.Fatalf("notes = %#v", target)
 	}
-	detailer := target
-	if len(detailer.ActivateTools) != 0 {
-		t.Fatalf("pure ELyph go skill should not activate runner: %#v", detailer.ActivateTools)
+	writeElyphSkill(t, dir, "#skill notes - Broken\ninvalid body\n")
+	if err := manager.Reload(t.Context()); err == nil {
+		t.Fatal("invalid ELyph accepted")
+	}
+	if current, ok := registry.Get("notes"); !ok || current.Definition.Description != target.Definition.Description {
+		t.Fatal("failed reload replaced active skill")
 	}
 }
 
 func TestReloadCommandSkillWeavable(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "text_skill")
+	dir := filepath.Join(root, "text_skill")
 	writeSkill(t, dir, "---\nname: text_skill\ndescription: Text skill\n---\n")
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -277,7 +291,7 @@ func TestReloadCommandSkillWeavable(t *testing.T) {
 
 func TestManagerReloadRemovesDeletedExternalSkill(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -300,7 +314,7 @@ func TestManagerReloadRemovesDeletedExternalSkill(t *testing.T) {
 
 func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 	root := t.TempDir()
-	oldDir := filepath.Join(root, "agent", "old")
+	oldDir := filepath.Join(root, "old")
 	writeSkill(t, oldDir, "---\nname: old\ndescription: Old skill\n---\n\n# Old")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -313,7 +327,7 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 	if err := os.RemoveAll(oldDir); err != nil {
 		t.Fatal(err)
 	}
-	writeSkill(t, filepath.Join(root, "agent", AgentSkillManagerName), "---\nname: agent_skill\ndescription: Conflict\n---\n\n# Conflict")
+	writeSkill(t, filepath.Join(root, AgentSkillManagerName), "---\nname: agent_skill\ndescription: Conflict\n---\n\n# Conflict")
 
 	err := manager.Reload(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "already registered") {
@@ -332,14 +346,14 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 
 func TestManagerReloadRejectsDuplicateSkillNames(t *testing.T) {
 	root := t.TempDir()
-	writeSkill(t, filepath.Join(root, "agent", "old"), "---\nname: old\ndescription: Existing skill\n---\n\n# Old")
+	writeSkill(t, filepath.Join(root, "old"), "---\nname: old\ndescription: Existing skill\n---\n\n# Old")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
-	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
+	writeSkill(t, filepath.Join(root, "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
+	writeSkill(t, filepath.Join(root, "duplicate"), "---\nname: shared\ndescription: Duplicate\n---\n")
 	err := manager.Reload(context.Background())
 	if err == nil || !strings.Contains(err.Error(), `tool "shared" already registered`) {
 		t.Fatalf("Reload error = %v, want duplicate name error", err)
@@ -352,7 +366,7 @@ func TestManagerReloadRejectsDuplicateSkillNames(t *testing.T) {
 
 func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
@@ -371,7 +385,7 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 }
 
 func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
-	d := descriptor{record: record{Name: "docx", Detail: "# DOCX", Kind: KindAgent}}
+	d := descriptor{record: record{Name: "docx", Detail: "# DOCX"}}
 	block, err := d.LoadDetail(t.Context())
 	if err != nil || block.Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%+v activate=%#v err=%v", block, d.ActivateTools(), err)
@@ -380,7 +394,7 @@ func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 
 func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
-	record := record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
+	record := record{Name: "docx", Detail: "# DOCX", Risk: toolshare.RiskSafe}
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(descriptor{record: record}).Definition()}); err != nil {
 		t.Fatal(err)
 	}

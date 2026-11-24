@@ -1,17 +1,11 @@
 package elyph
 
-// Document 是 ELyph 文档的轻量解析结果；当前只承载 skill 创建和扫描所需信息。
+// Document 是 ELyph 文档的轻量解析结果；包含声明信息和流程阶段。
 type Document struct {
-	Kind  string
-	Name  string
-	Steps []Step
-}
-
-// Header 是 ELyph 文档首行的轻量解析结果，仅供启动扫描快速登记技能使用，不做全文校验。
-type Header struct {
 	Kind        string
 	Name        string
-	Description string
+	Description string // Header 中可选的任务说明。
+	Steps       []Step
 }
 
 // Step 记录一个 step 命名阶段块的元信息，供 scanner/descriptor 列出流程阶段。

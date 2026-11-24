@@ -53,28 +53,6 @@ func ValidateTask(raw string, expectedName string) (Document, []Diagnostic, erro
 	return validateKind(raw, "task", expectedName)
 }
 
-// ParseHeader 只解析 ELyph 文档首行 header，返回 Kind/Name/Description，不做全文结构校验。
-// 供启动扫描快速登记技能使用；完整校验在 skill 创建/修改时由 ParseSkill/ParseTask 完成。
-func ParseHeader(raw string) (Header, error) {
-	text := strings.ReplaceAll(raw, "\r\n", "\n")
-	for _, line := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-		fields := strings.Fields(trimmed)
-		if len(fields) < 2 || (fields[0] != "#skill" && fields[0] != "#task") || !validName(fields[1]) {
-			return Header{}, fmt.Errorf("first statement must be #skill/#task <name>")
-		}
-		desc := ""
-		if rest := strings.TrimSpace(strings.TrimPrefix(trimmed, fields[0]+" "+fields[1])); strings.HasPrefix(rest, "- ") {
-			desc = strings.TrimSpace(strings.TrimPrefix(rest, "- "))
-		}
-		return Header{Kind: strings.TrimPrefix(fields[0], "#"), Name: fields[1], Description: desc}, nil
-	}
-	return Header{}, fmt.Errorf("elyph is required")
-}
-
 func validateKind(raw string, expectedKind string, expectedName string) (Document, []Diagnostic, error) {
 	doc, diagnostics := parseDocument(raw, expectedKind, expectedName)
 	errors := errorDiagnostics(diagnostics)
@@ -170,6 +148,7 @@ func (p *parser) parseHeader(line string, lineNo int) {
 			p.add(lineNo, fmt.Sprintf("first statement must be #%s <name>", p.expectedKind))
 			return
 		}
+		p.doc.Description = strings.TrimSpace(strings.TrimPrefix(rest, "- "))
 	}
 	p.doc.Kind = strings.TrimPrefix(fields[0], "#")
 	p.doc.Name = fields[1]

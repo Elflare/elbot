@@ -139,36 +139,6 @@ func TestAnalyzeBashShellAdviceDoesNotWarnForRg(t *testing.T) {
 		t.Fatalf("expected no rg path warning, got: %v", advice.warnings)
 	}
 }
-func TestAnalyzeBashShellAdviceRejectsCatElSkill(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
-	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "modify_el_skill") {
-		t.Fatalf("expected modify_el_skill error, got %v", advice.blocked)
-	}
-}
-func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "go", "writer", "SKILL.elyph")
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		t.Fatal(err)
-	}
-	original := "#skill writer - Writer.\n"
-	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
-		t.Fatal(err)
-	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "sed -i 's/Writer/Changed/' "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
-	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "modify_el_skill") {
-		t.Fatalf("expected modify_el_skill error, got %v", advice.blocked)
-	}
-}
-
 func TestAnalyzeBashShellAdviceRejectsCatResidentMemory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {

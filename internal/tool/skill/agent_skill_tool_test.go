@@ -19,7 +19,7 @@ import (
 
 func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	writeAgentSkillConfig(t, dir, "risk = \"low\"\n")
 	manager := NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), newTestMediaRuntime(t), processenv.Environment{})
@@ -58,7 +58,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			dir := filepath.Join(root, "agent", "docx")
+			dir := filepath.Join(root, "docx")
 			writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 			path := AgentSkillConfigPath(dir)
 			if tc.oldContent != "" {
@@ -70,7 +70,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			brokenPath := filepath.Join(root, "agent", "broken", "SKILL.md")
+			brokenPath := filepath.Join(root, "broken", "SKILL.md")
 			if err := os.MkdirAll(brokenPath, 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 
 func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, "agent", "docx")
+	dir := filepath.Join(root, "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# DOCX")
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	manager := NewManager(root, registry, newTestMediaRuntime(t), processenv.Environment{})

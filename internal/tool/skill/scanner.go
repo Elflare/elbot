@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -15,30 +14,14 @@ import (
 )
 
 type filesystemScanner struct {
-	root string // 管理器传入的技能资产目录，包含 agent 与 go 子目录。
+	root string // 管理器传入的技能资产目录，每个直接子目录是一个 Skill。
 }
 
 func (s filesystemScanner) scanRecords(ctx context.Context) ([]record, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	records := []record{}
-	agentRecords, err := s.scanKind(ctx, KindAgent)
-	if err != nil {
-		return nil, err
-	}
-	records = append(records, agentRecords...)
-	goRecords, err := s.scanKind(ctx, KindGo)
-	if err != nil {
-		return nil, err
-	}
-	records = append(records, goRecords...)
-	sort.Slice(records, func(i, j int) bool { return records[i].Name < records[j].Name })
-	return records, nil
-}
-
-func (s filesystemScanner) scanKind(ctx context.Context, kind Kind) ([]record, error) {
-	dir := filepath.Join(s.root, dirNameForKind(kind))
+	dir := s.root
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -55,7 +38,7 @@ func (s filesystemScanner) scanKind(ctx context.Context, kind Kind) ([]record, e
 			continue
 		}
 		root := filepath.Join(dir, entry.Name())
-		record, ok, err := s.readRecord(root, entry.Name(), kind)
+		record, ok, err := s.readRecord(root, entry.Name())
 		if err != nil {
 			return nil, err
 		}
@@ -63,48 +46,18 @@ func (s filesystemScanner) scanKind(ctx context.Context, kind Kind) ([]record, e
 			records = append(records, record)
 		}
 	}
+	sort.Slice(records, func(i, j int) bool { return records[i].Name < records[j].Name })
 	return records, nil
 }
 
-func (s filesystemScanner) readRecord(root, dirName string, kind Kind) (record, bool, error) {
-	if kind == KindGo {
-		return s.readGoRecord(root, dirName)
-	}
-	return s.readAgentRecord(root, dirName)
-}
-
-func (s filesystemScanner) readGoRecord(root, dirName string) (record, bool, error) {
-	data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName))
-	if os.IsNotExist(err) {
-		return record{}, false, nil
-	}
-	if err != nil {
-		return record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
-	}
-	header, err := elyph.ParseHeader(string(data))
-	if err != nil {
-		return record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
-	}
-	binary, err := findGoBinary(root, dirName, header.Name)
-	if err != nil {
-		return record{}, false, err
-	}
-	detail := strings.TrimSpace(string(data))
-	record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
-	if binary != "" && record.Risk == "" {
-		return record, false, fmt.Errorf("Go skill %q requires an explicit risk", header.Name)
-	}
-	return record, true, nil
-}
-
-func (s filesystemScanner) readAgentRecord(root, dirName string) (record, bool, error) {
+func (s filesystemScanner) readRecord(root, dirName string) (record, bool, error) {
 	if data, err := os.ReadFile(filepath.Join(root, elyph.SkillFileName)); err == nil {
-		header, err := elyph.ParseHeader(string(data))
+		doc, err := elyph.ParseSkill(string(data), dirName)
 		if err != nil {
 			return record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 		}
 		detail := strings.TrimSpace(string(data))
-		record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
+		record := record{Name: doc.Name, Description: doc.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Root: root}
 		return s.withAgentManifest(record)
 	} else if !os.IsNotExist(err) {
 		return record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
@@ -121,7 +74,7 @@ func (s filesystemScanner) readAgentRecord(root, dirName string) (record, bool, 
 	if err != nil {
 		return record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
-	record := record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
+	record := record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Root: root}
 	return s.withAgentManifest(record)
 }
 
@@ -138,68 +91,4 @@ func (s filesystemScanner) withAgentManifest(record record) (record, bool, error
 		record.Tags = manifest.Tags
 	}
 	return record, true, nil
-}
-
-func elyphRisk(text string) toolshare.RiskLevel {
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "** risk ") {
-			return toolshare.RiskLevel(strings.TrimSpace(strings.TrimPrefix(trimmed, "** risk ")))
-		}
-	}
-	return ""
-}
-
-func dirNameForKind(kind Kind) string {
-	if kind == KindGo {
-		return "go"
-	}
-	return "agent"
-}
-
-func findGoBinary(root, dirName, skillName string) (string, error) {
-	candidates := []string{}
-	if runtime.GOOS == "windows" {
-		candidates = append(candidates, filepath.Join(root, dirName+".exe"), filepath.Join(root, skillName+".exe"))
-	} else {
-		candidates = append(candidates, filepath.Join(root, dirName), filepath.Join(root, skillName))
-	}
-	for _, candidate := range candidates {
-		if executableFile(candidate) {
-			return candidate, nil
-		}
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return "", fmt.Errorf("read go skill dir %q: %w", root, err)
-	}
-	matches := []string{}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		path := filepath.Join(root, entry.Name())
-		if runtime.GOOS == "windows" {
-			if filepath.Ext(entry.Name()) == ".exe" {
-				matches = append(matches, path)
-			}
-		} else if executableFile(path) {
-			matches = append(matches, path)
-		}
-	}
-	if len(matches) == 1 {
-		return matches[0], nil
-	}
-	return "", nil
-}
-
-func executableFile(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false
-	}
-	if runtime.GOOS == "windows" {
-		return filepath.Ext(path) == ".exe"
-	}
-	return info.Mode()&0o111 != 0
 }

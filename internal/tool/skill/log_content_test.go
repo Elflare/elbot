@@ -30,31 +30,24 @@ func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
 		if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 			t.Fatal(err)
 		}
-		catalog := newCatalog()
-		catalog.Replace([]record{{Name: "output", Kind: KindGo, Root: root, BinaryPath: binary}})
-		callers := []toolshare.ToolDefinition{
-			(GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog}}).Definition(),
-			(commandTool{media: newTestMediaRuntime(t), record: record{Name: "output", Root: root}, manifest: AgentSkillManifest{Command: []string{"sh", "output.sh"}, TimeoutSeconds: 30}}).Definition(),
+		caller := (commandTool{media: newTestMediaRuntime(t), record: record{Name: "output", Root: root}, manifest: AgentSkillManifest{Command: []string{"sh", "output.sh"}, TimeoutSeconds: 30}}).Definition()
+		result, logContent, err := callTool(t.Context(), caller, toolshare.CallRequest{Arguments: json.RawMessage(`{}`)})
+		if fail {
+			if err != nil || result.Status != operationresult.Failed || !strings.Contains(result.Message, "output truncated") || !strings.Contains(result.Message, "exit status 7") {
+				t.Fatalf("%s lost model error details: %v", caller.Definition.Name, err)
+			}
+		} else if err != nil || result.Status != operationresult.Success || result.Data == nil || !strings.HasSuffix(result.Data.Content, "\n... output truncated ...\n") {
+			t.Fatalf("%s lost model truncation notice: %v", caller.Definition.Name, err)
 		}
-		for _, caller := range callers {
-			result, logContent, err := callTool(t.Context(), caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"skill_name":"output","payload":{}}`)})
-			if fail {
-				if err != nil || result.Status != operationresult.Failed || !strings.Contains(result.Message, "output truncated") || !strings.Contains(result.Message, "exit status 7") {
-					t.Fatalf("%s lost model error details: %v", caller.Definition.Name, err)
-				}
-			} else if err != nil || result.Status != operationresult.Success || result.Data == nil || !strings.HasSuffix(result.Data.Content, "\n... output truncated ...\n") {
-				t.Fatalf("%s lost model truncation notice: %v", caller.Definition.Name, err)
+		if fail {
+			if logContent != "" {
+				t.Fatalf("unexpected summary: %q", logContent)
 			}
-			if fail {
-				if logContent != "" {
-					t.Fatalf("unexpected summary: %q", logContent)
-				}
-				continue
-			}
-			preview := result.Data.LogContent()
-			if logContent != "" || strings.Contains(preview, "output truncated") || !strings.HasSuffix(preview, "…") || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview) {
-				t.Fatalf("%s summary=%q preview=%q", caller.Definition.Name, logContent, preview)
-			}
+			continue
+		}
+		preview := result.Data.LogContent()
+		if logContent != "" || strings.Contains(preview, "output truncated") || !strings.HasSuffix(preview, "…") || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview) {
+			t.Fatalf("%s summary=%q preview=%q", caller.Definition.Name, logContent, preview)
 		}
 	}
 }

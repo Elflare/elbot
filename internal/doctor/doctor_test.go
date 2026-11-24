@@ -144,7 +144,7 @@ func TestMissingUnknownAndSkillDifferencesAreGrouped(t *testing.T) {
 	main := filepath.Join(dir, "app.toml")
 	editFile(t, main, "llm_image_max_length = 4096\n", "")
 	editFile(t, main, `log_level = "info"`, `log_levle = "debug"`)
-	skill := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "SKILL.md")
+	skill := filepath.Join(dir, "skills", "agent_skill_creator", "SKILL.md")
 	writeFile(t, skill, "# customized skill\n")
 	before := diskSnapshot(t, dir)
 	report := check(t, service)
@@ -208,7 +208,7 @@ func TestUnknownFieldsOutsideMainAndUserContentAreIgnored(t *testing.T) {
 		}
 		writeFile(t, path, "unknown_root = true\n"+string(data))
 	}
-	for _, name := range []string{"SOUL.md", "memories.toml", ".env.example", "plugins/.env", "skills/agent/user_added/SKILL.md"} {
+	for _, name := range []string{"SOUL.md", "memories.toml", ".env.example", "plugins/.env", "skills/user_added/SKILL.md"} {
 		writeFile(t, filepath.Join(dir, name), "arbitrary user content\n")
 	}
 	if report := check(t, service); len(report.Files) != 0 {
@@ -262,7 +262,7 @@ func TestInvalidMainDoesNotGuessDependentPaths(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "providers.toml")); err != nil {
 		t.Fatal(err)
 	}
-	skill := filepath.Join(dir, "skills", "agent", "write_elbot_hook", "SKILL.md")
+	skill := filepath.Join(dir, "skills", "write_elbot_hook", "SKILL.md")
 	if err := os.Remove(skill); err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestSkillLineEndingsAndMalformedMetadata(t *testing.T) {
 	if report := check(t, service); len(report.Files) != 0 {
 		t.Fatalf("unexpected issues: %+v", report.Files)
 	}
-	path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
+	path := filepath.Join(dir, "skills", "agent_skill_creator", "ELBOT_SKILL.toml")
 	writeFile(t, path, "[invalid\n")
 	report := check(t, service)
 	if len(report.Files) != 1 || len(report.Files[0].Issues) != 1 || report.Files[0].Issues[0].Level != config.LevelError || report.Files[0].Path != path {
@@ -356,7 +356,7 @@ func TestContentComparisonIgnoresOnlyNewlines(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, service := fixture(t)
-			path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "SKILL.md")
+			path := filepath.Join(dir, "skills", "agent_skill_creator", "SKILL.md")
 			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -379,7 +379,7 @@ func TestContentComparisonIgnoresOnlyNewlines(t *testing.T) {
 
 func TestNewlineComparisonDoesNotHideInvalidTOML(t *testing.T) {
 	dir, service := fixture(t)
-	path := filepath.Join(dir, "skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml")
+	path := filepath.Join(dir, "skills", "agent_skill_creator", "ELBOT_SKILL.toml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

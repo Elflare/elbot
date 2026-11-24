@@ -23,7 +23,6 @@ type Deps struct {
 	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。
 	LongMemoryDir       string                                                // 长期记忆资产与索引目录。
 	DraftRoot           string                                                // 各会话草稿所在的根目录。
-	SkillRoot           string                                                // 技能资产保护范围。
 	FileRollback        *fileops.Service                                      // 与总管共享的编辑和回滚服务。
 	ProcessEnv          processenv.Environment                                // 已合并配置的子进程环境。
 	ElwispCreatorConfig ElwispCreatorConfigProvider                           // 创建指引所需的配置摘要。
@@ -42,7 +41,7 @@ type Deps struct {
 }
 
 func NewTools(deps Deps) []share.ToolDefinition {
-	guard := FileGuard{NewElSkillFileGuardRule(deps.SkillRoot), NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
+	guard := FileGuard{NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
 	deps.FileRollback.CheckWrite = guard.CheckWrite
 	definitions := []share.ToolDefinition{
 		weave.Definition(deps.ProcessEnv),

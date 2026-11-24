@@ -1,4 +1,4 @@
-// 执行 Skill 子进程、查找编译器并收集有界输出。
+// 执行 Skill 子进程并收集有界输出。
 package skill
 
 import (
@@ -12,8 +12,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -126,118 +124,4 @@ func truncateOutput(text string) string {
 		return text
 	}
 	return text[:maxRunnerOutput] + "\n... output truncated ...\n"
-}
-
-const goBinaryEnv = "ELBOT_GO_BINARY"
-
-func resolveGoExecutable(environment processenv.Environment) (operationresult.Result[string], error) {
-	if value, ok := environment.Lookup(goBinaryEnv); ok && strings.TrimSpace(value) != "" {
-		return validateGoExecutable(value, goBinaryEnv)
-	}
-	if goroot, ok := environment.Lookup("GOROOT"); ok && strings.TrimSpace(goroot) != "" {
-		candidate := filepath.Join(goroot, "bin", executableName("go"))
-		return validateGoExecutable(candidate, "GOROOT")
-	}
-	goPath, err := environment.LookPath("go")
-	if errors.Is(err, exec.ErrNotFound) {
-		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)}, nil
-	}
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	return operationresult.Result[string]{Status: operationresult.Success, Data: goPath}, nil
-}
-
-func validateGoExecutable(path, source string) (operationresult.Result[string], error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s is empty", source)}, nil
-	}
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s points to unavailable go executable %q: %v", source, path, err)}, nil
-	}
-	if err != nil {
-		return operationresult.Result[string]{}, fmt.Errorf("%s points to unavailable go executable %q: %w", source, path, err)
-	}
-	if info.IsDir() {
-		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s points to a directory, not go executable: %q", source, path)}, nil
-	}
-	return operationresult.Result[string]{Status: operationresult.Success, Data: path}, nil
-}
-
-func executableName(name string) string {
-	if runtime.GOOS == "windows" {
-		return name + ".exe"
-	}
-	return name
-}
-
-type goBuildResult struct {
-	Stdout string // 编译成功时收集的标准输出。
-	Stderr string // 编译成功时收集的标准错误输出。
-}
-
-func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environment processenv.Environment) (operationresult.Result[goBuildResult], error) {
-	goPath, err := resolveGoExecutable(environment)
-	if err != nil {
-		return operationresult.Result[goBuildResult]{}, err
-	}
-	if goPath.Status != operationresult.Success {
-		return operationresult.Result[goBuildResult]{Status: goPath.Status, Message: goPath.Message}, nil
-	}
-	binary := executableName(name)
-	timeout := time.Duration(timeoutMS) * time.Millisecond
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := environment.CommandContext(runCtx, goPath.Data, "build", "-o", binary, ".")
-	cmd.Dir = root
-	stdout := limitedOutput{limit: maxRunnerStdout}
-	stderr := limitedOutput{limit: maxRunnerOutput}
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = runSkillProcess(runCtx, ctx, cmd)
-	if err != nil {
-		callErr := commandError("go build", err, truncateOutput(stdout.String()), stderr.String())
-		switch {
-		case errors.Is(err, context.DeadlineExceeded):
-			return operationresult.Result[goBuildResult]{Status: operationresult.Timeout, Message: callErr.Error()}, nil
-		case errors.Is(err, context.Canceled):
-			return operationresult.Result[goBuildResult]{Status: operationresult.Canceled, Message: callErr.Error()}, nil
-		}
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-			return operationresult.Result[goBuildResult]{Status: operationresult.Failed, Message: callErr.Error()}, nil
-		}
-		return operationresult.Result[goBuildResult]{}, callErr
-	}
-	return operationresult.Result[goBuildResult]{Status: operationresult.Success, Data: goBuildResult{Stdout: stdout.String(), Stderr: stderr.String()}}, nil
-}
-
-func detectGoModVersion(ctx context.Context, environment processenv.Environment) (operationresult.Result[string], error) {
-	goPath, err := resolveGoExecutable(environment)
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	if goPath.Status != operationresult.Success {
-		return goPath, nil
-	}
-	cmd := environment.CommandContext(ctx, goPath.Data, "env", "GOVERSION")
-	stdout := limitedOutput{limit: maxRunnerStdout}
-	stderr := limitedOutput{limit: maxRunnerOutput}
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		callErr := fmt.Errorf("detect go version: %w\nstderr:\n%s", err, truncateOutput(stderr.String()))
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-			return operationresult.Result[string]{Status: operationresult.Failed, Message: callErr.Error()}, nil
-		}
-		return operationresult.Result[string]{}, callErr
-	}
-	version, err := parseGoModVersion(stdout.String())
-	if err != nil {
-		return operationresult.Result[string]{Status: operationresult.Incompatible, Message: err.Error()}, nil
-	}
-	return operationresult.Result[string]{Status: operationresult.Success, Data: version}, nil
 }

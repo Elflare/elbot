@@ -63,14 +63,14 @@ func TestFilesSaveExactContentAndPreservePermissions(t *testing.T) {
 
 func TestCreateAndConcurrentSave(t *testing.T) {
 	m, dir := testSupervisor(t, SupervisorDeps{})
-	created, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "agent/new/SKILL.md", Content: "original\n", Create: true})
+	created, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "new/SKILL.md", Content: "original\n", Create: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.Status != operationresult.Success || !created.Data.Created {
 		t.Fatal("create result did not identify new file")
 	}
-	info, err := os.Stat(filepath.Join(dir, "skills/agent/new/SKILL.md"))
+	info, err := os.Stat(filepath.Join(dir, "skills/new/SKILL.md"))
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("new file mode: %v %v", info, err)
 	}
@@ -84,7 +84,7 @@ func TestCreateAndConcurrentSave(t *testing.T) {
 	for _, content := range []string{"first\n", "second\n"} {
 		wg.Go(func() {
 			<-start
-			result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "agent/new/SKILL.md", Content: content, ExpectedRevision: created.Data.Revision})
+			result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "new/SKILL.md", Content: content, ExpectedRevision: created.Data.Revision})
 			results <- outcome{status: result.Status, err: err}
 		})
 	}

@@ -91,7 +91,7 @@ func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 	cfg.ConfigPath = filepath.Join(root, "config.toml")
 	cfg.Sandbox.Root = root
 	cfg.ToolTags = config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"private": {Tools: []string{"read_file"}}}}
-	dir := filepath.Join(root, "skills", "agent", "contract_skill")
+	dir := filepath.Join(root, "skills", "contract_skill")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}

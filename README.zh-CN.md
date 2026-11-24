@@ -82,9 +82,9 @@ xychart-beta horizontal
 
 **普通 Cron 与 LLM Cron**： 普通 Cron 按计划发送固定内容；LLM Cron 用任务描述驱动模型执行，适合需要分析、归纳或使用工具的定时任务。
 
-**ELyph 任务表示法**： 用结构化语法描述 LLM Cron 与原生 Skill 的输入、输出、步骤、条件和约束，比自然语言 Markdown 更短、更少歧义，便于 LLM 复用传递，也便于 lint、审计和工具化。
+**ELyph 任务表示法**： 用结构化语法描述 LLM Cron 与 AgentSkill 的输入、输出、步骤、条件和约束，比自然语言 Markdown 更短、更少歧义，便于 LLM 复用传递，也便于 lint、审计和工具化。
 
-**可由 LLM 创建的 EL Skill**： 元工具 `create_el_skill` 让 LLM 把可复用经验沉淀为 EL Skill，创建时校验 ELyph 语法，可选附带 Go 源码并编译。
+**AgentSkill**：在 `skills/<name>/` 编写可复用的任务说明，推荐 ELyph，也可用自然语言 Markdown。可选的 `ELBOT_SKILL.toml` 能将脚本或可执行文件注册成工具。
 
 **兼容外置 AgentSkill**： 配置后可将符合 agentskills.io 风格的外置 AgentSkill 脚本作为工具使用。
 

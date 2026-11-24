@@ -6,15 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"elbot/internal/elyph"
 	"elbot/internal/operationresult"
 )
 
 const (
 	warnUseReadFile         = "读取本地文件请优先使用 read_file 工具。"
 	warnUseEditFile         = "编辑本地文件请优先使用 edit_file 工具。"
-	warnUseReadElSkill      = "读取 EL Skill 文件请使用 read_el_skill。"
-	warnUseModifyElSkill    = "EL Skill 文件请使用 modify_el_skill 修改。"
 	warnUseReadMemory       = "读取常驻记忆请使用 resident_memory_read。"
 	warnUseModifyMemory     = "常驻记忆文件请使用 resident_memory_normal 或 resident_memory_core 修改。"
 	warnUseReadLongMemory   = "读取长期记忆请使用 long_memory_search。"
@@ -78,21 +75,6 @@ func (r FileGuardRule) matches(path string) bool {
 		return true
 	}
 	return r.Match(path, filepath.ToSlash(rel))
-}
-
-func NewElSkillFileGuardRule(skillRoot string) FileGuardRule {
-	return FileGuardRule{
-		Root:         skillRoot,
-		ReadWarnings: []string{warnUseReadElSkill},
-		WriteError:   warnUseModifyElSkill,
-		Match: func(absPath, rel string) bool {
-			parts := strings.Split(filepath.ToSlash(rel), "/")
-			if len(parts) != 3 || parts[0] != "go" || strings.TrimSpace(parts[1]) == "" {
-				return false
-			}
-			return parts[2] == elyph.SkillFileName || parts[2] == "main.go"
-		},
-	}
 }
 
 func NewResidentMemoryFileGuardRule(path string) FileGuardRule {

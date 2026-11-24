@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/elyph"
 	"elbot/internal/tool/share"
 )
 
@@ -176,7 +175,7 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.ToolDefi
 	targets[name] = target
 	seen[name] = true
 	info := target.Definition
-	discovered := share.DiscoveryItem{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules}
+	discovered := share.DiscoveryItem{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules || info.Source == share.SourceSkill}
 	if loader := target.LoadDetail; loader != nil {
 		block, err := loader(ctx)
 		if err != nil {
@@ -191,7 +190,6 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.ToolDefi
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	discovered.NeedsElyphRules = discovered.NeedsElyphRules || (discovered.Detail != "" && discovered.DetailBlock.Format == elyph.Format)
 	result.Tools = append(result.Tools, discovered)
 	for _, dependency := range info.DependsOn {
 		candidate, ok := targets[dependency]

@@ -9,13 +9,6 @@ import (
 	toolshare "elbot/internal/tool/share"
 )
 
-type Kind string
-
-const (
-	KindAgent Kind = "agent"
-	KindGo    Kind = "go"
-)
-
 // record 保存一次扫描得到的技能事实，发布后只读。
 type record struct {
 	Name           string              // 注册名称。
@@ -26,11 +19,11 @@ type record struct {
 	Risk           toolshare.RiskLevel // 技能声明的风险级别。
 	SuperadminOnly bool                // 是否仅允许超级管理员访问。
 	Tags           []string            // 发现与预加载使用的技能标签。
-	Kind           Kind                // Agent 文档技能或原生 Go 技能。
-	Root           string              // 技能自身的资产目录与执行工作目录。
-	BinaryPath     string              // Go 技能可执行文件路径；纯文档技能为空。
-	Manifest       AgentSkillManifest  // 已解析的 ELBOT_SKILL.toml。
-	ManifestFound  bool                // 是否存在 ELBOT_SKILL.toml。
+
+	Root string // 技能自身的资产目录与执行工作目录。
+
+	Manifest      AgentSkillManifest // 已解析的 ELBOT_SKILL.toml。
+	ManifestFound bool               // 是否存在 ELBOT_SKILL.toml。
 }
 
 type catalog struct {
@@ -51,13 +44,6 @@ func (c *catalog) Replace(records []record) {
 			record.Root = abs
 		} else {
 			record.Root = filepath.Clean(record.Root)
-		}
-		if record.BinaryPath != "" {
-			if abs, err := filepath.Abs(record.BinaryPath); err == nil {
-				record.BinaryPath = abs
-			} else {
-				record.BinaryPath = filepath.Clean(record.BinaryPath)
-			}
 		}
 		c.records[record.Name] = record
 	}

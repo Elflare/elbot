@@ -46,19 +46,6 @@ func ParseSkillMarkdown(raw []byte, fallbackName string) (Definition, error) {
 	return def, nil
 }
 
-func parseRisk(value string) (toolshare.RiskLevel, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("risk is required")
-	}
-	switch toolshare.RiskLevel(value) {
-	case toolshare.RiskSafe, toolshare.RiskLow, toolshare.RiskMedium, toolshare.RiskHigh, toolshare.RiskCritical:
-		return toolshare.RiskLevel(value), nil
-	default:
-		return "", fmt.Errorf("invalid skill risk %q", value)
-	}
-}
-
 func splitFrontMatter(text string) (string, string) {
 	if !strings.HasPrefix(text, "---\n") {
 		return "", text

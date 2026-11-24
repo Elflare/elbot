@@ -95,7 +95,12 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_, err := registry.RegisterTools(ctx, toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
 		toolshare.NewBuilder("alpha").Description("alpha").Risk(toolshare.RiskLow).Build((agentWrapperTool{name: "alpha"}).PrepareCall),
 		toolshare.NewBuilder("wrapper").Description("wrapper").Risk(toolshare.RiskLow).Hidden().Build((agentWrapperTool{name: "wrapper"}).PrepareCall),
-		{Definition: toolshare.Info{Name: "doc"}, LoadDetail: (agentDetailTool{name: "doc", detail: "#skill doc", format: "elyph"}).LoadDetail, ActivateTools: []string{"wrapper"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = registry.RegisterTools(ctx, toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+		{Definition: toolshare.Info{Name: "doc"}, LoadDetail: (agentDetailTool{name: "doc", detail: "# Guide", format: "markdown"}).LoadDetail, ActivateTools: []string{"wrapper"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +161,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if !strings.Contains(row.Metadata, "9007199254740993") {
 		t.Fatal("lost unknown field")
 	}
-	if !skills.NeedsElyphRules || !strings.Contains(skills.Text, "#skill doc") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
+	if !skills.NeedsElyphRules || !strings.Contains(skills.Text, "# Guide") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
 		t.Fatalf("text=%s", skills.Text)
 	}
 }

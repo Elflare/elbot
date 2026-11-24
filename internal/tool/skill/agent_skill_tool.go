@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"elbot/internal/fileops"
@@ -78,7 +79,7 @@ func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (op
 	}
 	if preview.Action == "read" {
 		record, ok := t.manager.catalog.Get(preview.Name)
-		if !ok || record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != preview.Path {
+		if !ok || AgentSkillConfigPath(record.Root) != preview.Path {
 			message := "AgentSkill target changed after preflight"
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Conflict, Message: message}, message, nil
 		}
@@ -123,7 +124,7 @@ func (t AgentSkillTool) preview(ctx context.Context, req toolshare.CallRequest) 
 		return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	record, ok := t.manager.catalog.Get(name)
-	if !ok || record.Kind != KindAgent {
+	if !ok {
 		return operationresult.Result[agentSkillPreview]{Status: operationresult.NotFound, Message: fmt.Sprintf("AgentSkill %q not found", name)}, nil
 	}
 	path := AgentSkillConfigPath(record.Root)
@@ -177,4 +178,22 @@ func readAgentSkillConfig(record record, path string) (string, error) {
 	b.WriteString("位置参数用顶层 positional = [\\\"name\\\"] 按数组顺序声明；与 [args] 不能重复映射同一参数。必填参数由 positional 或 [args] 映射即可。\n")
 	b.WriteString("# 文档型 Skill 只限制可见性时，可以只写：\nrisk = \"high\"\nsuperadmin_only = true\n\n# 注册成普通工具时，补齐命令和 schema：\nrisk = \"medium\"\nsuperadmin_only = false\nweavable = false # 纯文本工具可设为 true，允许 tool_weave 调用\nasync = false # 设为 true 允许前台直接调用时选择异步，调用默认同步\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
 	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+var skillNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
+func validateSkillName(name string) error {
+	if !skillNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid skill name %q", name)
+	}
+	if isWindowsReservedName(name) {
+		return fmt.Errorf("invalid skill name %q: reserved file name", name)
+	}
+	return nil
+}
+
+func isWindowsReservedName(name string) bool {
+	base := strings.ToUpper(strings.TrimSpace(name))
+	reserved := map[string]bool{"CON": true, "PRN": true, "AUX": true, "NUL": true, "COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true, "LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true}
+	return reserved[base]
 }

@@ -47,7 +47,7 @@ func newLifecycleTool(t *testing.T, root string, tags ...config.ToolTagsConfig) 
 
 func writeLifecycleSkill(t *testing.T, root string) {
 	t.Helper()
-	dir := filepath.Join(root, "skills", "agent", "startup_skill")
+	dir := filepath.Join(root, "skills", "startup_skill")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestSupervisorInitialSkillPreloadUsesRealStartup(t *testing.T) {
 			if result, err := m.Remove(ctx, "startup_skill"); err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if _, err := os.Stat(filepath.Join(root, "skills", "agent", "startup_skill")); !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Stat(filepath.Join(root, "skills", "startup_skill")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal(err)
 			}
 			if infos, err := m.QueryTools(ctx, ToolQuery{Scope: QueryCatalog, Names: []string{"startup_skill"}}); err != nil || len(infos) != 0 {

@@ -30,10 +30,10 @@ var defaultConfigAssets = []DefaultAsset{
 	{Path: "tool_tags.toml", Content: defaultToolTagsTOML, Reference: []string{"config_files", "tool_tags"}, MissingHint: "允许省略；工具自带的 tag 仍然有效，但没有文件提供的分组和提示词。"},
 	{Path: "plugins/hooks.toml", Content: defaultHooksTOML, MissingHint: "允许不配置规则 Hook；不使用时可忽略。"},
 	{Path: "plugins/.env", Content: defaultHookEnv, MissingHint: "没有额外的 Hook 环境变量；继承进程环境。"},
-	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD, CompareContent: true, MissingHint: "内置 Skill 资产可按需恢复。"},
-	{Path: filepath.Join("skills", "agent", "agent_skill_creator", "ELBOT_SKILL.toml"), Content: defaultAgentSkillCreatorSkillTOML, CompareContent: true, TOML: true, MissingHint: "内置 Skill 资产可按需恢复。"},
-	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD, CompareContent: true, MissingHint: "内置 Skill 资产可按需恢复。"},
-	{Path: filepath.Join("skills", "agent", "write_elbot_hook", "ELBOT_SKILL.toml"), Content: defaultWriteElbotHookSkillTOML, CompareContent: true, TOML: true, MissingHint: "内置 Skill 资产可按需恢复。"},
+	{Path: filepath.Join("skills", "agent_skill_creator", "SKILL.md"), Content: defaultAgentSkillCreatorSkillMD, CompareContent: true, MissingHint: "内置 Skill 资产可按需恢复。"},
+	{Path: filepath.Join("skills", "agent_skill_creator", "ELBOT_SKILL.toml"), Content: defaultAgentSkillCreatorSkillTOML, CompareContent: true, TOML: true, MissingHint: "内置 Skill 资产可按需恢复。"},
+	{Path: filepath.Join("skills", "write_elbot_hook", "SKILL.md"), Content: defaultWriteElbotHookSkillMD, CompareContent: true, MissingHint: "内置 Skill 资产可按需恢复。"},
+	{Path: filepath.Join("skills", "write_elbot_hook", "ELBOT_SKILL.toml"), Content: defaultWriteElbotHookSkillTOML, CompareContent: true, TOML: true, MissingHint: "内置 Skill 资产可按需恢复。"},
 	{Path: ".env.example", Content: defaultEnvExample, Example: true},
 }
 
@@ -48,8 +48,6 @@ func DefaultAssets() []DefaultAsset {
 
 var defaultConfigDirs = []string{
 	"skills",
-	filepath.Join("skills", "agent"),
-	filepath.Join("skills", "go"),
 	"plugins",
 	"long_memory",
 }
@@ -108,16 +106,16 @@ var defaultSoulMD string
 //go:embed defaults/elnis.toml
 var defaultElnisTOML string
 
-//go:embed defaults/skills/agent/agent_skill_creator/SKILL.md
+//go:embed defaults/skills/agent_skill_creator/SKILL.md
 var defaultAgentSkillCreatorSkillMD string
 
-//go:embed defaults/skills/agent/agent_skill_creator/ELBOT_SKILL.toml
+//go:embed defaults/skills/agent_skill_creator/ELBOT_SKILL.toml
 var defaultAgentSkillCreatorSkillTOML string
 
-//go:embed defaults/skills/agent/write_elbot_hook/SKILL.md
+//go:embed defaults/skills/write_elbot_hook/SKILL.md
 var defaultWriteElbotHookSkillMD string
 
-//go:embed defaults/skills/agent/write_elbot_hook/ELBOT_SKILL.toml
+//go:embed defaults/skills/write_elbot_hook/ELBOT_SKILL.toml
 var defaultWriteElbotHookSkillTOML string
 
 //go:embed defaults/.env.example

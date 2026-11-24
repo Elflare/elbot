@@ -32,7 +32,7 @@ func (r *blockedSkillRegistry) RegisterTools(ctx context.Context, source share.S
 func TestAsyncLoadingSharesScanAndSeparatesWaiterCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		root := t.TempDir()
-		writeSkill(t, filepath.Join(root, "agent", "docs"), "---\nname: docs\ndescription: Docs\n---\n# Docs")
+		writeSkill(t, filepath.Join(root, "docs"), "---\nname: docs\ndescription: Docs\n---\n# Docs")
 		catalog := &blockedSkillRegistry{Registry: registry.NewRegistry(security.DefaultPermission()), entered: make(chan struct{}), release: make(chan struct{})}
 		manager := NewManager(root, catalog, nil, processenv.Environment{})
 		done := manager.Start(t.Context())
@@ -92,7 +92,7 @@ func TestAsyncLoadingDoneWaitsForActualExit(t *testing.T) {
 
 func TestReloadFailurePreservesLoadedCatalog(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "agent", "docs")
+	path := filepath.Join(root, "docs")
 	writeSkill(t, path, "---\nname: docs\ndescription: Original\n---\n# Docs")
 	catalog := registry.NewRegistry(security.DefaultPermission())
 	manager := NewManager(root, catalog, nil, processenv.Environment{})
