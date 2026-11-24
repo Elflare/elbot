@@ -28,7 +28,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
-| Local startup time   | ~10ms (tested on N5105 with SATA SSD) |
+| Local startup time   | ~10ms (tested on N5105, SATA SSD) |
 | Resident memory       | ~50MB                           |
 | Binary size | <30MB                           |
 
@@ -36,9 +36,9 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ElBot does not inject the full schema of all tools in every conversation round. It only exposes `discover_tool` and the names of currently available tools; the model discovers details only when needed, and the Agent then injects the corresponding schema.
 
-All tool schemas, prompts, and message hints are carefully designed to be precise and unambiguous while significantly reducing token usage.
+All tool schemas, prompts, and message hints are meticulously designed to be precise and unambiguous while significantly reducing token usage.
 
-**Chat / Work dual modes**: Both modes can be configured with different models independently—use low-cost models for chatting and powerful models for complex tasks.
+**Chat / Work dual modes**: Both modes can be configured with different models independently—low-cost models for chatting and powerful models for complex tasks.
 
 | Mode   | Tools               | Applicable Scenarios                                 | First request token consumption      |
 | ------ | ------------------ | ---------------------------------------- | -------------------------- |
@@ -47,11 +47,11 @@ All tool schemas, prompts, and message hints are carefully designed to be precis
 
 > Note: After using the `Responses` protocol, tool discovery via `additional_tools` no longer breaks the cache, leading to higher subsequent cache hit rates.
 
-**Layered resident memory and long-term memory**: Resident memory only stores short, stable information injected into each round, internally distinguishing between `core` (requiring confirmation for modification) and `normal` (organizable). Longer memories are queried by the LLM as needed via `long_memory`, using Markdown source data and SQLite FTS at the bottom to balance transparency and retrieval efficiency.
+**Layered resident memory and long-term memory**: Resident memory only stores short, stable information injected into each round, internally distinguishing between `core` (requiring confirmation for modification) and `normal` (organizable). Longer memories are queried by the LLM on demand via `long_memory`, using Markdown source data and SQLite FTS at the bottom to balance transparency and retrieval efficiency.
 
 **tool_weave**: Allows the model to use Python for concurrent and batch calls to ElBot tools, filtering for only the required results to save tokens and increase speed.[^3] [Learn about tool orchestration principles](docs.en/concepts.md#用-python-编排工具)
 
-Both ElBot and Codex used `gpt-6.2-astra` to fix the same bug in ElBot. With similar code quality, ElBot made 12 fewer model calls and had 81.3% lower total token usage.
+Both ElBot and Codex used `gpt-6.2-astra` to fix the same bug in ElBot. With similar code quality, ElBot made 12 fewer model calls, and its total token usage was 81.3% lower.
 
 ```mermaid
 ---
@@ -77,6 +77,7 @@ xychart-beta horizontal
     y-axis 0 --> 200
     bar [36.34, 194.51]
 ```
+
 
 ### II. Powerful and Extensible
 
