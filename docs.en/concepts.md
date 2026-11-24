@@ -178,20 +178,20 @@ Elnis does not serve as a chat platform, nor does it replace Cron. Cron handles 
 
 ## Skill and ELyph
 
-A Skill is a reusable task extension: it can be a set of task instructions for an Agent to read, or it can be wrapped as a structured tool for LLM invocation.
+Skills are reusable task extensions: they can be a set of task instructions for an Agent to read, or they can be wrapped as structured tools for the LLM to call.
 
 | Type | Form |
 | --- | --- |
-| AgentSkill | The document describes the task, and the LLM completes it using general tools according to the instructions. |
-| Tool-based Skill | Registered as a regular tool, invoked by the LLM via structured parameters. |
+| AgentSkill | Tasks described in documentation; the LLM completes them using general tools according to the instructions. |
+| Tool-based Skill | Registered as a regular tool; the LLM calls it via structured parameters. |
 
-ELyph Task Notation is a structured representation for describing reusable tasks, using a more stable format to express inputs, outputs, steps, conditions, and constraints, thereby reducing the ambiguity of natural language descriptions.
+It is recommended to use ELyph to express inputs, outputs, steps, and constraints for AgentSkills, although natural language Markdown can also be used. ELyph rules are injected when a specific Skill is discovered, but not when only listing the directory.
 
-For tooling configuration, see [AgentSkill Tooling Configuration](configuration.md#agentskill-工具化配置); for the relationship between ELyph and Skill and the complete syntax, see [ELyph Task Notation](elyph.md).
+For tool-based configuration, see [AgentSkill Tool-based Configuration](configuration.md#agentskill-工具化配置). For the relationship between ELyph and Skills and the complete syntax, see [ELyph Task Notation](elyph.md).
 
 ### Skill Media Usage
 
-Media uses a stable identifier `media:<64-bit lowercase SHA-256>`. Ordinary document-type Skills can instruct the Agent to pass this identifier to tools that support media.
+Media uses a stable identifier `media:<64-bit lowercase SHA-256>`. Ordinary document-type Skills can guide the Agent to pass this identifier to tools that support media.
 
 Bash scripts explicitly declare inputs via `shell`, for example:
 
@@ -202,21 +202,19 @@ Bash scripts explicitly declare inputs via `shell`, for example:
 }
 ```
 
-Each item in `media_inputs` only accepts `media`. The host exports or reuses files in the `media-inputs/` directory of the sandbox and injects environment variables such as `ELBOT_MEDIA_1`, `ELBOT_MEDIA_2`, etc., for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and must copy them before modification; cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. The original command and call parameters remain unchanged.
+Each item in `media_inputs` only accepts `media`. The host exports or reuses files in the `media-inputs/` directory of the sandbox and injects environment variables such as `ELBOT_MEDIA_1` and `ELBOT_MEDIA_2` for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and must copy them before modification; cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. The original command and call parameters remain unchanged.
 
 Tool-based AgentSkills declare media parameters using `{"type":"media"}` in `parameters.properties` of `ELBOT_SKILL.toml` and map them to command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives a temporary file path relative to the working directory; the default working directory is the Skill root directory, or the current workspace when `use_workspace = true`.
 
 When calling a tool, if a JSON field uses a media ID, it is also considered a reference for that Session. Plain text calls are not counted.
 
-Go Skills use the same input list in `payload.media_inputs` of `go_skill_run`. The host supplements each item with `path`, `name`, `mime_type`, and `size` in the execution copy of stdin; files smaller than 1 MiB also provide `base64`. `payload.media_workspace` is a call-specific directory relative to the Skill root directory; an empty input list can be passed to request a directory used only for output. Temporary paths and base64 data are not written back to the original call parameters.
-
-The stdout of Go/TOML Skills can return media results:
+The stdout of a tool-based AgentSkill can return media results:
 
 ```json
 {"content":"Processing complete","segments":[{"type":"image","path":"result.png"}]}
 ```
 
-`segments` supports `text`, `image`, and `file`; media segments must and can only provide `media` or `path`. Paths are resolved relative to the working directory, and absolute paths, `..`, and symlink/junction escapes are rejected. The working directory for Go Skills is the Skill root directory; tool-based AgentSkill TOMLs also use the Skill root directory by default, or the current workspace after configuring `use_workspace = true`. The host imports files before returning, and the Tool Transcript saves the stable media ID and establishes a reference. Call-specific directories and temporary references are released after success, failure, cancellation, or timeout; other working files in the Skill root directory are still managed by the Skill. It is recommended that Go Skills write temporary output to `media_workspace`, while TOML scripts can write to the directory where the received media inputs are located.
+`segments` supports `text`, `image`, and `file`; media segments must and can only provide `media` or `path`. Paths are resolved relative to the working directory; absolute paths, `..`, and symlink/junction escapes are rejected. The host imports the file before returning, and the Tool Transcript saves the stable media ID and establishes a reference. Call-specific directories and temporary references are released after success, failure, cancellation, or timeout; other working files in the Skill root directory are still managed by the Skill. Temporary output can be written to the directory where the received media inputs are located.
 
 ## Platform Adapter
 

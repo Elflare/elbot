@@ -184,6 +184,14 @@
       "translation": "## View Image\n\n`view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results.\n\n\n",
       "updated_at": 1795174554
     },
+    "docs/concepts.md:section:e3c8ab17d04d50c0bcc0571d2fc5a109330d578e9e6dc90e19fa920c13acf490": {
+      "kind": "section",
+      "source": "### Skill 使用媒体\n\n媒体使用稳定标识 `media:<64 位小写 SHA-256>`。普通文档型 Skill 可以指导 Agent 将标识传给支持媒体的工具。\n\nbash 脚本通过 `shell` 显式声明输入，例如：\n\n```json\n{\n  \"cmd\": \"python generate.py --input \\\"$ELBOT_MEDIA_1\\\" --output result.png\",\n  \"media_inputs\": [{\"media\": \"media:<sha256>\"}]\n}\n```\n\n`media_inputs` 每项仅接受 `media`。宿主在 sandbox 的 `media-inputs/` 目录导出或复用文件，并为本次进程注入 `ELBOT_MEDIA_1`、`ELBOT_MEDIA_2` 等环境变量。PowerShell 使用 `$env:ELBOT_MEDIA_1`。脚本将输入视为只读，修改前先复制；缓存命中也刷新文件使用时间，闲置副本由既有 sandbox 保留期清理。原始命令和调用参数保持不变。\n\n工具化 AgentSkill 在 `ELBOT_SKILL.toml` 的 `parameters.properties` 中使用 `{\"type\":\"media\"}` 声明媒体参数，并在 `[args]` 中映射命令行 flag。LLM 传入媒体 ID，实际进程收到相对工作目录的调用期文件路径；默认工作目录为 Skill 根目录，`use_workspace = true` 时为当前 workspace。\n\n调用工具时，若json字段使用到了媒体id，也会视为该session的引用。纯文本的调用不算。\n\n工具化 AgentSkill的 stdout 可以返回媒体结果：\n\n```json\n{\"content\":\"处理完成\",\"segments\":[{\"type\":\"image\",\"path\":\"result.png\"}]}\n```\n\n`segments` 支持 `text`、`image`、`file`；媒体段必须且只能提供 `media` 或 `path`。路径相对工作目录解析，拒绝绝对路径、`..` 和 symlink/junction 逃逸。宿主在返回前导入文件，Tool Transcript 保存稳定媒体 ID 并建立引用。调用专属目录及调用期引用在成功、失败、取消或超时后释放；Skill 根目录中的其他工作文件仍由 Skill 管理。临时输出可写入收到的媒体输入所在目录。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "bdfb1e875ef4244a3a1aa51d8634138e1b90747b44bc7187df163b387b300c56",
+      "translation": "### Skill Media Usage\n\nMedia uses a stable identifier `media:<64-bit lowercase SHA-256>`. Ordinary document-type Skills can guide the Agent to pass this identifier to tools that support media.\n\nBash scripts explicitly declare inputs via `shell`, for example:\n\n```json\n{\n  \"cmd\": \"python generate.py --input \\\"$ELBOT_MEDIA_1\\\" --output result.png\",\n  \"media_inputs\": [{\"media\": \"media:<sha256>\"}]\n}\n```\n\nEach item in `media_inputs` only accepts `media`. The host exports or reuses files in the `media-inputs/` directory of the sandbox and injects environment variables such as `ELBOT_MEDIA_1` and `ELBOT_MEDIA_2` for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and must copy them before modification; cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. The original command and call parameters remain unchanged.\n\nTool-based AgentSkills declare media parameters using `{\"type\":\"media\"}` in `parameters.properties` of `ELBOT_SKILL.toml` and map them to command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives a temporary file path relative to the working directory; the default working directory is the Skill root directory, or the current workspace when `use_workspace = true`.\n\nWhen calling a tool, if a JSON field uses a media ID, it is also considered a reference for that Session. Plain text calls are not counted.\n\nThe stdout of a tool-based AgentSkill can return media results:\n\n```json\n{\"content\":\"Processing complete\",\"segments\":[{\"type\":\"image\",\"path\":\"result.png\"}]}\n```\n\n`segments` supports `text`, `image`, and `file`; media segments must and can only provide `media` or `path`. Paths are resolved relative to the working directory; absolute paths, `..`, and symlink/junction escapes are rejected. The host imports the file before returning, and the Tool Transcript saves the stable media ID and establishes a reference. Call-specific directories and temporary references are released after success, failure, cancellation, or timeout; other working files in the Skill root directory are still managed by the Skill. Temporary output can be written to the directory where the received media inputs are located.\n\n",
+      "updated_at": 1795530656
+    },
     "docs/concepts.md:section:fb1c0bde14b8e29c47a6f4d805521aaa775b9aefde72893596c041fe16f7a681": {
       "kind": "section",
       "source": "## 平台适配\n\nPlatform Adapter 接入具体平台：把平台消息转为 Agent Core 的统一输入，把 Output Layer 的输出意图转回平台消息。因此 Agent Core 不需要关心消息来自 CLI、群聊还是私聊。\n\n",
@@ -194,8 +202,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "",
+  "source_hash": "2a443139d723c9863914258f4d3503d5cf243115b7893fc837de6df9d7a39c7e",
   "target": "docs.en/concepts.md",
-  "updated_at": 1795529652,
+  "updated_at": 1795530656,
   "version": 3
 }
