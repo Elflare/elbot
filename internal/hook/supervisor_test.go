@@ -177,7 +177,7 @@ func TestSupervisorPlatformQueuesAreIndependentAndHaveNoAgentObserver(t *testing
 			t.Fatalf("same-platform callbacks ran concurrently: %q", first)
 		}
 		m.BeginClose()
-		<-m.platformEventsDone()
+		<-m.platformEvents.done
 		if len(entered) != 0 {
 			t.Fatal("pending same-platform callback ran during shutdown")
 		}

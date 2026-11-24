@@ -25,7 +25,7 @@ type platformSubscriptions struct {
 	parent             context.Context          // Consumer lifetime, independent of an individual connection emission.
 	stopParent         func() bool
 	closed             bool
-	done               chan struct{} // The connection and every accepted queue callback have actually exited.
+	done               chan struct{} // Created by BeginClose; closed after the connection and all accepted queue callbacks exit.
 }
 
 func (m *Supervisor) startPlatformEvents(ctx context.Context) error {
@@ -101,13 +101,12 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 	}
 	record := events.LogRecord{Category: events.LogCategoryLog, Module: "hook", EventName: "hook_output", Level: slog.LevelInfo, ContentLimit: 4096, Content: fmt.Sprintf("platform=%s", platformName), ResultStatus: events.ResultSucceeded}
 	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultFailed
+		record.ResultStatus = events.LogStatus(err)
 		record.Content += "\n" + err.Error()
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		if record.ResultStatus != events.ResultCanceled {
+			record.Level = slog.LevelWarn
 		}
-	}
-	if err == nil && sent.Status != operationresult.Success {
+	} else if sent.Status != operationresult.Success {
 		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultRejected
 		record.Content += "\n" + sent.Message
 		if sent.Status == operationresult.Failed || sent.Status == operationresult.Timeout {
@@ -127,9 +126,7 @@ func (m *Supervisor) beginClosePlatformEvents() {
 		return
 	}
 	p.closed = true
-	if p.done == nil {
-		p.done = make(chan struct{})
-	}
+	p.done = make(chan struct{})
 	if p.stopParent != nil {
 		p.stopParent()
 	}
@@ -150,14 +147,4 @@ func (m *Supervisor) beginClosePlatformEvents() {
 		}
 		close(p.done)
 	}()
-}
-
-func (m *Supervisor) platformEventsDone() <-chan struct{} {
-	p := &m.platformEvents
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.done == nil {
-		p.done = make(chan struct{})
-	}
-	return p.done
 }

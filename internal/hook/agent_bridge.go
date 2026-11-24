@@ -95,27 +95,21 @@ func (m *Supervisor) agentPoints(agent interface {
 			return llm.SegmentsTextOnly(updated.Message.Segments), err
 		}
 	}
+	route := func(apply func(share.Event) bool) func(context.Context, agenthooks.Facts, agenthooks.Message) bool {
+		return func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) bool {
+			ctx, done, err := m.beginCall(ctx)
+			if err != nil {
+				return false
+			}
+			defer done()
+			event := eventFor(facts, share.PointPlatformMessageReceived)
+			event.Message = message(value)
+			return apply(fillEventFromContext(ctx, event))
+		}
+	}
 	return agenthooks.Points{
-		HasRoute: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) bool {
-			ctx, done, err := m.beginCall(ctx)
-			if err != nil {
-				return false
-			}
-			defer done()
-			event := eventFor(facts, share.PointPlatformMessageReceived)
-			event.Message = message(value)
-			return m.runtime.HasLease(fillEventFromContext(ctx, event))
-		},
-		CancelRoute: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) bool {
-			ctx, done, err := m.beginCall(ctx)
-			if err != nil {
-				return false
-			}
-			defer done()
-			event := eventFor(facts, share.PointPlatformMessageReceived)
-			event.Message = message(value)
-			return m.runtime.Cancel(fillEventFromContext(ctx, event))
-		},
+		HasRoute:    route(m.runtime.HasLease),
+		CancelRoute: route(m.runtime.Cancel),
 		PlatformMessageReceived: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) (agenthooks.PlatformMessageReceivedResult, error) {
 			event := eventFor(facts, share.PointPlatformMessageReceived)
 			event.Message = message(value)

@@ -66,7 +66,7 @@ func (m *Supervisor) Close(ctx context.Context) error {
 		}
 		go func() {
 			m.calls.Wait()
-			<-m.platformEventsDone()
+			<-m.platformEvents.done
 			// Runtime owns worker cancellation and media cleanup. Preserve the
 			// caller's cleanup budget, then wait for the actual resource exit.
 			_ = m.runtime.Close(ctx)
