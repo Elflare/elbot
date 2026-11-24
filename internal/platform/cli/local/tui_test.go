@@ -56,15 +56,33 @@ func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
 	if !found || strings.Contains(closed, "pwd") || strings.Contains(closed, "/work") || strings.Contains(closed, "date") {
 		t.Fatalf("collapsed cards: %q", closed)
 	}
-	click := tea.MouseMsg{X: 1, Y: 1 + strings.Count(before, "\n") - m.viewport.YOffset, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
-	updated, _ := m.Update(click)
-	m = updated.(tuiModel)
+	click := func(x, y int) {
+		chatMouseEvent(&m, tea.MouseActionPress, x, y)
+		chatMouseEvent(&m, tea.MouseActionRelease, x, y)
+	}
+	headerY := 1 + strings.Count(before, "\n") - m.viewport.YOffset
+	click(1, headerY)
 	if got := m.wrappedContent(); !strings.Contains(got, "pwd") || !strings.Contains(got, "/work") || strings.Contains(got, "date") || m.copyState.active() {
 		t.Fatalf("expanded cards: %q", got)
 	}
-	updated, _ = m.Update(click)
-	if got := updated.(tuiModel).wrappedContent(); got != closed {
+	click(1, headerY)
+	if got := m.wrappedContent(); got != closed {
 		t.Fatalf("second click did not restore collapsed cards: %q", got)
+	}
+	click(1, headerY)
+	before, _, found = strings.Cut(m.wrappedContent(), strings.Repeat(" ", m.viewport.Width-1)+"▴")
+	if !found {
+		t.Fatal("missing right-aligned collapse arrow")
+	}
+	m.viewport.GotoBottom()
+	footerY := 1 + strings.Count(before, "\n") - m.viewport.YOffset
+	click(m.viewport.Width-2, footerY)
+	if !card.toolExpanded || m.copyState.active() {
+		t.Fatal("click left of arrow should do nothing")
+	}
+	click(m.viewport.Width-1, footerY)
+	if got := m.wrappedContent(); got != closed || m.copyState.active() {
+		t.Fatalf("arrow did not collapse card: %q", got)
 	}
 }
 

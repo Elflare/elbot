@@ -17,10 +17,6 @@ func (m tuiModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft && m.isNoticeDivider(event.X, event.Y) {
-		m.resizingNotice = true
-		return m, nil
-	}
 
 	region := m.mouseRegion(event.X, event.Y)
 	if event.IsWheel() || event.Type == tea.MouseWheelUp || event.Type == tea.MouseWheelDown {
@@ -44,28 +40,68 @@ func (m tuiModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft && (region == regionChat || region == regionNotice) {
-		if region == regionChat {
-			offset := m.viewport.YOffset
-			for _, block := range m.content {
-				if block.kind == tuiContentTool && block.toolHeaderLine == offset+event.Y-1 {
-					block.toolExpanded = !block.toolExpanded
-					if m.copyState.active() && m.copyState.Region == regionChat {
-						m.exitCopyMode()
-					} else {
-						m.refreshContent()
-					}
-					m.viewport.SetYOffset(offset)
-					return m, nil
-				}
-			}
+	if event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft {
+		switch {
+		case m.isNoticeDivider(event.X, event.Y):
+			m.resizingNotice = true
+		case region == regionChat:
+			m.chatPress, m.chatDragging = &event, false
+		case region == regionNotice:
+			m.enterCopyMode(region)
+			m.copyState.Cursor = m.copyCursorFromMouse(region, event.X, event.Y, m.noticeCopyLines())
+			m.ensureCopyCursorVisible()
 		}
-		m.enterCopyMode(region)
-		m.copyState.Cursor = m.copyCursorFromMouse(region, event.X, event.Y)
-		m.ensureCopyCursorVisible()
 		return m, nil
 	}
+	press := m.chatPress
+	if press == nil || (event.Action != tea.MouseActionMotion && event.Action != tea.MouseActionRelease) {
+		return m, nil
+	}
+	if m.chatDragging || (len(m.content) > 0 && (event.X != press.X || event.Y != press.Y)) {
+		lines := m.copyLines(regionChat)
+		if !m.chatDragging {
+			m.chatDragging = true
+			if m.copyState.Region == regionNotice {
+				m.exitCopyMode()
+			}
+			m.copyState = copyModeState{Mode: modeCopyVisualChar, Region: regionChat,
+				Anchor: m.copyCursorFromMouse(regionChat, press.X, press.Y, lines), Status: modeName(modeCopyVisualChar)}
+			m.input.Blur()
+		}
+		y := clampInt(event.Y, 1, m.viewport.Height)
+		m.copyState.Cursor = m.copyCursorFromMouse(regionChat, event.X, y, lines)
+		m.viewport.SetContent(m.renderCopyLines(regionChat, lines))
+	}
+	if event.Action == tea.MouseActionRelease {
+		if !m.chatDragging && region == regionChat {
+			m.toggleToolAt(event.X, event.Y)
+		}
+		m.chatPress = nil
+	}
 	return m, nil
+}
+
+func (m *tuiModel) toggleToolAt(x, y int) {
+	line := m.viewport.YOffset + y - 1
+	for _, block := range m.content {
+		if block.kind != tuiContentTool {
+			continue
+		}
+		footer := block.toolExpanded && line == block.toolFooterLine && x == m.viewport.Width-1
+		if line != block.toolHeaderLine && !footer {
+			continue
+		}
+		block.toolExpanded = !block.toolExpanded
+		if footer && block.toolHeaderLine < m.viewport.YOffset {
+			m.viewport.SetYOffset(block.toolHeaderLine)
+		}
+		if m.copyState.active() && m.copyState.Region == regionChat {
+			m.exitCopyMode()
+		} else {
+			m.refreshContent()
+		}
+		return
+	}
 }
 
 func (m tuiModel) isNoticeDivider(x, y int) bool {
@@ -117,21 +153,16 @@ func (m tuiModel) mouseRegion(x, y int) tuiRegion {
 	return regionNone
 }
 
-func (m tuiModel) copyCursorFromMouse(region tuiRegion, x, y int) copyCursor {
-	lines := m.copyLines(region)
+func (m tuiModel) copyCursorFromMouse(region tuiRegion, x, y int, lines []string) copyCursor {
 	if len(lines) == 0 {
 		return copyCursor{}
 	}
-	bodyY := y - 1
-	line := bodyY
-	colX := x
-	if region == regionChat {
-		line += m.viewport.YOffset
-	} else if region == regionNotice {
+	offset := m.viewport.YOffset
+	if region == regionNotice {
 		chatWidth, _ := m.layoutWidths()
-		line += m.noticeViewport.YOffset
-		colX = max(0, x-chatWidth-noticePanelFrameWidth)
+		x = max(0, x-chatWidth-noticePanelFrameWidth)
+		offset = m.noticeViewport.YOffset
 	}
-	line = clampInt(line, 0, len(lines)-1)
-	return copyCursor{Line: line, Col: colFromDisplayWidth(lines[line], colX)}
+	line := clampInt(offset+y-1, 0, len(lines)-1)
+	return copyCursor{Line: line, Col: colFromDisplayWidth(lines[line], x)}
 }

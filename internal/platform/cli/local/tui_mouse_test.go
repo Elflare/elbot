@@ -62,10 +62,10 @@ func TestMouseDragDividerResizesPanelsWithoutEnteringCopyMode(t *testing.T) {
 		t.Fatalf("release resizing=%v widths=%d/%d", m.resizingNotice, chatWidth, noticeWidth)
 	}
 
-	updated, _ = m.Update(tea.MouseMsg{X: 2, Y: 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = updated.(tuiModel)
-	if !m.copyState.active() || m.copyState.Region != regionChat {
-		t.Fatalf("chat click copy state = %#v", m.copyState)
+	chatMouseEvent(&m, tea.MouseActionPress, 2, 2)
+	chatMouseEvent(&m, tea.MouseActionRelease, 2, 2)
+	if m.copyState.active() {
+		t.Fatalf("chat click entered copy mode: %#v", m.copyState)
 	}
 }
 
@@ -110,5 +110,55 @@ func TestNoticeWidthRestoredAfterNarrowWindow(t *testing.T) {
 	chatWidth, noticeWidth = m.layoutWidths()
 	if chatWidth != 58 || noticeWidth != 60 {
 		t.Fatalf("restored widths chat=%d notice=%d", chatWidth, noticeWidth)
+	}
+}
+
+func chatMouseEvent(m *tuiModel, action tea.MouseAction, x, y int) {
+	button := tea.MouseButtonLeft
+	if action == tea.MouseActionRelease {
+		button = tea.MouseButtonNone
+	}
+	updated, _ := m.Update(tea.MouseMsg{Button: button, Action: action, X: x, Y: y})
+	*m = updated.(tuiModel)
+}
+
+func TestChatDragFromToolTitleSelectsWithoutToggling(t *testing.T) {
+	m := newCopyTestModel()
+	card := &tuiContentBlock{kind: tuiContentTool, toolStatus: "完成"}
+	card.toolCall.Name = "shell"
+	m.content = []*tuiContentBlock{card}
+	m.refreshContent()
+	chatMouseEvent(&m, tea.MouseActionPress, 2, 2)
+	chatMouseEvent(&m, tea.MouseActionMotion, 2, 2)
+	if card.toolExpanded || m.copyState.active() {
+		t.Fatal("stationary press should not act before release")
+	}
+	chatMouseEvent(&m, tea.MouseActionMotion, 5, 2)
+	chatMouseEvent(&m, tea.MouseActionRelease, 6, 2)
+	if got := m.selectedCopyText(); got != "shell" || card.toolExpanded || !m.copyState.visual() {
+		t.Fatalf("selection=%q expanded=%v mode=%v", got, card.toolExpanded, m.copyState.Mode)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if got := m.clipboard.(*fakeClipboard).text; got != "shell" {
+		t.Fatalf("copied %q", got)
+	}
+}
+
+func TestViewportUpdatesFollowOnlyWithinOneRow(t *testing.T) {
+	for _, gaps := range [][2]int{{0, 2}, {2, 1}, {1, 0}} {
+		m := newCopyTestModel()
+		m.appendAssistantContent(strings.Repeat("chat\n", 50))
+		m.appendNoticeLevel(strings.Repeat("notice\n", 50), 0)
+		m.viewport.ScrollUp(gaps[0])
+		m.noticeViewport.ScrollUp(gaps[1])
+		chat, notice := m.viewport.YOffset, m.noticeViewport.YOffset
+		m.appendAssistantContent("new chat")
+		m.appendNoticeLevel("new notice", 0)
+		if m.viewport.AtBottom() != (gaps[0] <= 1) || (gaps[0] > 1 && m.viewport.YOffset != chat) {
+			t.Fatalf("chat gap=%d offset %d -> %d", gaps[0], chat, m.viewport.YOffset)
+		}
+		if m.noticeViewport.AtBottom() != (gaps[1] <= 1) || (gaps[1] > 1 && m.noticeViewport.YOffset != notice) {
+			t.Fatalf("notice gap=%d offset %d -> %d", gaps[1], notice, m.noticeViewport.YOffset)
+		}
 	}
 }

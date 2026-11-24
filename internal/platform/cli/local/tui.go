@@ -50,6 +50,7 @@ type tuiContentBlock struct {
 	toolStatus      string
 	toolExpanded    bool // Whether the tool arguments and result are visible.
 	toolHeaderLine  int  // Zero-based row in the wrapped chat content, used for mouse clicks.
+	toolFooterLine  int  // Row of the right-aligned collapse arrow while expanded.
 }
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
@@ -192,6 +193,8 @@ type tuiModel struct {
 	height          int
 	noticeWidth     int
 	resizingNotice  bool
+	chatPress       *tea.MouseEvent // Left-button origin until release; nil when idle.
+	chatDragging    bool            // Stays true if a drag returns to its starting cell.
 }
 
 func newTUIInput() textarea.Model {
@@ -931,8 +934,7 @@ func (m *tuiModel) refreshNotices() {
 		sb.WriteString(tuiNoticeLevelStyle(notice.Level).Render("• "))
 		sb.WriteString(tuiNoticeLevelStyle(notice.Level).Render(wrapDisplayWidth(notice.Text, contentWidth)))
 	}
-	m.noticeViewport.SetContent(sb.String())
-	m.noticeViewport.GotoBottom()
+	setViewportContent(&m.noticeViewport, sb.String(), true)
 }
 
 func tuiNoticeLevelStyle(level slog.Level) lipgloss.Style {
@@ -953,8 +955,18 @@ func (m *tuiModel) refreshContent() {
 		m.viewport.SetContent(m.renderCopyLines(regionChat, splitLines(m.wrappedContent())))
 		return
 	}
-	m.viewport.SetContent(m.renderContent(true))
-	m.viewport.GotoBottom()
+	setViewportContent(&m.viewport, m.renderContent(true), m.chatPress == nil)
+}
+
+func setViewportContent(v *viewport.Model, text string, follow bool) {
+	offset := v.YOffset
+	nearBottom := v.TotalLineCount()-v.Height-offset <= 1
+	v.SetContent(text)
+	if follow && nearBottom {
+		v.GotoBottom()
+	} else {
+		v.SetYOffset(offset)
+	}
 }
 
 func (m *tuiModel) refreshCopyRegion() {
@@ -1026,6 +1038,8 @@ func (m tuiModel) renderContent(styled bool) string {
 				if block.text != "" {
 					write("\n" + render(block.text, tuiAssistantStyle))
 				}
+				write("\n" + render(strings.Repeat(" ", max(0, m.viewport.Width-1))+"▴", tuiStatusStyle))
+				block.toolFooterLine = line
 			}
 		}
 	}
