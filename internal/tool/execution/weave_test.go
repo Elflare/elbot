@@ -161,7 +161,7 @@ func TestWeaveDescriptionPermission(t *testing.T) {
 	}{
 		{"denied with child", user, security.RiskLow, []share.DiscoveredTool{child}, ""},
 		{"denied with cached weave", user, security.RiskLow, []share.DiscoveredTool{outer}, ""},
-		{"allowed user", user, security.RiskHigh, []share.DiscoveredTool{child}, "tool_weave 可调用：web_search"},
+		{"denied even at critical", user, security.RiskCritical, []share.DiscoveredTool{child}, ""},
 		{"superadmin", admin, security.RiskLow, []share.DiscoveredTool{child}, "tool_weave 可调用：web_search"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -8,7 +8,24 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/security"
+	"elbot/internal/tool/builtin"
 )
+
+func TestFileAndExecutionToolsRequireSuperadmin(t *testing.T) {
+	permission := security.NewPermission("critical", "high", nil)
+	for _, name := range []string{"draft", "read_file", "edit_file", "shell", "tool_weave"} {
+		info := builtinTestTool(t, name, builtin.Deps{}).Definition
+		check := func(actor contextinfo.Actor) security.ToolPermissionResult {
+			return permission.CheckTool(actor, name, info.Risk, info.OwnerScoped, info.SuperadminOnly, false)
+		}
+		if got := check(contextinfo.Actor{Role: contextinfo.RoleUser}); got.Allowed || got.Reason != "tool_requires_superadmin" {
+			t.Errorf("%s: user permission = %+v", name, got)
+		}
+		if got := check(contextinfo.Actor{Role: contextinfo.RoleSuperadmin}); !got.Allowed {
+			t.Errorf("%s: superadmin permission = %+v", name, got)
+		}
+	}
+}
 
 func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 	m, _ := newLifecycleTool(t, t.TempDir())

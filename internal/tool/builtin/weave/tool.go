@@ -49,6 +49,7 @@ report = "\n\n".join(f"## {name}\n{text}" for name, text in zip(projects, news))
 Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))`).
 		Risk(share.RiskHigh).
+		SuperadminOnly().
 		ForegroundOnly().
 		DependsOn("draft").
 		Tags("files").

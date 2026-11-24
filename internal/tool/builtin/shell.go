@@ -85,6 +85,7 @@ func shellBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("shell").Async(toolshare.SyncByDefault).
 		Description(fmt.Sprintf("执行命令，语法=%s。", currentShellDesc())).
 		Risk(toolshare.RiskHigh).
+		SuperadminOnly().
 		DependsOn("workspace", "draft").
 		String("cmd", "命令。", toolshare.Required()).
 		Integer("timeout_ms", "超时，ms；≤0/省略→10000。").
