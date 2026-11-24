@@ -28,8 +28,8 @@
     - [x] discovery
     - [x] execution
     - [x] media
-    - [ ] preload
-    - [ ] registry
+    - [x] preload
+    - [x] registry
     - [ ] skill
     - [ ] state
     - [ ] share（最后按实际消费者核对共享契约）

@@ -49,16 +49,18 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 	var content []string
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	background := share.PolicyFromContext(ctx).DisableForegroundTools
-	for i, name := range names {
-		if definition, ok := s.Registry.Get(strings.TrimSpace(name)); ok && definition.LoadDetail != nil {
+	for i, raw := range names {
+		name := strings.TrimSpace(raw)
+		definition, exists := s.Registry.Get(name)
+		if exists && definition.LoadDetail != nil {
 			continue
 		}
-		details, targets, tag, err := s.discoverDirective(ctx, name)
+		details, targets, tag, err := s.discoverDirective(ctx, name, exists)
 		if err != nil {
 			return share.ToolPreload{}, err
 		}
 		if len(details.Tools) == 0 {
-			result.Invalid = append(result.Invalid, name)
+			result.Invalid = append(result.Invalid, raw)
 			continue
 		}
 		text, err := s.discoveryContent(ctx, details, targets, seen)
@@ -153,16 +155,18 @@ func (s *PreloadService) preloadDetails(ctx context.Context, sessionID string, d
 	return blocks, tools, needsElyph, nil
 }
 
-func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, map[string]share.ToolDefinition, string, error) {
-	name = strings.TrimSpace(name)
-	query, tag := share.ToolQuery{Scope: share.QueryAvailable, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true}, ""
-	if _, exists := s.Registry.Get(name); !exists {
-		tag = share.NormalizeToolTag(name)
+func (s *PreloadService) discoverDirective(ctx context.Context, name string, exists bool) (*share.DiscoveryResult, map[string]share.ToolDefinition, string, error) {
+	query := share.ToolQuery{Scope: share.QueryAvailable, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true}
+	if !exists {
 		query.Scope, query.Names = share.QueryCatalog, nil
-		candidates, err := s.Registry.Query(ctx, query)
-		if err != nil {
-			return nil, nil, "", err
-		}
+	}
+	candidates, err := s.Registry.Query(ctx, query)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	tag := ""
+	if !exists {
+		tag = share.NormalizeToolTag(name)
 		names, err := s.NamesByTag(ctx, tag, candidates)
 		if err != nil {
 			return nil, nil, "", err
@@ -170,12 +174,6 @@ func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*s
 		candidates = slices.DeleteFunc(candidates, func(candidate share.ToolDefinition) bool {
 			return !slices.Contains(names, candidate.Definition.Name)
 		})
-		result, targets, err := s.Resolver.Resolve(ctx, candidates)
-		return result, targets, tag, err
-	}
-	candidates, err := s.Registry.Query(ctx, query)
-	if err != nil {
-		return nil, nil, "", err
 	}
 	result, targets, err := s.Resolver.Resolve(ctx, candidates)
 	return result, targets, tag, err

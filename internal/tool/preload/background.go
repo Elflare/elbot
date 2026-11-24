@@ -59,28 +59,17 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 	var names []string
 	tags := map[string][]string{}
 	for _, selection := range selections {
-		allowed := true
+		if req.AllowedToolNames != nil && slices.ContainsFunc(selection.Names, func(name string) bool {
+			return !slices.Contains(req.AllowedToolNames, name)
+		}) {
+			for _, name := range selection.Names {
+				skip(name, "not_authorized")
+			}
+			continue
+		}
+		names = append(names, selection.Names...)
 		if selection.Tag != "" {
 			for _, name := range selection.Names {
-				if req.AllowedToolNames != nil && !slices.Contains(req.AllowedToolNames, name) {
-					allowed = false
-					break
-				}
-			}
-			if !allowed {
-				for _, name := range selection.Names {
-					skip(name, "not_authorized")
-				}
-				continue
-			}
-		}
-		for _, name := range selection.Names {
-			if selection.Tag == "" && req.AllowedToolNames != nil && !slices.Contains(req.AllowedToolNames, name) {
-				skip(name, "not_authorized")
-				continue
-			}
-			names = append(names, name)
-			if selection.Tag != "" {
 				tags[name] = append(tags[name], selection.Tag)
 			}
 		}

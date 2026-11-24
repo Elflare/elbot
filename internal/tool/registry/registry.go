@@ -49,12 +49,7 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	next := make(map[string]toolshare.ToolDefinition, len(r.tools)+len(definitions))
-	for name, definition := range r.tools {
-		if source == toolshare.SourceELwisp || definition.Definition.Source != source {
-			next[name] = definition
-		}
-	}
+	batch := make(map[string]toolshare.ToolDefinition, len(definitions))
 	update := toolshare.StateUpdate{}
 	if source == toolshare.SourceELwisp {
 		update.ReplaceGroups = []toolshare.ToolRegistrationScope{scope}
@@ -69,10 +64,11 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 		}
 		definition.Definition.Source = source
 		info := definition.Definition
-		if _, exists := next[info.Name]; exists {
+		old, exists := r.tools[info.Name]
+		if _, duplicate := batch[info.Name]; duplicate || (exists && old.Definition.Source != source) {
 			return toolshare.StateUpdate{}, fmt.Errorf("tool %q already registered in this batch or another group", info.Name)
 		}
-		next[info.Name] = definition
+		batch[info.Name] = definition
 		if source == toolshare.SourceELwisp {
 			remote := definition.Remote
 			if remote.EventKey != scope.EventKey {
@@ -81,9 +77,15 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 			update.Tools = append(update.Tools, toolshare.DiscoveredTool{Name: remote.Name, CanonicalName: info.Name, Source: toolshare.SourceKindELwisp, Risk: info.Risk, Description: info.Description, Schema: definition.Schema(), EventKey: remote.EventKey, Endpoint: remote.Endpoint, TimeoutSeconds: remote.TimeoutSeconds, ForegroundOnly: info.ForegroundOnly})
 		}
 	}
-	if source != toolshare.SourceELwisp {
-		r.tools = next
+	if source == toolshare.SourceELwisp {
+		return update, nil
 	}
+	for name, definition := range r.tools {
+		if definition.Definition.Source != source {
+			batch[name] = definition
+		}
+	}
+	r.tools = batch
 	return update, nil
 }
 
