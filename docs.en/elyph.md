@@ -20,10 +20,8 @@ ELyph replaces verbose natural language descriptions with a fixed syntax, making
 
 | Scenario | File | Description |
 | --- | --- | --- |
-| AgentSkill | `skills/agent/<skill>/SKILL.elyph` or `SKILL.md` | External documentation-based Skill; `SKILL.elyph` overwrites the Agent-readable description, and `SKILL.md` is compatible with agentskills.io style descriptions. |
-| Go Skill | `skills/go/<skill>/SKILL.elyph` | ElBot native skill; optional Go binary for execution. |
-
-| LLM Cron task | Task entry | Describe background tasks in `/cron write` using the `#task` header. |
+| AgentSkill | `skills/<name>/SKILL.elyph` or `SKILL.md` | It is recommended to use ELyph to describe the workflow; natural language Markdown is also supported. |
+| LLM Cron Task | Task entry | Use the `#task` header in `/cron write` to describe background tasks. |
 
 ## Syntax Quick Reference
 
@@ -278,15 +276,11 @@ each($city in $cities, limit=5) {
 
 ---
 
-## Relationship with Skill
+## Relationship with Skills
 
-- The `SKILL.elyph` file of a Skill uses the `#skill` header.
-- AgentSkill is placed in `skills/agent/<skill>/`, and `SKILL.elyph` can be used to override the Agent-readable description of `SKILL.md`.
-- Go Skill is placed in `skills/go/<skill>/`, must use `SKILL.elyph`, and an optional Go binary can be used for execution.
-- If the same AgentSkill has both `SKILL.md` and `SKILL.elyph`, the description in the ELyph file will be prioritized for use by the Agent.
+AgentSkill is placed in `skills/<name>/`. `SKILL.elyph` starts with `#skill <name>`, and the entire text is validated upon loading; if `SKILL.md` also exists, `SKILL.elyph` takes priority. Both types of descriptions can be paired with `ELBOT_SKILL.toml` to be registered as executable tools.
 
-
-For more Skill management operations, see the `/tools` section of [Command Quick Reference](commands.md).
+For more skill management operations, see the `/tools` section of [Command Quick Reference](commands.md).
 
 ## Relationship with Cron
 

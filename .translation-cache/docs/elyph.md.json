@@ -16,6 +16,14 @@
       "translation": "### `each` Limited Loop\n\n```\neach($item in $items, limit=N) {\n  ...statements...\n}\n```\n\n- `limit` must be a positive integer.\n- `@skill` or `@tool` can be called within the loop.\n\n---\n\n",
       "updated_at": 1781786413
     },
+    "docs/elyph.md:section:0cc97b18a811aaca1c4a598b5fe13ab342629f2de23596c158044d906a4680c6": {
+      "kind": "section",
+      "source": "## ELyph 用在哪\n\n| 场景 | 文件 | 说明 |\n| --- | --- | --- |\n| AgentSkill | `skills/<name>/SKILL.elyph` 或 `SKILL.md` | 推荐用 ELyph 描述流程，也支持自然语言 Markdown。 |\n| LLM Cron 任务 | 任务条 | 在 `/cron write` 中用 `#task` 头描述后台任务。 |\n\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "1b7e6325be5f0256c93b18f1627e7de336976b95a346696db9a572ed376e338b",
+      "translation": "## Where to use ELyph\n\n| Scenario | File | Description |\n| --- | --- | --- |\n| AgentSkill | `skills/<name>/SKILL.elyph` or `SKILL.md` | It is recommended to use ELyph to describe the workflow; natural language Markdown is also supported. |\n| LLM Cron Task | Task entry | Use the `#task` header in `/cron write` to describe background tasks. |\n\n",
+      "updated_at": 1795530265
+    },
     "docs/elyph.md:section:0ef1a49437b7d064d1c9cf53b46c2a260926e6d9efbb30a0deebc0e5a7b2ff55": {
       "kind": "section",
       "source": "### `$` 直接赋值\n\n给变量赋值。\n\n```\n$name = value\n$name:type = value\n```\n\n`+` 运算符按左侧类型决定行为：`int`/`num` 类型做数值相加，`str` 类型做字符串拼接。\n\n```\n$q:str = $city + 天气\n```\n\n---\n\n",
@@ -80,14 +88,6 @@
       "translation": "### `@tool` / `@skill` tool call\n\nCall an ElBot tool or sub-skill.\n\n```\n@tool tool_name(key=value, key2=value2)\n@skill skill_name(key=value)\n```\n\nParameters use the `key=value` format, and multiple parameters are separated by `,`.\n\n---\n\n",
       "updated_at": 1781786413
     },
-    "docs/elyph.md:section:58db9c48a8708ff59fe3607526bbf7f36df276d6b61da73ecb92128ff6faa6fd": {
-      "kind": "section",
-      "source": "## ELyph 用在哪\n\n| 场景 | 文件 | 说明 |\n| --- | --- | --- |\n| AgentSkill | `skills/agent/<skill>/SKILL.elyph` 或 `SKILL.md` | 外置文档型 Skill；`SKILL.elyph` 会覆写 Agent 可读说明，`SKILL.md` 兼容 agentskills.io 风格说明。 |\n| Go Skill | `skills/go/<skill>/SKILL.elyph` | ElBot 原生 Skill；可选 Go 二进制用于执行。 |\n\n| LLM Cron 任务 | 任务条 | 在 `/cron write` 中用 `#task` 头描述后台任务。 |\n\n",
-      "source_file": "docs/elyph.md",
-      "source_hash": "ccdfd5a12503ac98da50e176ccc2dde625d76a1b55603ba6442b182038b42f0d",
-      "translation": "## Where to use ELyph\n\n| Scenario | File | Description |\n| --- | --- | --- |\n| AgentSkill | `skills/agent/<skill>/SKILL.elyph` or `SKILL.md` | External documentation-based Skill; `SKILL.elyph` overwrites the Agent-readable description, and `SKILL.md` is compatible with agentskills.io style descriptions. |\n| Go Skill | `skills/go/<skill>/SKILL.elyph` | ElBot native skill; optional Go binary for execution. |\n\n| LLM Cron task | Task entry | Describe background tasks in `/cron write` using the `#task` header. |\n\n",
-      "updated_at": 1781786413
-    },
     "docs/elyph.md:section:75f31c86cf7f658c353c204530c461e508bde4f302950137d9b9f4b5314371f4": {
       "kind": "section",
       "source": "### `**` 约束\n\n写出任务执行时需要遵守的约束条件。内容使用肯定形式。\n\n```\n** 根据查询结果判断是否下雨\n** 只搜索最近 3 天的数据\n```\n\n---\n\n",
@@ -95,6 +95,14 @@
       "source_hash": "8fe9f1bc014df080cabbf2914b51cba24206aef6a3c5131f8870c7b7d52c9cb7",
       "translation": "### `**` Constraint\n\nSpecify the constraints that must be followed during task execution. Content should be written in affirmative form.\n\n```\n** 根据查询结果判断是否下雨\n** 只搜索最近 3 天的数据\n```\n\n---\n\n",
       "updated_at": 1781786413
+    },
+    "docs/elyph.md:section:8fd03ee0f88170f578571256d35b303fc02d79e8f5e3b4b2d4120b9df4b024fe": {
+      "kind": "section",
+      "source": "## 与 Skill 的关系\n\nAgentSkill 放在 `skills/<name>/`。`SKILL.elyph` 以 `#skill <name>` 开头，加载时校验全文；若同时存在 `SKILL.md`，优先使用 `SKILL.elyph`。两种说明都可以配 `ELBOT_SKILL.toml` 注册为可执行工具。\n\n更多 skill 管理操作见 [命令速查](commands.md) 的 `/tools` 部分。\n\n",
+      "source_file": "docs/elyph.md",
+      "source_hash": "707416c1433a08d41de9e93aca47f036cebcf38bbbe2997af815625f82d7cd2c",
+      "translation": "## Relationship with Skills\n\nAgentSkill is placed in `skills/<name>/`. `SKILL.elyph` starts with `#skill <name>`, and the entire text is validated upon loading; if `SKILL.md` also exists, `SKILL.elyph` takes priority. Both types of descriptions can be paired with `ELBOT_SKILL.toml` to be registered as executable tools.\n\nFor more skill management operations, see the `/tools` section of [Command Quick Reference](commands.md).\n\n",
+      "updated_at": 1795530149
     },
     "docs/elyph.md:section:91719d5f628c417a131beffd1b56509727d59de4c65e77c437e6e9ceef1b43f1": {
       "kind": "section",
@@ -152,14 +160,6 @@
       "translation": "### `}` closing block\n\nEnds a code block, occupying its own line.\n\n```\n}\n```\n\n---\n\n",
       "updated_at": 1781786413
     },
-    "docs/elyph.md:section:ae24ad6016f12c3b4ed125884428d259c4751349cbc5f3c1e1264cd0f66765c3": {
-      "kind": "section",
-      "source": "## 与 Skill 的关系\n\n- Skill 的 `SKILL.elyph` 文件使用 `#skill` header。\n- AgentSkill 放在 `skills/agent/<skill>/`，可用 `SKILL.elyph` 覆写 `SKILL.md` 的 Agent 可读说明。\n- Go Skill 放在 `skills/go/<skill>/`，必须使用 `SKILL.elyph`，可选 Go 二进制用于执行。\n- 如果同一 AgentSkill 同时存在 `SKILL.md` 和 `SKILL.elyph`，ELyph 文件的描述会优先被 Agent 使用。\n\n\n更多 skill 管理操作见 [命令速查](commands.md) 的 `/tools` 部分。\n\n",
-      "source_file": "docs/elyph.md",
-      "source_hash": "00fd938e400e5e2ab9a8ae2a293be4da553d378ebafe72ea9934984c974bc3eb",
-      "translation": "## Relationship with Skill\n\n- The `SKILL.elyph` file of a Skill uses the `#skill` header.\n- AgentSkill is placed in `skills/agent/<skill>/`, and `SKILL.elyph` can be used to override the Agent-readable description of `SKILL.md`.\n- Go Skill is placed in `skills/go/<skill>/`, must use `SKILL.elyph`, and an optional Go binary can be used for execution.\n- If the same AgentSkill has both `SKILL.md` and `SKILL.elyph`, the description in the ELyph file will be prioritized for use by the Agent.\n\n\nFor more Skill management operations, see the `/tools` section of [Command Quick Reference](commands.md).\n\n",
-      "updated_at": 1781786413
-    },
     "docs/elyph.md:section:b6c7b3e8f5cf37371e4077b9e2df732122760c2906ad1381e7dddbadde7c3deb": {
       "kind": "section",
       "source": "### 示例二：多城市天气查询\n\n```\n#skill weather_multi - 一次查询多个城市天气\n<- $cities:list!\n-> $report:str\n\n** 每个城市独立查询\n~ 混用不同数据源\n\neach($city in $cities, limit=5) {\n  @skill weather(city=$city)\n}\n> 以上为所有查询结果\n```\n\n---\n\n",
@@ -202,8 +202,8 @@
     }
   },
   "source": "docs/elyph.md",
-  "source_hash": "e38da277e0be51c104f94090b00368bf6b08a36c53cb8e5e127ae02005fa7e24",
+  "source_hash": "7d13610939fc75938d0947f0193ae118c19ae4b60d38ec3c51ff52c81b8d51b4",
   "target": "docs.en/elyph.md",
-  "updated_at": 1793423213,
+  "updated_at": 1795530265,
   "version": 3
 }
