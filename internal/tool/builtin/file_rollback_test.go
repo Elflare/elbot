@@ -200,7 +200,7 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (RollbackFileTool{Service: fileops.NewService(nil)}).Definition()}
+	definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (RollbackFileTool{Service: fileops.NewService(nil)}).Definition(), draft(t.TempDir())}
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
 		t.Fatal(err)
 	}

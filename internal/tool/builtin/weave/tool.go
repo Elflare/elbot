@@ -50,6 +50,7 @@ Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))`).
 		Risk(share.RiskHigh).
 		ForegroundOnly().
+		DependsOn("draft").
 		Tags("files").
 		String("code", "Python 源码，支持顶层 await，用 print 输出。", share.Required()).
 		String("mode", "省略：项目 uv，否则系统 Python。显式 uv：无项目用临时环境，准备失败回退系统 Python。", share.Enum("system", "uv")).

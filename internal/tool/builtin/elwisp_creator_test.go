@@ -119,7 +119,7 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 
 func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	definitions := []toolshare.ToolDefinition{(ElwispCreatorTool{}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), (RollbackFileTool{}).Definition(), (WorkspaceTool{}).Definition()}
+	definitions := []toolshare.ToolDefinition{(ElwispCreatorTool{}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), (RollbackFileTool{}).Definition(), (WorkspaceTool{}).Definition(), draft(t.TempDir())}
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
 		t.Fatal(err)
 	}

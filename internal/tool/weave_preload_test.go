@@ -6,7 +6,32 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 )
+
+func TestDraftDependencies(t *testing.T) {
+	m, _ := newLifecycleTool(t, t.TempDir())
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	names := []string{"tool_weave", "shell", "edit_file"}
+	for _, name := range names {
+		prepared, err := m.PrepareTools(testutil.ForegroundContext(ctx), []string{name})
+		if err != nil || !slices.ContainsFunc(prepared.Update.Tools, func(item DiscoveredTool) bool { return item.Name == "draft" }) {
+			t.Errorf("%s did not bring in draft: %v", name, err)
+		}
+	}
+	bg, err := m.PrepareBackground(testutil.TaskContext(ctx, "cron"), BackgroundPreloadRequest{SessionID: "background", Names: names})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"shell": true, "edit_file": true, "draft": false, "tool_weave": false} {
+		if got := slices.ContainsFunc(bg.Update.Tools, func(item DiscoveredTool) bool { return item.Name == name }); got != want {
+			t.Errorf("background %s: got %t, want %t", name, got, want)
+		}
+	}
+}
 
 func TestWeavePreloadReflectsFullCommittedState(t *testing.T) {
 	m, store := newLifecycleTool(t, t.TempDir())
@@ -23,10 +48,10 @@ func TestWeavePreloadReflectsFullCommittedState(t *testing.T) {
 		names []string
 		want  string
 	}{
-		{[]string{"shell"}, "tool_weave 可调用：workspace"},
-		{[]string{"tool_weave"}, "tool_weave 可调用：workspace"},
-		{[]string{"read_file"}, "tool_weave 可调用：read_file、rollback_file、workspace"},
-		{[]string{"web_extract"}, "tool_weave 可调用：read_file、rollback_file、web_extract、web_search、workspace"},
+		{[]string{"shell"}, "tool_weave 可调用：draft、workspace"},
+		{[]string{"tool_weave"}, "tool_weave 可调用：draft、workspace"},
+		{[]string{"read_file"}, "tool_weave 可调用：draft、read_file、rollback_file、workspace"},
+		{[]string{"web_extract"}, "tool_weave 可调用：draft、read_file、rollback_file、web_extract、web_search、workspace"},
 	} {
 		prepared, err := m.PrepareTools(ctx, step.names)
 		if err != nil {

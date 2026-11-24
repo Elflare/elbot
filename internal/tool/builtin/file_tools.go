@@ -398,7 +398,7 @@ func editFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("edit_file").Weavable().
 		Description("批量编辑单个文本文件；成功→unified diff，任一操作失败→不写入。").
 		Risk(toolshare.RiskHigh).
-		DependsOn("workspace", "rollback_file").
+		DependsOn("workspace", "rollback_file", "draft").
 		Tags("files").
 		String("path", "相对workspace或绝对路径。", toolshare.Required()).
 		String("encoding", "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。").

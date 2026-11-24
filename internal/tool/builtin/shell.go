@@ -85,7 +85,7 @@ func shellBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("shell").Async(toolshare.SyncByDefault).
 		Description(fmt.Sprintf("执行命令，语法=%s。", currentShellDesc())).
 		Risk(toolshare.RiskHigh).
-		DependsOn("workspace").
+		DependsOn("workspace", "draft").
 		String("cmd", "命令。", toolshare.Required()).
 		Integer("timeout_ms", "超时，ms；≤0/省略→10000。").
 		ObjectArray("media_inputs", "第i项媒体→路径环境变量ELBOT_MEDIA_i，i从1开始；按当前shell语法引用。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
