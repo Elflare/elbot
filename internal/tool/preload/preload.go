@@ -47,6 +47,8 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 	result := share.ToolPreload{Accepted: make([]bool, len(names))}
 	seen := map[string]bool{}
 	var content []string
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	background := share.PolicyFromContext(ctx).DisableForegroundTools
 	for i, name := range names {
 		if definition, ok := s.Registry.Get(strings.TrimSpace(name)); ok && definition.LoadDetail != nil {
 			continue
@@ -63,11 +65,10 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 		if err != nil {
 			return share.ToolPreload{}, err
 		}
-		if strings.TrimSpace(text) != "" {
+		if text != "" {
 			content = append(content, text)
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		blocks, tools, needsElyph, err := s.preloadDetails(ctx, facts.SessionID, details, targets, share.PolicyFromContext(ctx).DisableForegroundTools)
+		blocks, tools, needsElyph, err := s.preloadDetails(ctx, facts.SessionID, details, targets, background)
 		if err != nil {
 			return share.ToolPreload{}, err
 		}

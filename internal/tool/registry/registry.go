@@ -16,17 +16,17 @@ import (
 	toolshare "elbot/internal/tool/share"
 )
 
+type toolPermission interface {
+	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
+}
+
 type Registry struct {
 	mu         sync.RWMutex                        // 保护注册目录及原子替换。
 	tools      map[string]toolshare.ToolDefinition // 名称到当前定义快照。
-	permission interface {
-		CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
-	} // 根部只交付目录筛选需要的权限能力。
+	permission toolPermission                      // 根部只交付目录筛选需要的权限能力。
 }
 
-func NewRegistry(permission interface {
-	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
-}) *Registry {
+func NewRegistry(permission toolPermission) *Registry {
 	return &Registry{tools: map[string]toolshare.ToolDefinition{}, permission: permission}
 }
 

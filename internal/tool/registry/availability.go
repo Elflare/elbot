@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/security"
 	"elbot/internal/tool/share"
 )
 
@@ -29,9 +28,7 @@ func UnavailableReason(ctx context.Context, info share.Info) string {
 	return ""
 }
 
-func CanAccessTool(actor contextinfo.Actor, permission interface {
-	CanUseTool(contextinfo.Actor, security.RiskLevel, bool) bool
-}, info share.Info) bool {
+func CanAccessTool(actor contextinfo.Actor, permission toolPermission, info share.Info) bool {
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return false
 	}

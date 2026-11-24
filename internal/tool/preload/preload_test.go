@@ -99,7 +99,6 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 	base := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	base = testutil.TaskContext(base, "")
 	ctx := withPreloadAvailability(t, base, registry)
-	ctx = withPreloadAvailability(t, ctx, registry)
 	prepared, err := preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"task_tool", "tasks", "task_tool"}})
 	if err != nil {
 		t.Fatal(err)
