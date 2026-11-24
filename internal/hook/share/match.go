@@ -47,9 +47,10 @@ type Match struct {
 }
 
 type Condition struct {
-	Field string `toml:"field"`
-	Op    string `toml:"op"`
-	Value string `toml:"value"`
+	Field    string         `toml:"field"`
+	Op       string         `toml:"op"`
+	Value    string         `toml:"value"`
+	compiled *regexp.Regexp // 在候选规则校验时编译；发布后只读。
 }
 
 // BlockPolicy skips every registration contributed by one plugin before its
@@ -123,12 +124,13 @@ func Regex(field, value string) Match {
 	return Match{Conditions: []Condition{{Field: field, Op: MatchRegex, Value: value}}}
 }
 
+// Validate checks the candidate conditions and prepares regexes before publication.
 func (m Match) Validate() error {
 	if len(m.Conditions) == 0 {
 		return fmt.Errorf("hook match requires at least one condition")
 	}
-	for i, cond := range m.Conditions {
-		if err := cond.validate(); err != nil {
+	for i := range m.Conditions {
+		if err := m.Conditions[i].validate(); err != nil {
 			return fmt.Errorf("condition %d: %w", i+1, err)
 		}
 	}
@@ -154,7 +156,7 @@ func (m Match) MatchEvent(event Event) MatchResult {
 	return MatchResult{OK: true, Context: ctx}
 }
 
-func (c Condition) validate() error {
+func (c *Condition) validate() error {
 	op := strings.TrimSpace(c.Op)
 	switch op {
 	case "":
@@ -175,9 +177,11 @@ func (c Condition) validate() error {
 		return fmt.Errorf("value is required for %s", op)
 	}
 	if op == MatchRegex {
-		if _, err := regexp.Compile(c.Value); err != nil {
+		re, err := regexp.Compile(c.Value)
+		if err != nil {
 			return fmt.Errorf("invalid regex: %w", err)
 		}
+		c.compiled = re
 	}
 	return nil
 }
@@ -198,23 +202,18 @@ func (c Condition) match(event Event) (bool, *RegexMatch) {
 	case MatchSuffix:
 		return strings.HasSuffix(fieldValue, c.Value), nil
 	case MatchRegex:
-		capture, ok := regexMatchContext(c.Field, c.Value, fieldValue)
-		if !ok {
-			return false, nil
-		}
-		return true, &capture
+		return c.regexMatchContext(fieldValue)
 	default:
 		return false, nil
 	}
 }
 
-func regexMatchContext(field, pattern, value string) (RegexMatch, bool) {
-	re := regexp.MustCompile(pattern)
-	indexes := re.FindStringSubmatchIndex(value)
+func (c Condition) regexMatchContext(value string) (bool, *RegexMatch) {
+	indexes := c.compiled.FindStringSubmatchIndex(value)
 	if indexes == nil {
-		return RegexMatch{}, false
+		return false, nil
 	}
-	names := re.SubexpNames()
+	names := c.compiled.SubexpNames()
 	groups := make([]string, 0, len(indexes)/2)
 	named := map[string]string{}
 	for i := 0; i < len(indexes); i += 2 {
@@ -232,7 +231,7 @@ func regexMatchContext(field, pattern, value string) (RegexMatch, bool) {
 	if len(named) == 0 {
 		named = nil
 	}
-	return RegexMatch{Field: field, Value: pattern, Text: groups[0], Groups: groups, Named: named, Start: indexes[0], End: indexes[1]}, true
+	return true, &RegexMatch{Field: c.Field, Value: c.Value, Text: groups[0], Groups: groups, Named: named, Start: indexes[0], End: indexes[1]}
 }
 
 var templateFields = [...]string{

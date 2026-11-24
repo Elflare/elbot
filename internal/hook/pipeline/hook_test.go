@@ -464,12 +464,16 @@ func TestManagerSkipsUnmatchedHookAndLogsNothing(t *testing.T) {
 
 func TestManagerPassesRegexMatchContext(t *testing.T) {
 	manager := newTestManager()
+	ruleMatch := share.Regex("message.text", `^mute (?P<target>\S+) (?P<minutes>\d+)$`)
+	if err := ruleMatch.Validate(); err != nil {
+		t.Fatal(err)
+	}
 
 	var got share.MatchContext
 	manager.Register(share.Registration{
 		Point: share.PointAgentInputPrepared,
 		Name:  "test.regex",
-		Match: share.Regex("message.text", `^mute (?P<target>\S+) (?P<minutes>\d+)$`),
+		Match: ruleMatch,
 		Handler: adaptHandler(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 			got, _ = event.Metadata["match"].(share.MatchContext)
 			return event, nil
