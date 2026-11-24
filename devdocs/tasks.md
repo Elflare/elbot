@@ -31,7 +31,7 @@
     - [x] preload
     - [x] registry
     - [x] skill
-    - [ ] state
+    - [x] state
     - [ ] share（最后按实际消费者核对共享契约）
 - [ ] hook 包（总管启动失败直接报错退出；单个插件失败只报该插件的错误，不阻断模块启动，修正后可热重载）
     - [x] hook 根部（不含子包）

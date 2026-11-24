@@ -2,6 +2,7 @@
 package state
 
 import (
+	"cmp"
 	"sort"
 
 	toolshare "elbot/internal/tool/share"
@@ -10,10 +11,7 @@ import (
 func discoveredNames(tools []toolshare.DiscoveredTool) map[string]bool {
 	names := map[string]bool{}
 	for _, item := range tools {
-		name := item.CanonicalName
-		if name == "" {
-			name = item.Name
-		}
+		name := cmp.Or(item.CanonicalName, item.Name)
 		if name != "" {
 			names[name] = true
 		}
@@ -25,10 +23,7 @@ func normalizeDiscoveredTools(tools []toolshare.DiscoveredTool) []toolshare.Disc
 	seen := map[string]bool{}
 	out := make([]toolshare.DiscoveredTool, 0, len(tools))
 	for _, discovered := range tools {
-		key := discovered.CanonicalName
-		if key == "" {
-			key = discovered.Name
-		}
+		key := cmp.Or(discovered.CanonicalName, discovered.Name)
 		if key == "" || seen[key] {
 			continue
 		}
@@ -42,10 +37,7 @@ func mergeDiscoveredTools(existing, incoming []toolshare.DiscoveredTool) []tools
 	byKey := map[string]toolshare.DiscoveredTool{}
 	for _, tools := range [][]toolshare.DiscoveredTool{existing, incoming} {
 		for _, discovered := range tools {
-			key := discovered.CanonicalName
-			if key == "" {
-				key = discovered.Name
-			}
+			key := cmp.Or(discovered.CanonicalName, discovered.Name)
 			if key != "" {
 				byKey[key] = discovered
 			}
@@ -63,14 +55,7 @@ func sortDiscoveredTools(tools []toolshare.DiscoveredTool) []toolshare.Discovere
 		return nil
 	}
 	sort.Slice(tools, func(i, j int) bool {
-		left, right := tools[i].CanonicalName, tools[j].CanonicalName
-		if left == "" {
-			left = tools[i].Name
-		}
-		if right == "" {
-			right = tools[j].Name
-		}
-		return left < right
+		return cmp.Or(tools[i].CanonicalName, tools[i].Name) < cmp.Or(tools[j].CanonicalName, tools[j].Name)
 	})
 	return tools
 }

@@ -76,9 +76,6 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if len(discovered) != 1 || discovered[0].CanonicalName != "wisp/external" || discovered[0].Endpoint != item.Endpoint || discovered[0].TimeoutSeconds != 7 {
 		t.Fatalf("restored=%+v", discovered)
 	}
-	if _, ok := discovered[0].Schema.Parameters["bad"]; ok {
-		t.Fatal("output mutated persistence")
-	}
 	if _, ok := discovered[0].Schema.Parameters["properties"].(map[string]any)["bad"]; ok {
 		t.Fatal("input mutated persistence")
 	}

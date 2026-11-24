@@ -2,9 +2,11 @@
 package state
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 
 	"elbot/internal/storage"
@@ -14,16 +16,15 @@ import (
 // StateService has no second writable cache. All updates merge the latest row.
 type StateService struct {
 	backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool // 根部注入的后台声明资格筛选。
-	store                     interface {
-		Get(context.Context, string) (*storage.Session, error)
-		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
-	} // 持久化会话状态；本服务不维护第二份可写缓存。
+	store                     sessionStore                                                // 持久化会话状态；本服务不维护第二份可写缓存。
 }
 
-func NewStateService(store interface {
+type sessionStore interface {
 	Get(context.Context, string) (*storage.Session, error)
 	Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
-}, backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
+}
+
+func NewStateService(store sessionStore, backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
 	return &StateService{store: store, backgroundDiscoveredTools: backgroundDiscoveredTools}
 }
 
@@ -32,6 +33,10 @@ func DecodeState(raw string) (toolshare.State, error) {
 	if err != nil {
 		return toolshare.State{}, err
 	}
+	return decodeStateFields(fields)
+}
+
+func decodeStateFields(fields storage.SessionMetadata) (toolshare.State, error) {
 	var state toolshare.State
 	for key, target := range map[string]any{
 		"discovered_tools": &state.DiscoveredTools,
@@ -64,17 +69,14 @@ func PrepareUpdate(raw string, update toolshare.StateUpdate) (storage.SessionMet
 
 // prepareUpdate 合并声明与标签，并编码工具拥有的非空字段。
 func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storage.SessionMetadata, error) {
-	for _, group := range update.ReplaceGroups {
-		retained := make([]toolshare.DiscoveredTool, 0, len(state.DiscoveredTools))
-		for _, existing := range state.DiscoveredTools {
-			if existing.Source == toolshare.SourceKindELwisp && existing.EventKey == group.EventKey {
-				continue
-			}
-			retained = append(retained, existing)
-		}
-		state.DiscoveredTools = retained
-	}
 	if len(update.ReplaceGroups) > 0 {
+		replacedEvents := make(map[string]bool, len(update.ReplaceGroups))
+		for _, group := range update.ReplaceGroups {
+			replacedEvents[group.EventKey] = true
+		}
+		state.DiscoveredTools = slices.DeleteFunc(state.DiscoveredTools, func(existing toolshare.DiscoveredTool) bool {
+			return existing.Source == toolshare.SourceKindELwisp && replacedEvents[existing.EventKey]
+		})
 		byName := make(map[string]toolshare.DiscoveredTool, len(state.DiscoveredTools)+len(update.Tools))
 		for _, existing := range state.DiscoveredTools {
 			byName[existing.Schema.Name] = existing
@@ -107,18 +109,19 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 			return toolshare.StateCommit{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
 		}
 	}
-	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) (err error) {
-		state, err := DecodeState(row.Metadata)
+	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) error {
+		fields, err := storage.DecodeSessionMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		state, err := decodeStateFields(fields)
 		if err != nil {
 			return err
 		}
 		before := discoveredNames(state.DiscoveredTools)
 		var injected, existing []string
 		for _, item := range update.Tools {
-			name := item.CanonicalName
-			if name == "" {
-				name = item.Name
-			}
+			name := cmp.Or(item.CanonicalName, item.Name)
 			if before[name] {
 				existing = append(existing, name)
 			} else {
@@ -126,10 +129,6 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 			}
 		}
 		patch, err := prepareUpdate(&state, update)
-		if err != nil {
-			return err
-		}
-		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err
 		}
@@ -172,8 +171,7 @@ func uniqueNames(values []string) []string {
 	return out
 }
 
-func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) (items []toolshare.DiscoveredTool, err error) {
-
+func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]toolshare.DiscoveredTool, error) {
 	row, err := s.store.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -182,9 +180,8 @@ func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string,
 	if err != nil {
 		return nil, err
 	}
-	items = state.DiscoveredTools
 	if background {
-		items = s.backgroundDiscoveredTools(items)
+		return s.backgroundDiscoveredTools(state.DiscoveredTools), nil
 	}
-	return items, nil
+	return state.DiscoveredTools, nil
 }
