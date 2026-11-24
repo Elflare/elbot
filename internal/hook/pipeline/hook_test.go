@@ -168,24 +168,30 @@ func TestManagerRunsByPriorityAndRegistrationOrder(t *testing.T) {
 	}
 }
 
-func TestManagerPassesUpdatedEventToNextHandler(t *testing.T) {
+func TestOnlyRunPassesUpdatedEventToNextHandler(t *testing.T) {
 	manager := newTestManager()
+	var seen string
 
 	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 0, Name: "clean", Match: share.Always(), Handler: adaptHandler(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 		event.LLM.Text = "cleaned"
 		return event, nil
 	})})
 	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 1, Name: "append", Match: share.Always(), Handler: adaptHandler(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
+		seen = event.LLM.Text
 		event.LLM.Text += " response"
 		return event, nil
 	})})
 
-	event, err := manager.Run(context.Background(), share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "raw"}}, CallOptions{Woken: true})
+	input := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "raw"}}
+	event, err := manager.Run(t.Context(), input, CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if event.LLM.Text != "cleaned response" {
 		t.Fatalf("Text = %q, want %q", event.LLM.Text, "cleaned response")
+	}
+	if err := manager.Notify(t.Context(), input, CallOptions{Woken: true}); err != nil || seen != "raw" {
+		t.Fatalf("Notify: second handler saw %q, err=%v", seen, err)
 	}
 }
 
@@ -532,6 +538,9 @@ func TestManagerStopsPropagation(t *testing.T) {
 	}
 	if calls != 1 || !got.Control.StopPropagation {
 		t.Fatalf("calls = %d, control = %#v", calls, got.Control)
+	}
+	if err := manager.Notify(t.Context(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true}); err != nil || calls != 2 {
+		t.Fatalf("Notify: total calls=%d, err=%v", calls, err)
 	}
 }
 func TestManagerMarksHookOutputs(t *testing.T) {

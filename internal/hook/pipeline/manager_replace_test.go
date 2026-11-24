@@ -39,6 +39,9 @@ func TestListCountsSameNameAndStopCancels(t *testing.T) {
 	for _, point := range []share.Point{share.PointToolCallPrepared, share.PointToolCallCompleted} {
 		manager.Register(share.Registration{Point: point, Name: "same"})
 	}
+	if !manager.Stop("same") || manager.Stop("missing") {
+		t.Fatal("Stop did not distinguish an idle rule from a missing rule")
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	id := manager.startActive(registration{name: "same", pluginID: "plugin"}, cancel)
@@ -48,12 +51,12 @@ func TestListCountsSameNameAndStopCancels(t *testing.T) {
 			t.Fatalf("info=%+v", info)
 		}
 	}
-	if manager.Stop("plugin") != 1 || ctx.Err() != context.Canceled {
+	if !manager.Stop("plugin") || ctx.Err() != context.Canceled {
 		t.Fatal("Stop did not cancel active handler")
 	}
 }
 
-func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
+func TestReplacePluginKeepsRuntimeIntegrations(t *testing.T) {
 	routed, logged, observed, runs := 0, 0, 0, 0
 	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error) {
 		routed++
@@ -64,7 +67,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 		runs++
 		return event, nil
 	})})
-	active.Replace(candidate)
+	active.ReplacePlugin("", candidate)
 	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 		observed++
 		return ctx, func() {}, nil
@@ -81,7 +84,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	}
 }
 
-func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
+func TestReplacePluginKeepsInFlightSnapshot(t *testing.T) {
 	active := newTestManager()
 
 	entered := make(chan struct{})
@@ -126,7 +129,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 			return event, nil
 		}),
 	})
-	active.Replace(candidate)
+	active.ReplacePlugin("", candidate)
 	close(release)
 	if err := <-done; err != nil {
 		t.Fatalf("in-flight Run: %v", err)

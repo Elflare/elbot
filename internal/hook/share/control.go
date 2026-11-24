@@ -11,8 +11,7 @@ import (
 // PipelineControl 供 control 查询和停止活动规则，不暴露执行器或注册表。
 type PipelineControl interface {
 	List() []Info
-	Matches(string) bool
-	Stop(string) int
+	Stop(string) bool
 }
 
 var ErrClosed = errors.New("hook runtime manager is closed")

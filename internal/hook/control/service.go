@@ -130,13 +130,12 @@ func (s *Service) StartStatefulHook(id string) (operationresult.Result[struct{}]
 func (s *Service) StopHook(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
-	matched := s.manager.Matches(id)
-	stopped := s.manager.Stop(id)
+	matched := s.manager.Stop(id)
 	runtimeStopped, err := s.runtime.Stop(ctx, id)
 	if err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
-	if runtimeStopped.Status == operationresult.NotFound && (matched || stopped > 0) {
+	if runtimeStopped.Status == operationresult.NotFound && matched {
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	return runtimeStopped, nil

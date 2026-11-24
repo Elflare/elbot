@@ -69,8 +69,8 @@ func (m *Manager) Register(reg share.Registration) {
 // Run first tries an inbound continuation, then runs ordinary rules unless stopped.
 // Ordinary Hook failures are handled here; task cancellation propagates.
 func (m *Manager) Run(ctx context.Context, event share.Event, options CallOptions) (share.Event, error) {
-	before := share.SnapshotCalls(event)
 	if event.Point == share.PointPlatformMessageReceived && m.route != nil {
+		before := share.SnapshotCalls(event)
 		updated, routed, err := m.route(ctx, event, options.Observe)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -86,11 +86,12 @@ func (m *Manager) Run(ctx context.Context, event share.Event, options CallOption
 			return event, nil
 		}
 	}
-	return m.run(ctx, event, options)
+	return m.run(ctx, event, options, "run")
 }
 
 func (m *Manager) Notify(ctx context.Context, event share.Event, options CallOptions) error {
-	return m.notify(ctx, event, options)
+	_, err := m.run(ctx, event, options, "notify")
+	return err
 }
 
 func (m *Manager) notifyError(ctx context.Context, event share.Event, options CallOptions, err error) {
@@ -99,16 +100,13 @@ func (m *Manager) notifyError(ctx context.Context, event share.Event, options Ca
 	}
 	event.Point, event.Error, event.ErrorInfo = share.PointErrorOccurred, err, nil
 	// Do not recurse into error reporting or replace the original failure.
-	_ = m.notify(ctx, event, options)
+	_ = m.Notify(ctx, event, options)
 }
 
-func (m *Manager) run(ctx context.Context, event share.Event, options CallOptions) (share.Event, error) {
+func (m *Manager) run(ctx context.Context, event share.Event, options CallOptions, mode string) (share.Event, error) {
 	event = share.PrepareEvent(event)
 	for _, reg := range m.handlersFor(event.Point) {
-		if reg.block.Blocks(event) {
-			continue
-		}
-		if skipForWakeup(options.Woken, reg) {
+		if reg.block.Blocks(event) || skipForWakeup(options.Woken, reg) {
 			continue
 		}
 		matchResult := reg.match.MatchEvent(event)
@@ -120,79 +118,33 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		runCtx, result, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 
-		if err != nil {
-			if ctx.Err() != nil {
-				return before, err
-			}
-			m.logHook(runCtx, "run", reg, before, result, err)
-			globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
-			m.notifyError(ctx, before, options, err)
-			event = before
-			continue
+		if err != nil && ctx.Err() != nil {
+			return before, err
 		}
-		if result.Status != operationresult.Success {
-			m.logHook(runCtx, "run", reg, before, result, nil)
-			globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
-			event = before
-			continue
-		}
-		updated := result.Data
-		markHookOutputs(updated, len(before.Outputs), reg, "run")
-		event = share.PrepareEvent(updated)
-		m.logHook(runCtx, "run", reg, before, result, nil)
-
-		if event.Control.StopPropagation {
-			break
-		}
-	}
-	return event, nil
-}
-
-func (m *Manager) notify(ctx context.Context, event share.Event, options CallOptions) error {
-	event = share.PrepareEvent(event)
-	for _, reg := range m.handlersFor(event.Point) {
-		if reg.block.Blocks(event) {
-			continue
-		}
-		if skipForWakeup(options.Woken, reg) {
-			continue
-		}
-		matchResult := reg.match.MatchEvent(event)
-		if !matchResult.OK {
-			continue
-		}
-		event.Metadata["match"] = matchResult.Context
-		before := share.SnapshotCalls(event)
-		runCtx, result, err := m.invoke(ctx, reg, event, options)
-		delete(event.Metadata, "match")
-		if err != nil {
-			if ctx.Err() != nil {
-				return err
-			}
-			m.logHook(runCtx, "notify", reg, before, result, err)
-			if event.Point != share.PointErrorOccurred {
-				globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
-				m.notifyError(ctx, before, options, err)
-			}
-			event = before
-			continue
-		}
-		if result.Status != operationresult.Success {
-			m.logHook(runCtx, "notify", reg, before, result, nil)
-			if event.Point != share.PointErrorOccurred {
-				globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
+		if err != nil || result.Status != operationresult.Success {
+			m.logHook(runCtx, mode, reg, before, result, err)
+			if mode == "run" || before.Point != share.PointErrorOccurred {
+				if err != nil {
+					globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+					m.notifyError(ctx, before, options, err)
+				} else {
+					globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
+				}
 			}
 			event = before
 			continue
 		}
 		updated := result.Data
-		markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(runCtx, "notify", reg, before, result, nil)
+		markHookOutputs(updated, len(before.Outputs), reg, mode)
+		if mode == "run" {
+			event = share.PrepareEvent(updated)
+		}
+		m.logHook(runCtx, mode, reg, before, result, nil)
 		if updated.Control.StopPropagation {
 			break
 		}
 	}
-	return nil
+	return event, nil
 }
 
 func (m *Manager) handlersFor(point share.Point) []registration {
@@ -251,40 +203,33 @@ func (m *Manager) finishActive(id string) {
 	m.mu.Unlock()
 }
 
-// Stop cancels active normal Hook executions matching a rule name or plugin ID.
-func (m *Manager) Stop(id string) int {
+// Stop cancels in-flight handlers and reports whether id matched an active or registered rule.
+func (m *Manager) Stop(id string) bool {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return 0
+		return false
 	}
 	m.mu.RLock()
-	cancels := make([]context.CancelFunc, 0)
+	var cancels []context.CancelFunc
 	for _, active := range m.active {
 		if active.name == id || active.pluginID == id {
 			cancels = append(cancels, active.cancel)
+		}
+	}
+	matched := false
+	for _, items := range m.handlers {
+		if slices.ContainsFunc(items, func(reg registration) bool { return reg.name == id || reg.pluginID == id }) {
+			matched = true
+			break
 		}
 	}
 	m.mu.RUnlock()
 	for _, cancel := range cancels {
 		cancel()
 	}
-	return len(cancels)
+	return matched || len(cancels) != 0
 }
 
-// Matches reports whether id names a normal rule or plugin.
-func (m *Manager) Matches(id string) bool {
-	id = strings.TrimSpace(id)
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for _, items := range m.handlers {
-		for _, reg := range items {
-			if reg.name == id || (reg.pluginID != "" && reg.pluginID == id) {
-				return true
-			}
-		}
-	}
-	return false
-}
 func (m *Manager) List() []share.Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -305,23 +250,6 @@ func (m *Manager) List() []share.Info {
 		return out[i].Point < out[j].Point
 	})
 	return out
-}
-
-// Replace atomically replaces registered handlers with a snapshot from next.
-// The receiving manager retains its continuation and log publishing capabilities.
-func (m *Manager) Replace(next *Manager) {
-	next.mu.RLock()
-	handlers := make(map[share.Point][]registration, len(next.handlers))
-	for point, items := range next.handlers {
-		handlers[point] = append([]registration(nil), items...)
-	}
-	order := next.next
-	next.mu.RUnlock()
-
-	m.mu.Lock()
-	m.handlers = handlers
-	m.next = order
-	m.mu.Unlock()
 }
 
 // ReplacePlugin atomically replaces only registrations owned by pluginID.
