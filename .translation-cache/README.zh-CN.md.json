@@ -24,6 +24,14 @@
       "translation": "## Development Status\n\nElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.\n\n[^1]: Chatterji et al., [_How People Use ChatGPT_](https://www.nber.org/papers/w34255), NBER Working Paper 34255, 2025.\n[^2]: Yan et al., [_ShareChat: A Dataset of Chatbot Conversations in the Wild_](https://arxiv.org/abs/2512.17843), arXiv:2512.17843, 2025.\n[^3]: Inspiration: https://github.com/tontinton/maki\n",
       "updated_at": 1794984417
     },
+    "README.zh-CN.md:section:3a437566cb06778e24209dbc5c2a04df85648aabc9de6522697b109afa7f17fe": {
+      "kind": "section",
+      "source": "### 二、强大可扩展\n\n**可扩展的 Hook 系统**： Hook Layer 覆盖 Agent 输入、LLM 请求、LLM 响应、平台发送、平台连接等事件点，可修改消息、追加输出意图、调用脚本。插件可用**任意语言**编写。\n\n**普通 Cron 与 LLM Cron**： 普通 Cron 按计划发送固定内容；LLM Cron 用任务描述驱动模型执行，适合需要分析、归纳或使用工具的定时任务。\n\n**ELyph 任务表示法**： 用结构化语法描述 LLM Cron 与 AgentSkill 的输入、输出、步骤、条件和约束，比自然语言 Markdown 更短、更少歧义，便于 LLM 复用传递，也便于 lint、审计和工具化。\n\n**AgentSkill**：在 `skills/<name>/` 编写可复用的任务说明，推荐 ELyph，也可用自然语言 Markdown。可选的 `ELBOT_SKILL.toml` 能将脚本或可执行文件注册成工具。\n\n**兼容外置 AgentSkill**： 配置后可将符合 agentskills.io 风格的外置 AgentSkill 脚本作为工具使用。\n\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "1a8e50595fe6d64bcb3013c0e5af62d8527cdb48336eaff9cd083d1c477dd72f",
+      "translation": "### II. Powerful and Extensible\n\n**Extensible Hook System**: The Hook Layer covers event points such as Agent input, LLM requests, LLM responses, platform sending, and platform connections, allowing for message modification, appending output intents, and calling scripts. Plugins can be written in **any language**.\n\n**Standard Cron and LLM Cron**: Standard Cron sends fixed content according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.\n\n**ELyph Task Notation**: Uses structured syntax to describe the inputs, outputs, steps, conditions, and constraints of LLM Cron and AgentSkill. It is shorter and less ambiguous than natural language Markdown, facilitating reuse and transmission by the LLM, as well as linting, auditing, and tooling.\n\n**AgentSkill**: Write reusable task descriptions in `skills/<name>/`; ELyph is recommended, though natural language Markdown can also be used. An optional `ELBOT_SKILL.toml` can register scripts or executable files as tools.\n\n**Compatible with External AgentSkill**: Once configured, external AgentSkill scripts following the agentskills.io style can be used as tools.\n\n",
+      "updated_at": 1795530351
+    },
     "README.zh-CN.md:section:3ced854f6659c934d9e3a0df45d6514bd0112a8acfffb37534ca2fedb89c0a96": {
       "kind": "section",
       "source": "## 特色\n\n",
@@ -47,19 +55,11 @@
       "source_hash": "50e83e69e9794910f4a554c7af71a1a899d176f4cea0fbaae0fdb7094ad922f0",
       "translation": "### V. Secure and Reliable\n\n**Security Policies and Risk Confirmation**: Tools are categorized by risk level and judged in combination with role permissions. Ordinary users can only discover and call tools within the permitted range; superadmins also require confirmation when calling high-risk tools.\n\n**Lightweight Sandbox Isolation**: Background Shell execution is constrained by an AST-level sandbox, and background tasks have independent sandbox working directories.\n\n**Logs and Auditing**: Runtime logs, Elwisp logs, and audit logs are separated, supporting structured fields and filtered queries; permission denials, tool calls, risk confirmations, and Cron deliveries are all recorded in the audit log.\n\n---\n\nFirst-time use: Simply configure the Provider and API Key to start chatting. For detailed instructions, see:\n\n- [Quick Start](docs/getting-started.md)\n- [Configuration Guide](docs/configuration.md)\n- [Command Reference](docs/commands.md)\n- [Core Concepts](docs/concepts.md)\n- [Elnis Listening Hub](docs/elnis.md)\n- [Elnis Configuration and Usage](docs/elnis-usage.md)\n- [Frontend API](docs/frontend-api.md)\n\n",
       "updated_at": 1793797140
-    },
-    "README.zh-CN.md:section:ce89a78f28a3f618ce07a5caaaf50eeab63538cc484bae8495356df82811013f": {
-      "kind": "section",
-      "source": "### 二、强大可扩展\n\n**可扩展的 Hook 系统**： Hook Layer 覆盖 Agent 输入、LLM 请求、LLM 响应、平台发送、平台连接等事件点，可修改消息、追加输出意图、调用脚本。插件可用**任意语言**编写。\n\n**普通 Cron 与 LLM Cron**： 普通 Cron 按计划发送固定内容；LLM Cron 用任务描述驱动模型执行，适合需要分析、归纳或使用工具的定时任务。\n\n**ELyph 任务表示法**： 用结构化语法描述 LLM Cron 与原生 Skill 的输入、输出、步骤、条件和约束，比自然语言 Markdown 更短、更少歧义，便于 LLM 复用传递，也便于 lint、审计和工具化。\n\n**可由 LLM 创建的 EL Skill**： 元工具 `create_el_skill` 让 LLM 把可复用经验沉淀为 EL Skill，创建时校验 ELyph 语法，可选附带 Go 源码并编译。\n\n**兼容外置 AgentSkill**： 配置后可将符合 agentskills.io 风格的外置 AgentSkill 脚本作为工具使用。\n\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "23a9de7c3c06bf9025c5fc5dad9ded8e43bf2646dfb8f25b3bfadccec0d11a96",
-      "translation": "### II. Powerful and Extensible\n\n**Extensible Hook System**: The Hook Layer covers event points such as Agent input, LLM request, LLM response, platform sending, and platform connection, allowing for message modification, appending output intents, and calling scripts. Plugins can be written in **any language**.\n\n**Standard Cron and LLM Cron**: Standard Cron sends fixed content according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.\n\n**ELyph Task Notation**: Uses structured syntax to describe the inputs, outputs, steps, conditions, and constraints of LLM Cron and native skills, which is shorter and less ambiguous than natural language Markdown, facilitating reuse and transmission by the LLM, as well as linting, auditing, and tooling.\n\n**LLM-Creatable EL Skills**: The meta-tool `create_el_skill` allows the LLM to crystallize reusable experience into EL Skills, validating ELyph syntax during creation, with the option to include and compile Go source code.\n\n**Compatible with External AgentSkills**: Once configured, external AgentSkill scripts following the agentskills.io style can be used as tools.\n\n",
-      "updated_at": 1793796777
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "ff44be767e11d18012eaeb74b3aa55d6560e6bd5d4002778978eca46c0ecbd05",
+  "source_hash": "b3fd958aaf622436702ccb959f36f61308a36e42cfede6a8ff7d05fe971f7fd9",
   "target": "README.md",
-  "updated_at": 1795403779,
+  "updated_at": 1795530351,
   "version": 3
 }

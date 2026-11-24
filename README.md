@@ -80,15 +80,15 @@ xychart-beta horizontal
 
 ### II. Powerful and Extensible
 
-**Extensible Hook System**: The Hook Layer covers event points such as Agent input, LLM request, LLM response, platform sending, and platform connection, allowing for message modification, appending output intents, and calling scripts. Plugins can be written in **any language**.
+**Extensible Hook System**: The Hook Layer covers event points such as Agent input, LLM requests, LLM responses, platform sending, and platform connections, allowing for message modification, appending output intents, and calling scripts. Plugins can be written in **any language**.
 
 **Standard Cron and LLM Cron**: Standard Cron sends fixed content according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
 
-**ELyph Task Notation**: Uses structured syntax to describe the inputs, outputs, steps, conditions, and constraints of LLM Cron and native skills, which is shorter and less ambiguous than natural language Markdown, facilitating reuse and transmission by the LLM, as well as linting, auditing, and tooling.
+**ELyph Task Notation**: Uses structured syntax to describe the inputs, outputs, steps, conditions, and constraints of LLM Cron and AgentSkill. It is shorter and less ambiguous than natural language Markdown, facilitating reuse and transmission by the LLM, as well as linting, auditing, and tooling.
 
-**LLM-Creatable EL Skills**: The meta-tool `create_el_skill` allows the LLM to crystallize reusable experience into EL Skills, validating ELyph syntax during creation, with the option to include and compile Go source code.
+**AgentSkill**: Write reusable task descriptions in `skills/<name>/`; ELyph is recommended, though natural language Markdown can also be used. An optional `ELBOT_SKILL.toml` can register scripts or executable files as tools.
 
-**Compatible with External AgentSkills**: Once configured, external AgentSkill scripts following the agentskills.io style can be used as tools.
+**Compatible with External AgentSkill**: Once configured, external AgentSkill scripts following the agentskills.io style can be used as tools.
 
 ### III. Elnis Event Perception System
 
