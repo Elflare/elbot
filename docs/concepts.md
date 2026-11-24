@@ -47,6 +47,10 @@ Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))
 ```
 
+## 会话草稿
+
+仅限前台session，可用 `draft` 保存笔记或脚本。草稿是普通文件，放在 sandbox 同级的 `draft/<Session ID>/`，agent可直接读写、执行。手动删除会话或会话到期被清理时，对应草稿目录一起删除。
+
 ## 查看图片
 
 `view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型。

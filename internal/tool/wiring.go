@@ -55,6 +55,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Media:            mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
 		ResidentMemoryPath: residentStore.Path, ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
 		SkillRoot: skillRoot, ChatHistory: history, LongMemoryDir: filepath.Join(configDir, "long_memory"),
+		DraftRoot:    filepath.Join(filepath.Dir(cfg.Sandbox.Root), "draft"),
 		FileRollback: fileRollback, ProcessEnv: environment,
 		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,
 		ViewImageAvailable: func(ctx context.Context) bool {

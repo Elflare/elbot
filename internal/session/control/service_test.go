@@ -33,7 +33,7 @@ func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 		t.Fatal(err)
 	}
 	f := &fixture{store: store, bindings: binding.NewManager()}
-	f.s = NewService(Config{DefaultMode: storage.SessionModeWork, IdleExpiration: ttl}, ServiceDeps{
+	f.s = NewService(Config{DefaultMode: storage.SessionModeWork, IdleExpiration: ttl, DraftRoot: filepath.Join(t.TempDir(), "draft")}, ServiceDeps{
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
 		ActiveSessionIDs: func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) },

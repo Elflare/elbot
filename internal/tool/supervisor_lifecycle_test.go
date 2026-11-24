@@ -56,6 +56,37 @@ func writeLifecycleSkill(t *testing.T, root string) {
 	}
 }
 
+func TestDraftRegistration(t *testing.T) {
+	root := t.TempDir()
+	m, _ := newLifecycleTool(t, filepath.Join(root, "sandbox"))
+	if err := m.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: "A", Mode: storage.SessionModeWork})
+	query := ToolQuery{Names: []string{"draft"}}
+	if tools, err := m.QueryTools(ctx, query); err != nil || len(tools) != 1 {
+		t.Fatalf("foreground: tools=%v err=%v", tools, err)
+	}
+	if tools, err := m.QueryTools(testutil.TaskContext(ctx, "cron"), query); err != nil || len(tools) != 0 {
+		t.Fatalf("background: tools=%v err=%v", tools, err)
+	}
+	r, _, err := m.CallTool(ctx, CallRequest{Name: "draft", Arguments: json.RawMessage(`{}`)})
+	if err != nil || r.Status != operationresult.Success || r.Data.Content != "[]" {
+		t.Fatalf("empty list: result=%+v err=%v", r, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "draft")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("draft directory before create: %v", err)
+	}
+	r, _, err = m.CallTool(ctx, CallRequest{Name: "draft", Arguments: json.RawMessage(`{"name":"notes.md","content":"hello"}`)})
+	if err != nil || r.Status != operationresult.Success {
+		t.Fatalf("create: result=%+v err=%v", r, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "draft", "A", "notes.md")); err != nil || string(data) != "hello" {
+		t.Fatalf("draft file: %q, %v", data, err)
+	}
+}
+
 func TestSupervisorInitialSkillPreloadUsesRealStartup(t *testing.T) {
 	for _, background := range []bool{false, true} {
 		t.Run(map[bool]string{false: "foreground", true: "background"}[background], func(t *testing.T) {

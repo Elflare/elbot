@@ -237,12 +237,18 @@ func (s *Service) CleanupExpired(ctx context.Context, cutoff time.Time) (int, er
 			continue
 		}
 		deleted, err := s.deps.Sessions.DeleteIfExpired(locked, id, cutoff)
-		if err == nil && deleted {
-			s.clearSessionBindings(locked, id)
-			count++
-		}
-		release()
 		if err != nil {
+			release()
+			return count, err
+		}
+		if !deleted {
+			release()
+			continue
+		}
+		s.clearSessionBindings(locked, id)
+		release()
+		count++
+		if err := s.removeDrafts(id); err != nil {
 			return count, err
 		}
 	}

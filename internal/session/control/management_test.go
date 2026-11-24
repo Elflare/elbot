@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -30,12 +32,43 @@ func (r cleanupSessions) DeleteIfExpired(ctx context.Context, id string, cutoff 
 	return r.SessionRepository.DeleteIfExpired(ctx, id, cutoff)
 }
 
+func writeTestDraft(t *testing.T, root, id string) string {
+	t.Helper()
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte(id), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestDeleteRemovesOnlyCurrentSessionDrafts(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	ctx, scope := t.Context(), privateScope()
+	previous := f.create(t, scope, "previous")
+	keep := writeTestDraft(t, f.s.cfg.DraftRoot, previous.ID)
+	current := f.create(t, scope, "current")
+	dir := writeTestDraft(t, f.s.cfg.DraftRoot, current.ID)
+	if res, err := f.s.Delete(ctx, scope, ""); err != nil || res.Status != operationresult.Success {
+		t.Fatalf("delete: %+v %v", res, err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted session directory: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(keep, "notes.md")); err != nil || string(data) != previous.ID {
+		t.Fatalf("other session draft: %q, %v", data, err)
+	}
+}
+
 func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := context.Background(), privateScope()
 	cutoff := time.Now().Add(-24 * time.Hour)
 	for _, id := range []string{"a-delete", "b-busy", "c-failure", "d-pinned", "e-archived"} {
 		f.create(t, scope, id)
+		writeTestDraft(t, f.s.cfg.DraftRoot, id)
 	}
 	if result, err := f.s.Pin(ctx, scope, "d-pinned"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("pin: %+v %v", result, err)
@@ -71,7 +104,13 @@ func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 	if sessions, bindings := f.releaseCounts(); sessions != beforeSessions+1 || bindings != beforeBindings+2 {
 		t.Fatalf("cleanup releases: %d %d", sessions-beforeSessions, bindings-beforeBindings)
 	}
+	if _, err := os.Stat(filepath.Join(f.s.cfg.DraftRoot, "a-delete")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired session draft directory: %v", err)
+	}
 	for _, id := range []string{"b-busy", "c-failure", "d-pinned", "e-archived"} {
+		if _, err := os.Stat(filepath.Join(f.s.cfg.DraftRoot, id, "notes.md")); err != nil {
+			t.Errorf("retained session %s lost draft: %v", id, err)
+		}
 		if _, err := f.store.Sessions().Get(ctx, id); err != nil {
 			t.Fatalf("unexpected deletion %s: %v", id, err)
 		}

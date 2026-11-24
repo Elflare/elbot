@@ -5,6 +5,9 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"elbot/internal/operationresult"
@@ -97,7 +100,7 @@ func (s *Service) mutateTarget(ctx context.Context, scope share.Scope, id string
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
-func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (operationresult.Result[struct{}], error) {
+func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (result operationresult.Result[struct{}], err error) {
 	entered, err := s.enterTarget(ctx, scope, id)
 	if err != nil {
 		return operationresult.Result[struct{}]{}, err
@@ -106,7 +109,12 @@ func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (ope
 		return operationresult.Result[struct{}]{Status: entered.Status, Message: entered.Message}, nil
 	}
 	ctx, id, release := entered.Data.Context, entered.Data.ID, entered.Data.Release
-	defer release()
+	defer func() {
+		release()
+		if result.Status == operationresult.Success {
+			err = s.removeDrafts(id)
+		}
+	}()
 	row, err := s.deps.Sessions.Get(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
@@ -125,4 +133,11 @@ func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (ope
 	}
 	s.clearSessionBindings(ctx, id)
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+}
+
+func (s *Service) removeDrafts(id string) error {
+	if err := os.RemoveAll(filepath.Join(s.cfg.DraftRoot, id)); err != nil {
+		return fmt.Errorf("会话 %s 已删除，草稿清理失败: %w", id, err)
+	}
+	return nil
 }

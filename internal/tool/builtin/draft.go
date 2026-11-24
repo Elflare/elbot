@@ -17,7 +17,7 @@ import (
 // root 是所有会话共用的草稿根目录；只在首次创建文件时建立会话子目录。
 func draft(root string) share.ToolDefinition {
 	return share.NewBuilder("draft").ForegroundOnly().Weavable().Tags("files").Risk(share.RiskMedium).
-		Description("草稿；path=绝对路径；无参→[(name, path)]；两参→创建并返回content；重名→提示，不覆盖。").
+		Description("草稿，可随时读写和执行；path=绝对路径；无参→[(name, path)]；两参→创建并返回content；重名→提示，不覆盖。").
 		String("name", "仅name→(content, path)。").String("content", "创建内容。").
 		Build(func(ctx context.Context, req share.CallRequest, info share.Info) (prep operationresult.Result[*share.PreparedCall], err error) {
 			var args struct {

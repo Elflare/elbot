@@ -15,6 +15,7 @@ import (
 )
 
 type Config struct {
+	DraftRoot      string               // 各会话草稿的根目录；删除会话后清理对应子目录。
 	DefaultMode    string               // 已由配置层设置默认值的前台模式。
 	IdleExpiration IdleExpirationConfig // 前台绑定的闲置期限。
 }

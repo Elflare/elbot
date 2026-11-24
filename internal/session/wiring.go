@@ -4,11 +4,12 @@ package session
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/operationresult"
+	"path/filepath"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/binding"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
@@ -40,7 +41,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	s.sessionIDCode = deps.SessionIDCode
 	s.bindings = binding.NewManager()
 	s.control = control.NewService(
-		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
+		control.Config{
+			DefaultMode:    cfg.Session.DefaultMode,
+			IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration),
+			DraftRoot:      filepath.Join(filepath.Dir(cfg.Sandbox.Root), "draft"),
+		},
 		control.ServiceDeps{
 			AdoptForeground: func(ctx context.Context, row *storage.Session, b *share.Binding) {
 				deps.AdoptForeground(ctx, row, (*Binding)(b))

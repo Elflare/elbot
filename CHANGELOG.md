@@ -8,6 +8,7 @@
 - 新增 `tool_weave`并禁止shell中使用py，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。
 - 前台 `shell` 和 `tool_weave` 现在支持异步。技能也可配置为异步。
 - 新增前台工具 `ask_user`，默认异步。
+- 新增草稿工具 `draft`，方便agent随时读写、执行
 - AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。
 - AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。
 - AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。

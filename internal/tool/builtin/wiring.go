@@ -22,6 +22,7 @@ type Deps struct {
 	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
 	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。
 	LongMemoryDir       string                                                // 长期记忆资产与索引目录。
+	DraftRoot           string                                                // 各会话草稿所在的根目录。
 	SkillRoot           string                                                // 技能资产保护范围。
 	FileRollback        *fileops.Service                                      // 与总管共享的编辑和回滚服务。
 	ProcessEnv          processenv.Environment                                // 已合并配置的子进程环境。
@@ -47,6 +48,7 @@ func NewTools(deps Deps) []share.ToolDefinition {
 		weave.Definition(deps.ProcessEnv),
 		askUserTool{deps.CreateQuestions, deps.QuestionCommands}.definition(),
 		(WorkspaceTool{}).Definition(),
+		draft(deps.DraftRoot),
 		(SendFileTool{media: deps.Media}).Definition(),
 		NewReadFileTool(guard).Definition(),
 		(EditFileTool{Rollback: deps.FileRollback}).Definition(),
