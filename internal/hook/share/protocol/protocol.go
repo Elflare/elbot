@@ -57,7 +57,14 @@ func DecodeFrame(data []byte) (Frame, error) {
 }
 
 func EncodeFrame(frame any) ([]byte, error) {
-	return json.Marshal(frame)
+	data, err := json.Marshal(frame)
+	if err != nil {
+		return nil, err
+	}
+	if len(data)+1 > share.MaxProtocolFrameBytes {
+		return nil, fmt.Errorf("hook protocol stdin frame exceeds %d MiB limit", share.MaxProtocolFrameBytes/(1024*1024))
+	}
+	return append(data, '\n'), nil
 }
 
 func ValidateID(id, prefix string) error {

@@ -7,6 +7,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
@@ -359,9 +360,9 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 	beforeText := eventText(before)
 	content := map[string]any{
 		"point": before.Point, "hook": reg.name, "priority": reg.priority, "order": reg.order, "mode": mode,
-		"detail":      share.TruncateLogContent(detail, 1024),
-		"before_text": share.TruncateLogContent(beforeText, 1024),
-		"after_text":  share.TruncateLogContent(eventText(after), 1024),
+		"detail":      logging.TruncateContent(detail, 1024),
+		"before_text": logging.TruncateContent(beforeText, 1024),
+		"after_text":  logging.TruncateContent(eventText(after), 1024),
 	}
 	if reg.pluginID != "" {
 		content["plugin"] = reg.pluginID
@@ -379,7 +380,7 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 		if after.LLM.SourceText == beforeText {
 			content["source_text"] = "同before_text"
 		} else {
-			content["source_text"] = share.TruncateLogContent(after.LLM.SourceText, 1024)
+			content["source_text"] = logging.TruncateContent(after.LLM.SourceText, 1024)
 		}
 	}
 	data, _ := json.Marshal(content)

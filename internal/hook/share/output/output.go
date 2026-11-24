@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 )
 
 const MaxBase64Bytes = 10 * 1024 * 1024
+
+var ErrBase64TooLarge = errors.New("exceeds 10 MiB decoded limit")
 
 type Segment struct {
 	Kind       string `toml:"kind" json:"kind"`
@@ -205,6 +208,19 @@ func buildMediaSource(spec Segment, baseDir string) (delivery.Source, error) {
 }
 
 func decodeBase64(value, label, hint string) ([]byte, error) {
+	data, err := DecodeBase64(value)
+	switch err {
+	case nil:
+		return data, nil
+	case ErrBase64TooLarge:
+		return nil, fmt.Errorf("%s %w%s", label, err, hint)
+	default:
+		return nil, fmt.Errorf("decode %s: %w", label, err)
+	}
+}
+
+// DecodeBase64 bounds the allocation and checks the actual decoded size.
+func DecodeBase64(value string) ([]byte, error) {
 	n, limit := len(value), base64.StdEncoding.EncodedLen(MaxBase64Bytes)
 	if n > limit {
 		n -= strings.Count(value, "\r") + strings.Count(value, "\n")
@@ -213,13 +229,13 @@ func decodeBase64(value, label, hint string) ([]byte, error) {
 		data := make([]byte, base64.StdEncoding.DecodedLen(n))
 		size, err := base64.StdEncoding.Decode(data, []byte(value))
 		if err != nil {
-			return nil, fmt.Errorf("decode %s: %w", label, err)
+			return nil, err
 		}
 		if size <= MaxBase64Bytes {
 			return data[:size], nil
 		}
 	}
-	return nil, fmt.Errorf("%s exceeds 10 MiB decoded limit%s", label, hint)
+	return nil, ErrBase64TooLarge
 }
 
 func trimSegment(spec Segment) Segment {

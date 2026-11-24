@@ -156,22 +156,22 @@ func (m Match) MatchEvent(event Event) MatchResult {
 
 func (c Condition) validate() error {
 	op := strings.TrimSpace(c.Op)
-	if op == "" {
+	switch op {
+	case "":
 		return fmt.Errorf("op is required")
-	}
-	if !knownMatchOp(op) {
-		return fmt.Errorf("unsupported op %q", op)
-	}
-	if op == MatchAlways {
+	case MatchAlways:
 		if strings.TrimSpace(c.Field) != "" || strings.TrimSpace(c.Value) != "" {
 			return fmt.Errorf("always cannot set field or value")
 		}
 		return nil
+	case MatchExists, MatchContains, MatchFull, MatchPrefix, MatchSuffix, MatchRegex:
+	default:
+		return fmt.Errorf("unsupported op %q", op)
 	}
 	if !KnownField(c.Field) {
 		return fmt.Errorf("unsupported field %q", c.Field)
 	}
-	if needsMatchValue(op) && c.Value == "" {
+	if op != MatchExists && c.Value == "" {
 		return fmt.Errorf("value is required for %s", op)
 	}
 	if op == MatchRegex {
@@ -233,24 +233,6 @@ func regexMatchContext(field, pattern, value string) (RegexMatch, bool) {
 		named = nil
 	}
 	return RegexMatch{Field: field, Value: pattern, Text: groups[0], Groups: groups, Named: named, Start: indexes[0], End: indexes[1]}, true
-}
-
-func knownMatchOp(op string) bool {
-	switch op {
-	case MatchAlways, MatchExists, MatchContains, MatchFull, MatchPrefix, MatchSuffix, MatchRegex:
-		return true
-	default:
-		return false
-	}
-}
-
-func needsMatchValue(op string) bool {
-	switch op {
-	case MatchContains, MatchFull, MatchPrefix, MatchSuffix, MatchRegex:
-		return true
-	default:
-		return false
-	}
 }
 
 var templateFields = [...]string{

@@ -414,7 +414,7 @@ Host 从 stdin 返回相同 `id`；`result` 的具体结构由平台 API 决定�
 | `hook.log` | 一次性 | params 作为日志内容；result 为 `{"ok":true}`。 |
 | `tool.call` | Worker | 调用 allowlist 中的 ElBot 工具，字段见“工具调用”。 |
 | `hooks.reload` | Worker | params 为空对象；重载当前插件，结果见“插件自身重载”。 |
-| `media.import` | 一次性/Worker | `url`、`path`（插件目录相对路径）或 `base64` 三选一，可选 `name`、`mime_type`；返回 `media` 和元数据。 |
+| `media.import` | 一次性/Worker | `url`、`path`（插件目录相对路径）或 `base64`（解码后不超过 10 MiB）三选一，可选 `name`、`mime_type`；返回 `media` 和元数据。 |
 | `media.read` | 一次性/Worker | `media`；小于等于 1 MiB 返回 `base64`，较大媒体返回受控临时 `path`。 |
 | `media.export` | 一次性/Worker | `media`；返回受控临时文件 `path`。 |
 | `media.metadata` | 一次性/Worker | `media`；只返回名称、MIME 和大小等安全元数据。 |
@@ -544,7 +544,7 @@ stop_propagation = true
 
 | 字段 | 说明 |
 | --- | --- |
-| `strategy` | `never`、`on_failure`、`always`。当前 `on_failure` 和 `always` 都会在非手动退出后自动重启。 |
+| `strategy` | `never`、`on_failure`、`always`；忽略首尾空白。当前 `on_failure` 和 `always` 都会在非手动退出后自动重启。 |
 | `initial_delay_seconds` | 首次自动重启前的等待秒数，必须大于 `0`。 |
 | `max_delay_seconds` | 指数退避上限，必须不小于初始延迟。 |
 

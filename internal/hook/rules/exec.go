@@ -21,6 +21,7 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	hookprotocol "elbot/internal/hook/share/protocol"
+	"elbot/internal/logging"
 	"elbot/internal/processenv"
 )
 
@@ -389,7 +390,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			content["error"] = err.Error()
 		}
 		for key, value := range content {
-			content[key] = share.TruncateLogContent(value, 2048)
+			content[key] = logging.TruncateContent(value, 2048)
 		}
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{
@@ -454,7 +455,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			record.Identity.SessionID = event.Session.ID
 			for key, value := range content {
 				if value, ok := value.(string); ok {
-					content[key] = share.TruncateLogContent(value, 2048)
+					content[key] = logging.TruncateContent(value, 2048)
 				}
 			}
 			data, _ := json.Marshal(content)
@@ -565,10 +566,7 @@ func writeProtocolFrame(w io.Writer, frame any) error {
 	if err != nil {
 		return err
 	}
-	if len(data)+1 > maxHookProtocolFrameBytes {
-		return fmt.Errorf("hook protocol stdin frame exceeds %s limit", byteSize(maxHookProtocolFrameBytes))
-	}
-	_, err = fmt.Fprintf(w, "%s\n", data)
+	_, err = w.Write(data)
 	return err
 }
 

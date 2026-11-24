@@ -7,7 +7,7 @@ import "elbot/internal/tool"
 import (
 	"bytes"
 	"context"
-	"elbot/internal/hook/share"
+	"elbot/internal/logging"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -64,7 +64,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	call := tool.CallRequest{Name: name, Arguments: params.Arguments}
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
-	arguments := share.TruncateLogContent(string(params.Arguments), 512)
+	arguments := logging.TruncateContent(string(params.Arguments), 512)
 	// Pointer fields distinguish absent operation facts from explicit empty or
 	// zero values. Declaration order fixes the log body's display order.
 	content := struct {
@@ -82,16 +82,16 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		Source             string            `json:"source"`
 		ToolCallID         string            `json:"tool_call_id,omitempty"`
 	}{
-		Tool:      share.TruncateLogContent(name, 2048),
+		Tool:      logging.TruncateContent(name, 2048),
 		Arguments: &arguments,
-		Hook:      share.TruncateLogContent(w.config.ID, 2048),
+		Hook:      logging.TruncateContent(w.config.ID, 2048),
 		Source:    "plugin",
 	}
 	invocation := params.ToolContext
 	if params.Background {
 		invocation = params.Origin
 	}
-	content.Invocation = share.TruncateLogContent(invocation, 2048)
+	content.Invocation = logging.TruncateContent(invocation, 2048)
 	// Read trigger facts without consuming the permission token. Guard failures
 	// must retain the same trigger identity as an entered call.
 	w.manager.mu.RLock()
@@ -113,7 +113,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			content.Arguments = nil
 		}
 		if eventName != "hook_tool_call_completed" {
-			body = share.TruncateLogContent(body, 2048)
+			body = logging.TruncateContent(body, 2048)
 		}
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: status}

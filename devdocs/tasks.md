@@ -41,8 +41,10 @@
         - [x] 精简 stdout 故障处理、工具审计状态映射和共享状态淘汰
         - [x] 隔离 worker 重启前后的请求：旧 stdout 收尾不能关闭新进程的 pending
     - [x] share/output
-    - [ ] share/protocol
-    - [ ] share 根部（最后按实际消费者核对共享契约）
+    - [x] share/protocol
+    - [ ] share 根部（按实际消费者核对共享契约）
+        - [x] 统一匹配校验、重启策略、媒体导入限长和日志截断的调用边界
+        - [ ] 评估规则正则是否随加载预编译
 - [ ] background包
 - [x] completion包
 - [ ] fileops包

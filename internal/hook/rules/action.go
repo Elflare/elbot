@@ -18,6 +18,7 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
@@ -248,10 +249,10 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		Source     string             `json:"source"`
 		ToolCallID string             `json:"tool_call_id"`
 	}{
-		Tool:       share.TruncateLogContent(name, 2048),
+		Tool:       logging.TruncateContent(name, 2048),
 		Actor:      event.Actor,
-		Arguments:  share.TruncateLogContent(arguments, 512),
-		Point:      share.TruncateLogContent(string(event.Point), 2048),
+		Arguments:  logging.TruncateContent(arguments, 512),
+		Point:      logging.TruncateContent(string(event.Point), 2048),
 		Source:     "rules",
 		ToolCallID: call,
 	}

@@ -280,13 +280,12 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			}
 			metadata, err = b.api.ImportReader(ctx, file, info.Size(), input, media.ImportLimits{})
 		default:
-			if base64.StdEncoding.DecodedLen(len(*params.Base64)) > hookoutput.MaxBase64Bytes {
-				return operationresult.Result[mediaResult]{Status: operationresult.Rejected, Message: "media.import base64 exceeds 10 MiB decoded limit"}, nil
+			data, decodeErr := hookoutput.DecodeBase64(*params.Base64)
+			if decodeErr == hookoutput.ErrBase64TooLarge {
+				return operationresult.Result[mediaResult]{Status: operationresult.Rejected, Message: "media.import base64 " + decodeErr.Error()}, nil
 			}
-			var data []byte
-			data, err = base64.StdEncoding.DecodeString(*params.Base64)
-			if err != nil {
-				return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			if decodeErr != nil {
+				return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: decodeErr.Error()}, nil
 			}
 			metadata, err = b.api.ImportSource(ctx, delivery.Source{Data: data}, input, media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes})
 		}

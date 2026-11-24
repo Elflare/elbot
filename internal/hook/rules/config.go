@@ -121,6 +121,7 @@ func (cfg *Config) loadPlugin(opts Options, ref PluginRef, source ruleSource) (s
 		runtime.ID, runtime.Description = ref.Name, source.PluginDescription
 		runtime.Dir, runtime.ConfigPath = source.BaseDir, path
 		runtime.Block, runtime.ProcessEnv = source.Block, source.ProcessEnv
+		runtime.Restart.Strategy = strings.TrimSpace(runtime.Restart.Strategy)
 		for i, name := range runtime.Tools.Allow {
 			runtime.Tools.Allow[i] = strings.TrimSpace(name)
 		}

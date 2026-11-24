@@ -660,9 +660,6 @@ func (w *worker) write(ctx context.Context, value frame) error {
 	if err != nil {
 		return err
 	}
-	if len(data)+1 > share.MaxProtocolFrameBytes {
-		return fmt.Errorf("hook protocol stdin frame exceeds 16 MiB limit")
-	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -696,11 +693,11 @@ func (w *worker) write(ctx context.Context, value frame) error {
 		defer close(done)
 		kill()
 	})
-	n, err := fmt.Fprintf(stdin, "%s\n", data)
+	n, err := stdin.Write(data)
 	if !stop() {
 		<-done
 	}
-	if err == nil && n != len(data)+1 {
+	if err == nil && n != len(data) {
 		err = io.ErrShortWrite
 	}
 	if err != nil {

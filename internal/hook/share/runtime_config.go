@@ -81,8 +81,7 @@ func (c RuntimeConfig) Validate() error {
 	if c.StartupTimeoutSeconds <= 0 || c.ShutdownTimeoutSeconds <= 0 || c.EventTimeoutSeconds <= 0 || c.MaxWaitSeconds <= 0 {
 		return fmt.Errorf("runtime startup_timeout_seconds, shutdown_timeout_seconds, event_timeout_seconds and max_wait_seconds must be positive")
 	}
-	strategy := strings.TrimSpace(c.Restart.Strategy)
-	if strategy != "never" && strategy != "on_failure" && strategy != "always" {
+	if strategy := c.Restart.Strategy; strategy != "never" && strategy != "on_failure" && strategy != "always" {
 		return fmt.Errorf("runtime restart.strategy must be never, on_failure or always")
 	}
 	if c.Restart.InitialDelaySeconds <= 0 || c.Restart.MaxDelaySeconds <= 0 || c.Restart.InitialDelaySeconds > c.Restart.MaxDelaySeconds {
