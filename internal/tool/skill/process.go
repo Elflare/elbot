@@ -181,10 +181,7 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environme
 	if goPath.Status != operationresult.Success {
 		return operationresult.Result[goBuildResult]{Status: goPath.Status, Message: goPath.Message}, nil
 	}
-	binary := name
-	if runtime.GOOS == "windows" {
-		binary += ".exe"
-	}
+	binary := executableName(name)
 	timeout := time.Duration(timeoutMS) * time.Millisecond
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

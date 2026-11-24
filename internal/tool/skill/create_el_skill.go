@@ -106,11 +106,8 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	root := filepath.Join(t.manager.root, "go", name)
 	if _, err := os.Stat(root); err == nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Conflict, Message: fmt.Sprintf("skill directory %q already exists", root)}, nil
-	} else if err != nil && !os.IsNotExist(err) {
-		{
-			callErr := fmt.Errorf("stat skill directory: %w", err)
-			return operationresult.Result[*toolshare.PreparedCall]{}, callErr
-		}
+	} else if !os.IsNotExist(err) {
+		return operationresult.Result[*toolshare.PreparedCall]{}, fmt.Errorf("stat skill directory: %w", err)
 	}
 	files := make([]*fileops.PreparedFile, 0, 3)
 	contents := []struct{ path, content string }{{filepath.Join(root, elyph.SkillFileName), args.Elyph}}
@@ -205,9 +202,6 @@ func isWindowsReservedName(name string) bool {
 func withElyphMetadata(text, description, risk string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	lines := strings.Split(text, "\n")
-	if len(lines) == 0 {
-		return text
-	}
 	header := strings.Fields(lines[0])
 	if len(header) >= 2 {
 		lines[0] = header[0] + " " + header[1]

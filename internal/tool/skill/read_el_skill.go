@@ -84,20 +84,16 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		if end <= 0 || end > len(lines) {
 			end = len(lines)
 		}
-		if start > end+1 || start > len(lines)+1 {
-			{
-				message := fmt.Sprintf("start_line %d is out of range", args.StartLine)
-				return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
-			}
+		if start > end+1 {
+			message := fmt.Sprintf("start_line %d is out of range", args.StartLine)
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "revision: %s\n", fileops.ContentRevision(file.Bytes))
 		for i := start; i <= end; i++ {
 			fmt.Fprintf(&b, "%d: %s\n", i, lines[i-1])
 		}
-		{
-			result := &toolshare.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
-			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
-		}
+		result := &toolshare.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
 	})}, nil
 }

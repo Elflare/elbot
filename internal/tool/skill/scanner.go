@@ -85,7 +85,7 @@ func (s filesystemScanner) readGoRecord(root, dirName string) (record, bool, err
 	if err != nil {
 		return record{}, false, fmt.Errorf("parse %s in %q: %w", elyph.SkillFileName, root, err)
 	}
-	binary, _, err := findGoBinary(root, dirName, header.Name)
+	binary, err := findGoBinary(root, dirName, header.Name)
 	if err != nil {
 		return record{}, false, err
 	}
@@ -157,7 +157,7 @@ func dirNameForKind(kind Kind) string {
 	return "agent"
 }
 
-func findGoBinary(root, dirName, skillName string) (string, bool, error) {
+func findGoBinary(root, dirName, skillName string) (string, error) {
 	candidates := []string{}
 	if runtime.GOOS == "windows" {
 		candidates = append(candidates, filepath.Join(root, dirName+".exe"), filepath.Join(root, skillName+".exe"))
@@ -166,12 +166,12 @@ func findGoBinary(root, dirName, skillName string) (string, bool, error) {
 	}
 	for _, candidate := range candidates {
 		if executableFile(candidate) {
-			return candidate, true, nil
+			return candidate, nil
 		}
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return "", false, fmt.Errorf("read go skill dir %q: %w", root, err)
+		return "", fmt.Errorf("read go skill dir %q: %w", root, err)
 	}
 	matches := []string{}
 	for _, entry := range entries {
@@ -188,9 +188,9 @@ func findGoBinary(root, dirName, skillName string) (string, bool, error) {
 		}
 	}
 	if len(matches) == 1 {
-		return matches[0], true, nil
+		return matches[0], nil
 	}
-	return "", false, nil
+	return "", nil
 }
 
 func executableFile(path string) bool {
