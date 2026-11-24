@@ -23,7 +23,6 @@ type Supervisor struct {
 	connections []*signal.Connection // 构造阶段取得的外部订阅，由本线解除并等待退出。
 
 	mu          sync.Mutex    // 保护启动与关闭状态，耗时的内部调用不持有此锁。
-	started     bool          // 已开始一次启动尝试，结果通过 startupDone 和 startErr 发布。
 	closed      bool          // 已停止接收新的启动请求，重复关闭不重复释放资源。
 	startupDone chan struct{} // 非 nil 表示启动已开始；关闭表示启动尝试已结束。
 	startErr    error         // 首次启动结果，随 startupDone 关闭一起发布。

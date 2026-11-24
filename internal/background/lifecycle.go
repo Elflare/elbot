@@ -16,8 +16,7 @@ func (m *Supervisor) Start() (err error) {
 		m.mu.Unlock()
 		return context.Canceled
 	}
-	if m.started {
-		done := m.startupDone
+	if done := m.startupDone; done != nil {
 		m.mu.Unlock()
 		select {
 		case <-done:
@@ -26,7 +25,6 @@ func (m *Supervisor) Start() (err error) {
 			return m.Wait(m.ctx)
 		}
 	}
-	m.started = true
 	m.startupDone = make(chan struct{})
 	m.mu.Unlock()
 	defer func() {

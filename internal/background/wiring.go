@@ -48,9 +48,12 @@ func elnisError(err error) error {
 	return err
 }
 
-func elnisEvent(row *storage.ElnisEvent) *elnis.EventRecord {
+func elnisEvent(row *storage.ElnisEvent, err error) (*elnis.EventRecord, error) {
+	if err != nil {
+		return nil, elnisError(err)
+	}
 	return &elnis.EventRecord{ID: row.ID, EventKey: row.EventKey, ContentHash: row.ContentHash,
-		ResolvedTargets: row.ResolvedTargets, SessionID: row.SessionID, Result: row.Result}
+		ResolvedTargets: row.ResolvedTargets, SessionID: row.SessionID, Result: row.Result}, nil
 }
 
 func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (*elnis.EventRecord, error) {
@@ -58,34 +61,22 @@ func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (
 	if err != nil {
 		return nil, err
 	}
-	row, err := b.repo.Create(ctx, storage.CreateElnisEventRequest{
+	return elnisEvent(b.repo.Create(ctx, storage.CreateElnisEventRequest{
 		ID:       id,
 		MediaIDs: req.MediaIDs, EventKey: req.EventKey, OriginKind: req.OriginKind, OriginName: req.OriginName, ElwispName: req.ElwispName,
 		Source: req.Source, SourceID: req.SourceID, Tags: req.Tags, Mode: req.Mode, ModelSlot: req.ModelSlot,
 		ContentHash: req.ContentHash, ToolDeclarations: req.ToolDeclarations, ToolHash: req.ToolHash,
 		RequestedTargets: req.RequestedTargets, ResolvedTargets: req.ResolvedTargets, Status: req.Status,
 		ReceivedAt: req.ReceivedAt, CreatedAt: req.CreatedAt,
-	})
-	if err != nil {
-		return nil, elnisError(err)
-	}
-	return elnisEvent(row), nil
+	}))
 }
 
 func (b elnisBridge) Get(ctx context.Context, id string) (*elnis.EventRecord, error) {
-	row, err := b.repo.Get(ctx, id)
-	if err != nil {
-		return nil, elnisError(err)
-	}
-	return elnisEvent(row), nil
+	return elnisEvent(b.repo.Get(ctx, id))
 }
 
 func (b elnisBridge) GetByKey(ctx context.Context, name, source, sourceID string) (*elnis.EventRecord, error) {
-	row, err := b.repo.GetByKey(ctx, name, source, sourceID)
-	if err != nil {
-		return nil, elnisError(err)
-	}
-	return elnisEvent(row), nil
+	return elnisEvent(b.repo.GetByKey(ctx, name, source, sourceID))
 }
 
 func (b elnisBridge) Update(ctx context.Context, req elnis.UpdateEventRequest) error {
@@ -190,6 +181,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	cron := cronBridge{repo: deps.Store.CronJobs()}
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
+	targets := enabledCronPlatforms(cfg)
 	m.cronManager = elcron.NewManager(cron)
 	m.cron = elcron.NewService(elcron.Options{
 		Log:             globalevents.AsyncLog,
@@ -199,7 +191,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 		Manager: m.cronManager, Store: cron, Runner: runner,
 		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, IsSessionForeground: deps.Agent.IsSessionForeground,
-		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
+		EnabledPlatforms: targets, SandboxRoot: cfg.Sandbox.Root,
 	})
 	m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler)
 
@@ -217,7 +209,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		}
 	}
 	var platforms []string
-	for _, target := range enabledCronPlatforms(cfg) {
+	for _, target := range targets {
 		platforms = append(platforms, target.Name)
 	}
 	elnisDeps := elnisBridge{next: deps.Store.NextIDSequence, repo: deps.Store.ElnisEvents(), media: deps.Media}
@@ -267,21 +259,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 func enabledCronPlatforms(cfg *config.Config) []elcron.PlatformTarget {
 	out := []elcron.PlatformTarget{}
 	for name, raw := range cfg.Platform {
-		if !platformConfigEnabled(raw) {
+		if enabled, _ := raw["enabled"].(bool); !enabled {
 			continue
 		}
 		out = append(out, elcron.PlatformTarget{Name: name, SuperadminIDs: cfg.Security.Superadmins[name]})
 	}
 	return out
-}
-
-func platformConfigEnabled(raw map[string]any) bool {
-	value, ok := raw["enabled"]
-	if !ok {
-		return false
-	}
-	enabled, ok := value.(bool)
-	return ok && enabled
 }
 
 func resolveElnisTokens(cfg *config.Config) (map[string]string, error) {
