@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -21,7 +20,8 @@ import (
 )
 
 func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
-	m := tuiModel{viewport: viewport.New(80, 2)}
+	m := tuiModel{input: newTUIInput(), width: 80, height: 8}
+	m.resizeViewports()
 	m.applyStreamEvent(tuiStreamMsg{ID: 2, Event: delivery.StreamEvent{
 		Type: delivery.StreamToolCall, ToolCallID: "call-1",
 		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
@@ -52,7 +52,7 @@ func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
 		t.Fatalf("reused tool call ID reused old card: %#v", m.content)
 	}
 	closed := m.wrappedContent()
-	before, _, found := strings.Cut(closed, "▸ shell · 完成")
+	before, _, found := strings.Cut(m.View(), "▸ shell · 完成")
 	if !found || strings.Contains(closed, "pwd") || strings.Contains(closed, "/work") || strings.Contains(closed, "date") {
 		t.Fatalf("collapsed cards: %q", closed)
 	}
@@ -60,7 +60,7 @@ func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
 		chatMouseEvent(&m, tea.MouseActionPress, x, y)
 		chatMouseEvent(&m, tea.MouseActionRelease, x, y)
 	}
-	headerY := 1 + strings.Count(before, "\n") - m.viewport.YOffset
+	headerY := strings.Count(before, "\n")
 	click(1, headerY)
 	if got := m.wrappedContent(); !strings.Contains(got, "pwd") || !strings.Contains(got, "/work") || strings.Contains(got, "date") || m.copyState.active() {
 		t.Fatalf("expanded cards: %q", got)
@@ -69,20 +69,24 @@ func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
 	if got := m.wrappedContent(); got != closed {
 		t.Fatalf("second click did not restore collapsed cards: %q", got)
 	}
-	click(1, headerY)
-	before, _, found = strings.Cut(m.wrappedContent(), strings.Repeat(" ", m.viewport.Width-1)+"▴")
-	if !found {
-		t.Fatal("missing right-aligned collapse arrow")
-	}
-	m.viewport.GotoBottom()
-	footerY := 1 + strings.Count(before, "\n") - m.viewport.YOffset
-	click(m.viewport.Width-2, footerY)
-	if !card.toolExpanded || m.copyState.active() {
-		t.Fatal("click left of arrow should do nothing")
-	}
-	click(m.viewport.Width-1, footerY)
-	if got := m.wrappedContent(); got != closed || m.copyState.active() {
-		t.Fatalf("arrow did not collapse card: %q", got)
+	const button = "[ ▴ 收起 ]"
+	left := m.width - lipgloss.Width(button)
+	for _, x := range []int{left, (left + m.width) / 2, m.width - 1} {
+		click(1, headerY)
+		m.viewport.GotoBottom()
+		before, _, found = strings.Cut(m.View(), button)
+		if !found || lipgloss.Width(before[strings.LastIndex(before, "\n")+1:]) != left {
+			t.Fatal("missing right-aligned collapse button")
+		}
+		footerY := strings.Count(before, "\n")
+		click(left-1, footerY)
+		if !card.toolExpanded || m.copyState.active() {
+			t.Fatal("click left of button should do nothing")
+		}
+		click(x, footerY)
+		if got := m.wrappedContent(); got != closed || m.copyState.active() {
+			t.Fatalf("button at x=%d did not collapse card: %q", x, got)
+		}
 	}
 }
 
@@ -666,8 +670,8 @@ func TestTextareaHeightIsCapped(t *testing.T) {
 	if got := m.input.Height(); got != maxTUIInputHeight {
 		t.Fatalf("input height = %d", got)
 	}
-	if got, want := m.viewport.Height, 30-4-maxTUIInputHeight; got != want {
-		t.Fatalf("viewport height = %d, want %d", got, want)
+	if got, want := lipgloss.Height(m.View()), m.height; got != want {
+		t.Fatalf("screen height = %d, want %d", got, want)
 	}
 }
 
@@ -681,8 +685,8 @@ func TestTextareaHasMinimumHeight(t *testing.T) {
 	if got, want := m.inputViewHeight(), minTUIInputHeight; got != want {
 		t.Fatalf("input view height = %d, want %d", got, want)
 	}
-	if got, want := m.viewport.Height, 30-4-minTUIInputHeight; got != want {
-		t.Fatalf("viewport height = %d, want %d", got, want)
+	if got, want := lipgloss.Height(m.View()), m.height; got != want {
+		t.Fatalf("screen height = %d, want %d", got, want)
 	}
 }
 

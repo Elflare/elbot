@@ -87,7 +87,7 @@ func (m *tuiModel) toggleToolAt(x, y int) {
 		if block.kind != tuiContentTool {
 			continue
 		}
-		footer := block.toolExpanded && line == block.toolFooterLine && x == m.viewport.Width-1
+		footer := block.toolExpanded && line == block.toolFooterLine && x >= m.viewport.Width-toolCollapseWidth
 		if line != block.toolHeaderLine && !footer {
 			continue
 		}

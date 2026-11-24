@@ -65,6 +65,7 @@ const (
 	minChatPanelWidth       = 40
 	noticePanelFrameWidth   = 2
 	minNoticeLayoutWidth    = 100
+	toolCollapseLabel       = "[ ▴ 收起 ]"
 	maxCompletionPopupItems = 8
 	tuiInputCharLimit       = 4096
 	tuiInputGutterWidth     = 2
@@ -76,11 +77,12 @@ const (
 )
 
 var (
-	tuiTitleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("15")).
-			Background(lipgloss.Color("62")).
-			Padding(0, 1)
+	toolCollapseWidth = runewidth.StringWidth(toolCollapseLabel)
+	tuiTitleStyle     = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("15")).
+				Background(lipgloss.Color("62")).
+				Padding(0, 1)
 	tuiTitleMutedStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tuiStatusStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tuiUserStyle               = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
@@ -214,7 +216,7 @@ func runTUI(m tuiModel) error {
 	}
 	m.input = newTUIInput()
 	m.clipboard = newClipboardWriter()
-	program := tea.NewProgram(m, tea.WithMouseCellMotion(), tea.WithContext(context.WithoutCancel(m.ctx)), tea.WithoutSignalHandler())
+	program := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(context.WithoutCancel(m.ctx)), tea.WithoutSignalHandler())
 	// 使用正常退出消息，让 Bubble Tea 等待输入读取退出后再关闭 reader。
 	quitDone := make(chan struct{})
 	stopQuit := context.AfterFunc(m.ctx, func() { program.Quit(); close(quitDone) })
@@ -420,7 +422,7 @@ func (m *tuiModel) resizeViewports() {
 	chatWidth, noticeWidth := m.layoutWidths()
 	m.input.SetWidth(max(1, m.width-tuiInputGutterWidth))
 	inputHeight := m.inputViewHeight()
-	bodyHeight := max(1, m.height-4-m.completionViewHeight()-inputHeight)
+	bodyHeight := max(1, m.height-3-m.completionViewHeight()-inputHeight)
 	m.viewport.Width = chatWidth
 	m.viewport.Height = bodyHeight
 	m.noticeViewport.Width = noticeWidth
@@ -1038,7 +1040,8 @@ func (m tuiModel) renderContent(styled bool) string {
 				if block.text != "" {
 					write("\n" + render(block.text, tuiAssistantStyle))
 				}
-				write("\n" + render(strings.Repeat(" ", max(0, m.viewport.Width-1))+"▴", tuiStatusStyle))
+				footer := strings.Repeat(" ", max(0, m.viewport.Width-toolCollapseWidth)) + toolCollapseLabel
+				write("\n" + render(runewidth.Truncate(footer, m.viewport.Width, ""), tuiStatusStyle))
 				block.toolFooterLine = line
 			}
 		}
