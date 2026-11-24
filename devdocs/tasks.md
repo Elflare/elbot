@@ -47,7 +47,7 @@
         - [x] 规则正则随候选规则加载预编译，匹配时只读复用
 - [ ] background 包
     - [x] background 根部（装配、启动状态与存储适配；保留现有关闭契约）
-    - [ ] cron
+    - [x] cron
     - [ ] elnis
     - [ ] execution、maintenance、share
 - [x] completion包
