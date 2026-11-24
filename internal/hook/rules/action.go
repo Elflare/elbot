@@ -52,11 +52,11 @@ func (m Module) runAction(ctx context.Context, event share.Event, action Action,
 		return event, operationresult.Result[actionResult]{Status: operationresult.Success}, nil
 	case "exec":
 		updated, result, err := m.runExec(ctx, event, action, state)
-		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
-		state.Actions[key] = result
 		if err != nil {
 			return event, operationresult.Result[actionResult]{}, err
 		}
+		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
+		state.Actions[key] = result
 		return updated, operationresult.Result[actionResult]{Status: operationresult.Success, Data: result}, nil
 	case "tool":
 		result, err := m.callTool(ctx, event, action, state)
@@ -113,11 +113,7 @@ func prependTextField(event share.Event, field, value string) share.Event {
 		event.Tool.Arguments = value + event.Tool.Arguments
 	case "tool.result":
 		event.Message.Segments = llm.PrependSegmentText(toolResultSegments(event), value)
-		if event.Tool.Result.Status == operationresult.Success {
-			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
-		} else {
-			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
-		}
+		syncToolResultText(&event)
 	}
 	return event
 }
@@ -132,11 +128,7 @@ func appendTextField(event share.Event, field, value string) share.Event {
 		event.Tool.Arguments += value
 	case "tool.result":
 		event.Message.Segments = llm.AppendSegmentText(toolResultSegments(event), value)
-		if event.Tool.Result.Status == operationresult.Success {
-			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
-		} else {
-			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
-		}
+		syncToolResultText(&event)
 	}
 	return event
 }
@@ -151,11 +143,7 @@ func replaceTextField(event share.Event, field string, pattern *regexp.Regexp, r
 		event.Tool.Arguments = replaceString(event.Tool.Arguments, pattern, replacement, all)
 	case "tool.result":
 		event.Message.Segments = llm.ReplaceSegmentText(toolResultSegments(event), pattern, replacement, all)
-		if event.Tool.Result.Status == operationresult.Success {
-			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
-		} else {
-			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
-		}
+		syncToolResultText(&event)
 	}
 	return event
 }
@@ -169,6 +157,15 @@ func replaceString(text string, pattern *regexp.Regexp, replacement string, all 
 		return text
 	}
 	return text[:loc[0]] + pattern.ReplaceAllString(text[loc[0]:loc[1]], replacement) + text[loc[1]:]
+}
+
+func syncToolResultText(event *share.Event) {
+	text := llm.SegmentsTextOnly(event.Message.Segments)
+	if event.Tool.Result.Status == operationresult.Success {
+		event.Tool.Result.Data = text
+	} else {
+		event.Tool.Result.Message = text
+	}
 }
 
 func toolResultSegments(event share.Event) []llm.MessageSegment {

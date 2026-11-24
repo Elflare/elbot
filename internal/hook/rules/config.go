@@ -44,9 +44,6 @@ func loadConfig(opts Options) (Config, string, error) {
 		cfg.Rules[i].source = source
 	}
 
-	if err := normalizeLoadedRules(cfg.Rules); err != nil {
-		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
-	}
 	if err := validateLoadedRules(cfg.Rules); err != nil {
 		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
 	}
@@ -139,9 +136,6 @@ func (cfg *Config) loadPlugin(opts Options, ref PluginRef, source ruleSource) (s
 		pcfg.Rules[i].source = source
 		pcfg.Rules[i].clearBlockConfig()
 	}
-	if err := normalizeLoadedRules(pcfg.Rules); err != nil {
-		return path, err
-	}
 	if err := validateLoadedRules(pcfg.Rules); err != nil {
 		return path, err
 	}
@@ -189,7 +183,8 @@ func pathWithin(base, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func normalizeLoadedRules(rules []Rule) error {
+// Normalize the entire batch first so normalization errors precede validation errors.
+func validateLoadedRules(rules []Rule) error {
 	for i := range rules {
 		rule := &rules[i]
 		if err := rule.normalize(); err != nil {
@@ -202,10 +197,6 @@ func normalizeLoadedRules(rules []Rule) error {
 		}
 		rule.source.OriginalName = original
 	}
-	return nil
-}
-
-func validateLoadedRules(rules []Rule) error {
 	for i := range rules {
 		if err := validateRule(&rules[i]); err != nil {
 			return fmt.Errorf("rule %d: %w", i+1, err)

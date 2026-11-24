@@ -21,7 +21,6 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	hookprotocol "elbot/internal/hook/share/protocol"
-	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
@@ -41,7 +40,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		argv[i] = render(arg, event, state)
 	}
 	if strings.TrimSpace(argv[0]) == "" {
-		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
+		return event, actionResult{}, fmt.Errorf("command is required")
 	}
 	runCtx := ctx
 	cancel := func() {}
@@ -51,7 +50,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	defer cancel()
 	cwd, err := m.execCwd(action, event, state)
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, err
+		return event, actionResult{}, err
 	}
 	processEnv := action.source.ProcessEnv
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
@@ -67,17 +66,17 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, err
+		return event, actionResult{}, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, err
+		return event, actionResult{}, err
 	}
 	stderrTail := newExecStderrTail()
 	stderrLogger := newExecStderrLogger(ctx, m, action, stderrTail)
 	cmd.Stderr = stderrLogger
 	if err := cmd.Start(); err != nil {
-		return event, actionResult{Error: err.Error()}, err
+		return event, actionResult{}, err
 	}
 	defer stdin.Close()
 	waitExec := func() error {
@@ -85,15 +84,12 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		stderrLogger.Flush()
 		return err
 	}
-	fail := func(result actionResult, source error) (share.Event, actionResult, error) {
+	fail := func(source error) (share.Event, actionResult, error) {
 		if err := killProcessTree(); err != nil {
 			m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 		}
 		_ = waitExec()
-		stderr := stderrTail.String()
-		source = withExecStderr(source, stderr)
-		result.Error = source.Error()
-		return event, result, source
+		return event, actionResult{}, withExecStderr(source, stderrTail.String())
 	}
 
 	reader := bufio.NewReader(stdout)
@@ -106,10 +102,10 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	}
 	initID := "host:init"
 	if err := writeV2Request(stdin, initID, "system.init", map[string]any{"version": hookProtocolVersion, "runtime": runtime}); err != nil {
-		return fail(actionResult{}, pluginStdinWriteError("system.init", err))
+		return fail(pluginStdinWriteError("system.init", err))
 	}
 	if _, err := m.readV2Response(runCtx, reader, stdin, event, action, state, initID); err != nil {
-		return fail(actionResult{}, err)
+		return fail(err)
 	}
 	eventID := "host:event"
 	params := struct {
@@ -120,15 +116,15 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		Runtime:           runtime,
 	}
 	if err := writeV2Request(stdin, eventID, "event.handle", params); err != nil {
-		return fail(actionResult{}, pluginStdinWriteError("event.handle", err))
+		return fail(pluginStdinWriteError("event.handle", err))
 	}
 	rawResult, err := m.readV2Response(runCtx, reader, stdin, event, action, state, eventID)
 	if err != nil {
-		return fail(actionResult{}, err)
+		return fail(err)
 	}
 	result, updated, err := m.v2EventResult(runCtx, event, action, state, rawResult)
 	if err != nil {
-		return fail(result, err)
+		return fail(err)
 	}
 	event = updated
 	if err := waitExec(); err != nil {
@@ -150,8 +146,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 			}
 		}
 		err = fmt.Errorf("hook plugin exec failed: %w", err)
-		err = withExecStderr(err, stderrTail.String())
-		return event, actionResult{Error: err.Error()}, err
+		return event, actionResult{}, withExecStderr(err, stderrTail.String())
 	}
 	return event, result, nil
 }
@@ -283,26 +278,21 @@ func (m Module) v2EventResult(ctx context.Context, event share.Event, action Act
 	if status := strings.TrimSpace(payload.Status); status != "" && status != "completed" {
 		return actionResult{}, event, fmt.Errorf("one-shot hook.v2 returned unsupported status %q", status)
 	}
-	result := actionResult{Result: payload.Result, Error: payload.Error, Matched: payload.Matched, PassThrough: payload.PassThrough}
 	if len(payload.Outputs) > 0 {
 		outputs, err := hookoutput.BuildGroup(hookoutput.Group{Outputs: payload.Outputs, Target: payload.Target, Timing: payload.Timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: renderedActionTarget(action, event, state), DefaultTiming: render(action.Timing, event, state)})
 		if err != nil {
-			return result, event, err
+			return actionResult{}, event, err
 		}
 		event.Outputs = append(event.Outputs, outputs...)
 	}
 	if payload.Message != nil && payload.Message.Segments != nil {
 		segments, err := m.Opts.BuildMessageSegments(ctx, *payload.Message.Segments, action.sourceBaseDir())
 		if err != nil {
-			return result, event, err
+			return actionResult{}, event, err
 		}
 		event.Message.Segments = segments
 		if event.Point == share.PointToolCallCompleted {
-			if event.Tool.Result.Status == operationresult.Success {
-				event.Tool.Result.Data = llm.SegmentsTextOnly(segments)
-			} else {
-				event.Tool.Result.Message = llm.SegmentsTextOnly(segments)
-			}
+			syncToolResultText(&event)
 		}
 	} else if payload.Message != nil && payload.Message.Text != nil {
 		field := strings.TrimSpace(action.Field)
@@ -311,7 +301,7 @@ func (m Module) v2EventResult(ctx context.Context, event share.Event, action Act
 		}
 		updated, err := setTextField(event, field, *payload.Message.Text)
 		if err != nil {
-			return result, event, err
+			return actionResult{}, event, err
 		}
 		event = updated
 	}
@@ -321,7 +311,7 @@ func (m Module) v2EventResult(ctx context.Context, event share.Event, action Act
 	if payload.StopPropagation {
 		event.Control.StopPropagation = true
 	}
-	return result, event, nil
+	return actionResult{Result: payload.Result, Error: payload.Error, Matched: payload.Matched, PassThrough: payload.PassThrough}, event, nil
 }
 
 func readProtocolLine(reader *bufio.Reader) (string, error) {
@@ -471,21 +461,12 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			record.Content = string(data)
 			m.Opts.Log(ctx, record)
 		}
-		paramsMap, err := rawObject(params)
-		if err != nil {
-
-			logHook(nil, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
-			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+		outputs, err := protocolOutputs(params, action, event, state)
+		var target delivery.Target
+		if err == nil {
+			target, err = delivery.ValidateOutputsTarget(outputs)
 		}
-		outputs, err := protocolOutputsFromMap(paramsMap, action, renderedActionTarget(action, event, state), render(action.Timing, event, state), "params.outputs")
 		if err != nil {
-
-			logHook(nil, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
-			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
-		}
-		target, err := delivery.ValidateOutputsTarget(outputs)
-		if err != nil {
-
 			logHook(outputs, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
 			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
@@ -521,7 +502,12 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 	}
 }
 
-func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, defaultTarget Target, defaultTiming, fieldName string) ([]delivery.Output, error) {
+func protocolOutputs(params json.RawMessage, action Action, event share.Event, state state) ([]delivery.Output, error) {
+	const fieldName = "params.outputs"
+	values, err := rawObject(params)
+	if err != nil {
+		return nil, err
+	}
 	raw := values["outputs"]
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("missing required field %q; expected an array of segment objects", fieldName)
@@ -543,7 +529,7 @@ func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, de
 	if err != nil {
 		return nil, err
 	}
-	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: defaultTarget, DefaultTiming: defaultTiming})
+	return hookoutput.BuildGroup(hookoutput.Group{Outputs: specs, Target: target, Timing: timing}, hookoutput.BuildOptions{BaseDir: action.sourceBaseDir(), DefaultTarget: renderedActionTarget(action, event, state), DefaultTiming: render(action.Timing, event, state)})
 }
 
 func renderedActionTarget(action Action, event share.Event, state state) hookoutput.Target {
