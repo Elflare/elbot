@@ -22,6 +22,10 @@ func (s *RemoteServer) originalTarget(ctx context.Context) (remoteDisplayTarget,
 		return remoteDisplayTarget{}, false
 	}
 	target, ok := info.PlatformData.(remoteDisplayTarget)
+	exec, _ := contextinfo.ExecutionFromContext(ctx)
+	if target.sessionID != "" && exec.SessionID != "" {
+		target.sessionID = exec.SessionID
+	}
 	return target, ok
 }
 
@@ -72,7 +76,7 @@ func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream,
 var remoteStreamID atomic.Uint64
 
 type remoteMessageStream struct {
-	sessionID string // 流固定属于发起输入的会话，不随订阅变化。
+	sessionID string // 流在创建时固定所属会话，不随连接订阅变化。
 	server    *RemoteServer
 	clientID  string
 	id        uint64 // Identifies one preview in the receiving TUI.
@@ -85,7 +89,7 @@ func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEven
 }
 
 type remoteDisplayTarget struct {
-	sessionID string // 输出路由在输入准入时固定。
+	sessionID string // 输入时的订阅；回复优先使用执行绑定，空值保留未订阅 CLI 的投递方式。
 	server    *RemoteServer
 	client    *remoteClientConn
 }
@@ -104,6 +108,9 @@ func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageS
 }
 
 func (t remoteDisplayTarget) PresentStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
+	if t.sessionID != "" {
+		t.sessionID = snapshot.SessionID
+	}
 	clients := t.server.sessionClients(t.client.id, t.sessionID)
 	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, SessionID: t.sessionID, Snapshot: snapshot})
 }
