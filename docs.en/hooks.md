@@ -408,16 +408,16 @@ The Host returns the same `id` via stdin; the specific structure of the `result`
 
 | method | Available To | `params` and `result` |
 | --- | --- | --- |
-| `shared.*` | All | Read and write global shared state, see the table below. |
+| `shared.*` | All | Read/write global shared state, see table below. |
 | `platform.call` | One-off | params contains `platform` (optional, defaults to current platform), required `api`, and optional `params` object; result is the platform return value. |
 | `output.send` | One-off | params uses the unified output structure; result contains the number of `sent` items and `receipts`. |
 | `message.get_reply` | One-off | No parameters; result contains `message_id` and `available`. |
 | `message.get` | One-off | Reserved interface; currently always returns `{"available":false}`. |
 | `hook.log` | One-off | params serves as the log content; result is `{"ok":true}`. |
-| `tool.call` | Worker | Call ElBot tools in the allowlist; see "Tool Calling" for fields. |
-| `hooks.reload` | Worker | params is an empty object; reloads the current plugin; see "Plugin Self-Reload" for results. |
-| `media.import` | One-off/Worker | Choose one of `url`, `path` (relative path to plugin directory), or `base64`; optional `name` and `mime_type`; returns `media` and metadata. |
-| `media.read` | One-off/Worker | `media`; returns `base64` if size is ≤ 1 MiB, otherwise returns a controlled temporary `path`. |
+| `tool.call` | Worker | Calls ElBot tools in the allowlist; see "Tool Calling" for fields. |
+| `hooks.reload` | Worker | params is an empty object; reloads the current plugin, see "Plugin Self-Reload" for results. |
+| `media.import` | One-off/Worker | Choose one of `url`, `path` (relative path to plugin directory), or `base64` (not exceeding 10 MiB after decoding); optional `name` and `mime_type`; returns `media` and metadata. |
+| `media.read` | One-off/Worker | `media`; returns `base64` if ≤ 1 MiB, otherwise returns a controlled temporary `path` for larger media. |
 | `media.export` | One-off/Worker | `media`; returns a controlled temporary file `path`. |
 | `media.metadata` | One-off/Worker | `media`; returns only safe metadata such as name, MIME, and size. |
 
@@ -523,19 +523,19 @@ stop_propagation = true
 | --- | --- |
 | `name` | Self-descriptive name; recommended to be consistent with the root `[[plugins]].name`. If inconsistent, the root ID prevails and a warning is logged. |
 | `description` | Brief introduction used by `/hooks`, `system.init`, and the status list. |
-| `blocked_platform` | Completely stops distributing events from specified platforms, e.g., `telegram`. |
-| `blocked_group` | Completely stops distributing events from specified groups, grouped by platform, e.g., `blocked_group.qqonebot = ["123456"]`. |
-| `blocked_id` | Completely stops distributing events from specified users, grouped by platform, e.g., `blocked_id.qqonebot = ["10001"]`. |
+| `blocked_platform` | Completely block distribution of events from specified platforms, e.g., `telegram`. |
+| `blocked_group` | Completely block distribution of events from specified groups, grouped by platform, e.g., `blocked_group.qqonebot = ["123456"]`. |
+| `blocked_id` | Completely block distribution of events from specified users, grouped by platform, e.g., `blocked_id.qqonebot = ["10001"]`. |
 
-- If any of the three blocking criteria are met, the plugin rule or `event.handle` will not be called; other plugins remain unaffected. Matching is exact and does not support wildcards; `blocked_group` matches `chat_type = "group"` (Telegram supergroups are also categorized as groups), and IDs are matched as raw strings.
+- If any of the three blocking criteria are hit, the plugin rule or `event.handle` will not be called; other plugins are unaffected. Matching is exact and does not support wildcards; `blocked_group` matches `chat_type = "group"` (Telegram supergroups are also categorized as groups), and IDs are matched as raw strings.
 - All rules within the plugin (including exec actions), Worker triggers, and waiting routes share the blocking configuration of `[plugin]`. If these three fields are mistakenly written in the plugin's `[[rules]]`, loading and reloading will return a warning and ignore the rule-level fields, but will not prevent the plugin from running.
 
 `[plugin.runtime]` requires the following fields when `mode = "persistent"` or `mode = "transient"`; `mode` can only be `once`, `persistent`, or `transient`, defaulting to `once`. `once` does not create a worker and does not require other runtime fields.
 
 | Field | Description |
 | --- | --- |
-| `mode` | `once` (default), `persistent`, or `transient`. `persistent` stays resident after startup; `transient` starts only after a rule hit and exits after the Session ends. |
-| `command` | Non-empty argv array; the first element is the program, and the remaining elements are passed as arguments as-is, without template rendering or shell execution. |
+| `mode` | `once` (default), `persistent`, or `transient`. `persistent` remains resident after startup; `transient` starts only after a rule is hit and exits after the Session ends. |
+| `command` | Non-empty argv array; the first element is the program, and the remaining elements are passed as arguments as-is, without template rendering or shell processing. |
 | `cwd` | Relative to the plugin directory; cannot be an absolute path or escape the plugin directory. Usually `.`. |
 | `startup_timeout_seconds` | Maximum seconds to wait for a successful `system.init` response; must be greater than `0`. |
 | `shutdown_timeout_seconds` | Maximum seconds to wait for `system.shutdown` and exit; must be greater than `0`. |
@@ -546,8 +546,8 @@ stop_propagation = true
 
 | Field | Description |
 | --- | --- |
-| `strategy` | `never`, `on_failure`, `always`. Currently, `on_failure` and `always` will automatically restart after a non-manual exit. |
-| `initial_delay_seconds` | Waiting seconds before the first automatic restart; must be greater than `0`. |
+| `strategy` | `never`, `on_failure`, `always`; leading and trailing whitespace is ignored. Currently, both `on_failure` and `always` will automatically restart after a non-manual exit. |
+| `initial_delay_seconds` | Seconds to wait before the first automatic restart; must be greater than `0`. |
 | `max_delay_seconds` | Upper limit for exponential backoff; must be no less than the initial delay. |
 
 `[plugin.runtime.tools]` is optional; omitting it is equivalent to an empty allowlist:
@@ -557,11 +557,11 @@ stop_propagation = true
 | `allow` | Tool names usable by foreground `tool.call`; the Host distributes the corresponding schema under `system.init.params.tools`. |
 | `background_allow` | Tool names usable in the background; must also appear in `allow`. |
 
-- Worker trigger rules reuse the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` of rule Hooks; configuring `action` or `actions` will result in a validation failure. If `pass_through` is omitted, the two control fields in the rule are used.
+- Worker trigger rules reuse the matching, role, priority, `wakeup`, `consume`, and `stop_propagation` of rule Hooks; configuring `action` or `actions` will result in validation failure. If `pass_through` is omitted, the two control fields in the rule are used.
 - Worker states: `starting`, `ready`, `running`, `degraded`, `stopping`, `stopped`, `failed`.
-- During shutdown, the Host first requests `system.shutdown`; sending the request, waiting for the response, and graceful exit share a single `shutdown_timeout_seconds` budget, after which it is immediately forcefully killed. There is a separate bounded wait for the actual exit after a forceful kill; a timeout return from the close call does not mean the process has already exited.
-- When the Host closes a Hook runtime: it stops accepting new plugin requests and cancellation notifications, revokes waiting timers, cancels pending tool calls, and waits for the process, plugin requests, registered notifications and timed callbacks, reloading, and resource cleanup to actually finish.
-- Protocol sending for cancellation notifications and plugin responses is constrained by runtime closure cancellation and `event_timeout_seconds`. Background tool calls are also constrained by runtime closure cancellation; even if a call ignores cancellation, a closure wait timeout will not treat it as having exited.
+- When stopping, the Host first requests `system.shutdown`; sending the request, waiting for the response, and graceful exit share a single `shutdown_timeout_seconds` budget, after which it is immediately killed. There is a separate bounded wait for the actual exit after being killed; a timeout return from the close call does not mean the process has exited.
+- When the Host closes the Hook runtime: it stops accepting new plugin requests and cancellation notifications, revokes waiting timers, cancels pending tool calls, and waits for the process, plugin requests, registered notifications and timed callbacks, reloading, and resource cleanup to actually finish.
+- The protocol sending of cancellation notifications and plugin responses is constrained by the runtime closure cancellation and `event_timeout_seconds`. Background tool calls are also constrained by the runtime closure cancellation; even if a call ignores the cancellation, the closure wait timeout will not consider it as exited.
 
 ### waiting, Concurrency, and Cancellation
 
