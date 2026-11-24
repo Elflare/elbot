@@ -167,11 +167,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		defer cancel()
 	}
 	if err := callCtx.Err(); err != nil {
-		status := globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			status = globalevents.ResultCanceled
-		}
-		logHook("hook_tool_call_completed", status, err.Error())
+		logHook("hook_tool_call_completed", globalevents.LogStatus(err), err.Error())
 		return nil, err
 	}
 	started := time.Now()
@@ -181,22 +177,21 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	content.ElapsedMS = &elapsedMS
 	content.Summary = &summary
 	if err != nil {
-		status := globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			status = globalevents.ResultCanceled
-		}
-		logHook("hook_tool_call_completed", status, err.Error())
+		logHook("hook_tool_call_completed", globalevents.LogStatus(err), err.Error())
 		return nil, err
 	}
-	if callResult.Status != operationresult.Success {
-		status := globalevents.ResultRejected
-		switch callResult.Status {
+	logStatus := func(status operationresult.Status) globalevents.ResultStatus {
+		switch status {
 		case operationresult.Failed, operationresult.Timeout:
-			status = globalevents.ResultFailed
+			return globalevents.ResultFailed
 		case operationresult.Canceled:
-			status = globalevents.ResultCanceled
+			return globalevents.ResultCanceled
+		default:
+			return globalevents.ResultRejected
 		}
-		logHook("hook_tool_call_completed", status, callResult.Message)
+	}
+	if callResult.Status != operationresult.Success {
+		logHook("hook_tool_call_completed", logStatus(callResult.Status), callResult.Message)
 		return operationresult.Result[map[string]any]{Status: callResult.Status, Message: callResult.Message}, nil
 	}
 	result := callResult.Data
@@ -227,14 +222,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	if sent.Status != operationresult.Success {
-		status := globalevents.ResultRejected
-		switch sent.Status {
-		case operationresult.Failed, operationresult.Timeout:
-			status = globalevents.ResultFailed
-		case operationresult.Canceled:
-			status = globalevents.ResultCanceled
-		}
-		logHook("hook_tool_log", status, sent.Message)
+		logHook("hook_tool_log", logStatus(sent.Status), sent.Message)
 		return operationresult.Result[map[string]any]{Status: sent.Status, Message: sent.Message}, nil
 	}
 	receipt := sent.Data

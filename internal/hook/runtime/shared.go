@@ -229,25 +229,22 @@ func (s *SharedState) makeRoomLocked(key string, incoming sharedEntry) error {
 	if fits() {
 		return nil
 	}
-	type candidate struct {
-		key        string
-		lastAccess time.Time
-	}
-	candidates := make([]candidate, 0, len(s.items))
-	for candidateKey, entry := range s.items {
-		if candidateKey != key {
-			candidates = append(candidates, candidate{key: candidateKey, lastAccess: entry.lastAccess})
+	candidates := make([]string, 0, len(s.items))
+	for candidate := range s.items {
+		if candidate != key {
+			candidates = append(candidates, candidate)
 		}
 	}
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].lastAccess.Equal(candidates[j].lastAccess) {
-			return candidates[i].key < candidates[j].key
+		a, b := candidates[i], candidates[j]
+		left, right := s.items[a].lastAccess, s.items[b].lastAccess
+		if left.Equal(right) {
+			return a < b
 		}
-		return candidates[i].lastAccess.Before(candidates[j].lastAccess)
+		return left.Before(right)
 	})
 	for _, candidate := range candidates {
-		entry := s.items[candidate.key]
-		s.deleteLocked(candidate.key, entry)
+		s.deleteLocked(candidate, s.items[candidate])
 		if fits() {
 			return nil
 		}

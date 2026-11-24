@@ -177,14 +177,14 @@ func (w *worker) run() {
 	// The owned pipe stays open across Wait, allowing stdout to drain all final frames.
 	w.manager.workWG.Go(func() {
 		defer close(w.stdoutDone)
+		defer stdout.Close()
 		w.readLoop(stdout)
 		w.mu.Lock()
 		stopping := w.stopping || w.manualStop
 		degraded := w.status == StatusDegraded || w.status == StatusFailed
 		w.mu.Unlock()
 		if !stopping && !degraded {
-			w.setStatus(StatusDegraded, "hook stdout closed")
-			w.kill()
+			w.stdoutFault("hook stdout closed")
 		}
 	})
 	w.manager.workWG.Go(func() { w.waitLoop(cmd) })
@@ -695,7 +695,12 @@ func (w *worker) write(ctx context.Context, value frame) error {
 	return ctx.Err()
 }
 
-func (w *worker) readLoop(reader io.Reader) error {
+func (w *worker) stdoutFault(detail string) {
+	w.setStatus(StatusDegraded, detail)
+	w.kill()
+}
+
+func (w *worker) readLoop(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), share.MaxProtocolFrameBytes)
 	for scanner.Scan() {
@@ -705,18 +710,16 @@ func (w *worker) readLoop(reader io.Reader) error {
 		}
 		value, err := hookprotocol.DecodeFrame(line)
 		if err != nil {
-			w.setStatus(StatusDegraded, "invalid hook.v2 stdout frame: "+err.Error())
-			w.kill()
-			return err
+			w.stdoutFault("invalid hook.v2 stdout frame: " + err.Error())
+			return
 		}
 		switch value.Type {
 		case "response":
 			w.deliverResponse(value)
 		case "request":
 			if hookprotocol.ValidateID(value.ID, "plugin:") != nil || strings.TrimSpace(value.Method) == "" {
-				w.setStatus(StatusDegraded, "invalid hook request frame")
-				w.kill()
-				return fmt.Errorf("invalid hook request frame")
+				w.stdoutFault("invalid hook request frame")
+				return
 			}
 			if err := w.manager.startTask(func() { w.handlePluginRequest(value) }); err != nil {
 				ok := false
@@ -727,23 +730,18 @@ func (w *worker) readLoop(reader io.Reader) error {
 		case "event":
 			w.handlePluginEvent(value)
 		default:
-			w.setStatus(StatusDegraded, "unsupported hook.v2 frame type "+value.Type)
-			w.kill()
-			return fmt.Errorf("unsupported hook.v2 frame type %s", value.Type)
+			w.stdoutFault("unsupported hook.v2 frame type " + value.Type)
+			return
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		w.setStatus(StatusDegraded, "read hook stdout: "+err.Error())
-		w.kill()
-		return err
+		w.stdoutFault("read hook stdout: " + err.Error())
 	}
-	return nil
 }
 
 func (w *worker) deliverResponse(value frame) {
 	if hookprotocol.ValidateID(value.ID, "host:") != nil {
-		w.setStatus(StatusDegraded, "response id must use host: prefix")
-		w.kill()
+		w.stdoutFault("response id must use host: prefix")
 		return
 	}
 	w.mu.Lock()
