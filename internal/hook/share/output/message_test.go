@@ -5,7 +5,6 @@ package output
 import (
 	"bytes"
 	"encoding/base64"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -16,9 +15,6 @@ var tinyPNG = []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
 
 func TestBuildMessageSegmentsNormalizesImageSources(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "result.png"), tinyPNG, 0o600); err != nil {
-		t.Fatal(err)
-	}
 	tests := []struct {
 		name string
 		spec MessageSegment

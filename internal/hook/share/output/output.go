@@ -68,9 +68,9 @@ func DecodeJSON(raw []byte, target any) error {
 }
 
 func BuildGroup(group Group, opts BuildOptions) ([]delivery.Output, error) {
-	target := group.Target
-	if target.Empty() {
-		target = opts.DefaultTarget
+	target := group.Target.Delivery()
+	if group.Target.Empty() {
+		target = opts.DefaultTarget.Delivery()
 	}
 	timing := strings.TrimSpace(group.Timing)
 	if timing == "" {
@@ -81,7 +81,7 @@ func BuildGroup(group Group, opts BuildOptions) ([]delivery.Output, error) {
 	}
 	outputs := make([]delivery.Output, 0, len(group.Outputs))
 	for i, spec := range group.Outputs {
-		out, err := buildSegment(spec, opts.BaseDir, target.Delivery(), timing)
+		out, err := buildSegment(spec, opts.BaseDir, target, timing)
 		if err != nil {
 			return nil, fmt.Errorf("outputs[%d]: %w", i, err)
 		}
@@ -107,12 +107,12 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 	var out delivery.Output
 	switch kind {
 	case delivery.KindText:
-		if err := rejectFields(spec, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "user_id", spec.UserID, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
+		if err := rejectFields("url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "user_id", spec.UserID, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err
 		}
 		out = delivery.Text(spec.Text)
 	case delivery.KindImage, delivery.KindFile, delivery.KindRecord:
-		if err := rejectFields(spec, "user_id", spec.UserID, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
+		if err := rejectFields("user_id", spec.UserID, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err
 		}
 		source, err := buildMediaSource(spec, baseDir)
@@ -121,7 +121,7 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 		}
 		out = delivery.Output{Kind: kind, Text: spec.Text, Name: spec.Name, Source: source}
 	case delivery.KindEmoticon:
-		if err := rejectFields(spec, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "mime_type", spec.MIMEType, "user_id", spec.UserID, "message_id", spec.MessageID); err != nil {
+		if err := rejectFields("url", spec.URL, "path", spec.Path, "base64", spec.Base64, "mime_type", spec.MIMEType, "user_id", spec.UserID, "message_id", spec.MessageID); err != nil {
 			return out, err
 		}
 		if spec.EmoticonID == "" {
@@ -132,7 +132,7 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 		}
 		out = delivery.Emoticon(spec.EmoticonID, spec.Name)
 	case delivery.KindAt:
-		if err := rejectFields(spec, "text", spec.Text, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
+		if err := rejectFields("text", spec.Text, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "message_id", spec.MessageID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err
 		}
 		if spec.UserID == "" {
@@ -140,7 +140,7 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 		}
 		out = delivery.At(spec.UserID)
 	case delivery.KindReply:
-		if err := rejectFields(spec, "url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "user_id", spec.UserID, "emoticon_id", spec.EmoticonID); err != nil {
+		if err := rejectFields("url", spec.URL, "path", spec.Path, "base64", spec.Base64, "name", spec.Name, "mime_type", spec.MIMEType, "user_id", spec.UserID, "emoticon_id", spec.EmoticonID); err != nil {
 			return out, err
 		}
 		if spec.MessageID == "" {
@@ -154,53 +154,72 @@ func buildSegment(spec Segment, baseDir string, target delivery.Target, timing s
 	return delivery.WithDeliveryTiming(out, timing), nil
 }
 
+// singleMediaSource returns the declared field, or media_id for an explicit media reference.
+func singleMediaSource(path, url, b64 string) (kind, value string) {
+	for _, field := range [...]struct{ kind, value string }{{"path", path}, {"url", url}, {"base64", b64}} {
+		if field.value == "" {
+			continue
+		}
+		if kind != "" {
+			return "", ""
+		}
+		kind, value = field.kind, field.value
+	}
+	if len(value) >= len(media.IDPrefix) && strings.EqualFold(value[:len(media.IDPrefix)], media.IDPrefix) {
+		return "media_id", value
+	}
+	return kind, value
+}
+
 func buildMediaSource(spec Segment, baseDir string) (delivery.Source, error) {
-	count := 0
-	for _, value := range []string{spec.Path, spec.URL, spec.Base64} {
-		if value != "" {
-			count++
-		}
-	}
-	if count != 1 {
-		return delivery.Source{}, fmt.Errorf("image/file/record output must provide exactly one of path, url or base64")
-	}
+	kind, value := singleMediaSource(spec.Path, spec.URL, spec.Base64)
 	source := delivery.Source{MIMEType: spec.MIMEType}
-	for _, value := range []string{spec.Path, spec.URL, spec.Base64} {
-		if strings.HasPrefix(strings.ToLower(value), media.IDPrefix) {
-			if !media.ValidID(value) {
-				return source, fmt.Errorf("invalid media ID")
-			}
-			source.MediaID = value
-			return source, nil
+	switch kind {
+	case "":
+		return delivery.Source{}, fmt.Errorf("image/file/record output must provide exactly one of path, url or base64")
+	case "media_id":
+		if !media.ValidID(value) {
+			return source, fmt.Errorf("invalid media ID")
 		}
-	}
-	if spec.Path != "" {
-		if strings.Contains(spec.Path, "://") {
+		source.MediaID = value
+	case "path":
+		if strings.Contains(value, "://") {
 			return source, fmt.Errorf("path must be a filesystem path, not a URI")
 		}
-		source.Path = spec.Path
-		if !filepath.IsAbs(source.Path) && strings.TrimSpace(baseDir) != "" {
-			source.Path = filepath.Join(baseDir, source.Path)
+		if !filepath.IsAbs(value) && strings.TrimSpace(baseDir) != "" {
+			value = filepath.Join(baseDir, value)
 		}
-		return source, nil
-	}
-	if spec.URL != "" {
-		u, err := url.Parse(spec.URL)
+		source.Path = value
+	case "url":
+		u, err := url.Parse(value)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return source, fmt.Errorf("url must be an absolute HTTP(S) URL")
 		}
-		source.URL = spec.URL
-		return source, nil
+		source.URL = value
+	case "base64":
+		data, err := decodeBase64(value, "base64 output", "; write large media to a file and return outputs[].path or outputs[].url instead")
+		source.Data = data
+		return source, err
 	}
-	if base64.StdEncoding.DecodedLen(len(spec.Base64)) > MaxBase64Bytes {
-		return source, fmt.Errorf("base64 output exceeds 10 MiB decoded limit; write large media to a file and return outputs[].path or outputs[].url instead")
-	}
-	data, err := base64.StdEncoding.DecodeString(spec.Base64)
-	if err != nil {
-		return source, fmt.Errorf("decode base64 output: %w", err)
-	}
-	source.Data = data
 	return source, nil
+}
+
+func decodeBase64(value, label, hint string) ([]byte, error) {
+	n, limit := len(value), base64.StdEncoding.EncodedLen(MaxBase64Bytes)
+	if n > limit {
+		n -= strings.Count(value, "\r") + strings.Count(value, "\n")
+	}
+	if n <= limit {
+		data := make([]byte, base64.StdEncoding.DecodedLen(n))
+		size, err := base64.StdEncoding.Decode(data, []byte(value))
+		if err != nil {
+			return nil, fmt.Errorf("decode %s: %w", label, err)
+		}
+		if size <= MaxBase64Bytes {
+			return data[:size], nil
+		}
+	}
+	return nil, fmt.Errorf("%s exceeds 10 MiB decoded limit%s", label, hint)
 }
 
 func trimSegment(spec Segment) Segment {
@@ -216,7 +235,7 @@ func trimSegment(spec Segment) Segment {
 	return spec
 }
 
-func rejectFields(_ Segment, fields ...string) error {
+func rejectFields(fields ...string) error {
 	for i := 0; i+1 < len(fields); i += 2 {
 		if fields[i+1] != "" {
 			return fmt.Errorf("field %s is not supported for this output kind", fields[i])

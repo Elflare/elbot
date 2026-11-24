@@ -4,7 +4,6 @@ package output
 import (
 	"elbot/internal/delivery"
 	"elbot/internal/media"
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -55,37 +54,30 @@ func buildMessageSegment(spec MessageSegment, baseDir string) (delivery.Output, 
 }
 
 func buildMessageImage(spec MessageSegment, baseDir string) (delivery.Output, error) {
-	count := 0
-	for _, value := range []string{spec.URL, spec.Path, spec.Base64} {
-		if value != "" {
-			count++
-		}
-	}
-	if count != 1 {
+	kind, value := singleMediaSource(spec.Path, spec.URL, spec.Base64)
+	if kind == "" {
 		return delivery.Output{}, fmt.Errorf("image segment must provide exactly one of url, path or base64")
 	}
 	segment := delivery.Output{Kind: delivery.KindImage, Text: spec.Text, Name: spec.Name, Source: delivery.Source{MIMEType: spec.MIMEType}}
-	for _, value := range []string{spec.URL, spec.Path, spec.Base64} {
-		if strings.HasPrefix(strings.ToLower(value), media.IDPrefix) {
-			if !media.ValidID(value) {
-				return delivery.Output{}, fmt.Errorf("invalid media ID")
-			}
-			segment.Source.MediaID = value
-			return segment, nil
+	if kind == "media_id" {
+		if !media.ValidID(value) {
+			return delivery.Output{}, fmt.Errorf("invalid media ID")
 		}
+		segment.Source.MediaID = value
+		return segment, nil
 	}
 	if spec.MIMEType != "" && !strings.HasPrefix(strings.ToLower(spec.MIMEType), "image/") {
 		return delivery.Output{}, fmt.Errorf("mime_type must be image/*")
 	}
-	switch {
-	case spec.URL != "":
-		u, err := url.Parse(spec.URL)
+	switch kind {
+	case "url":
+		u, err := url.Parse(value)
 		if err != nil {
 			return delivery.Output{}, fmt.Errorf("invalid image URL")
 		}
 		switch strings.ToLower(u.Scheme) {
 		case "data":
-			mimeType, data, err := decodeImageDataURL(spec.URL)
+			mimeType, data, err := decodeImageDataURL(value)
 			if err != nil {
 				return delivery.Output{}, err
 			}
@@ -102,24 +94,18 @@ func buildMessageImage(spec MessageSegment, baseDir string) (delivery.Output, er
 		default:
 			return delivery.Output{}, fmt.Errorf("url must be an absolute HTTP(S) URL or image data URL")
 		}
-	case spec.Path != "":
-		if strings.Contains(spec.Path, "://") {
+	case "path":
+		if strings.Contains(value, "://") {
 			return delivery.Output{}, fmt.Errorf("path must be a filesystem path, not a URI")
 		}
-		path := spec.Path
-		if !filepath.IsAbs(path) && baseDir != "" {
-			path = filepath.Join(baseDir, path)
+		if !filepath.IsAbs(value) && baseDir != "" {
+			value = filepath.Join(baseDir, value)
 		}
-		segment.Source.Path = path
-	default:
-		if base64.StdEncoding.DecodedLen(len(spec.Base64)) > MaxBase64Bytes {
-			return delivery.Output{}, fmt.Errorf("base64 image exceeds 10 MiB decoded limit")
-		}
-		data, err := base64.StdEncoding.DecodeString(spec.Base64)
-		if err != nil {
-			return delivery.Output{}, fmt.Errorf("decode base64 image: %w", err)
-		}
+		segment.Source.Path = value
+	case "base64":
+		data, err := decodeBase64(value, "base64 image", "")
 		segment.Source.Data = data
+		return segment, err
 	}
 	return segment, nil
 }
@@ -131,12 +117,6 @@ func decodeImageDataURL(value string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("image data URL must use base64 encoding")
 	}
 	mimeType := header[len("data:") : len(header)-len(";base64")]
-	if base64.StdEncoding.DecodedLen(len(encoded)) > MaxBase64Bytes {
-		return "", nil, fmt.Errorf("image data URL exceeds 10 MiB decoded limit")
-	}
-	data, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return "", nil, fmt.Errorf("decode image data URL: %w", err)
-	}
-	return mimeType, data, nil
+	data, err := decodeBase64(encoded, "image data URL", "")
+	return mimeType, data, err
 }
