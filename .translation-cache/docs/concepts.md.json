@@ -64,6 +64,14 @@
       "translation": "## Prompt and Soul\n\nSoul is the Agent's basic System Prompt, defining personality, behavioral boundaries, and a long-term stable expression style.\n\nThe actual Prompt sent contains not only the Soul but also dynamically combines platform information, user identity, memory, tool hints, compression summaries, and Session history based on the current Session. Therefore, Soul is only suitable for stable rules—dynamic information such as time, platform context, and tool discovery results should not be hard-coded into it.\n\nMessages containing images will send both the images and the text labels adjacent to the images to the vision model; Tags are numbered according to the order within the message and contain stable media IDs for reference by media tools. Sessions only save media references; sent copies are converted to base64 or temporary URLs according to the configuration; The same original materials are still used after restoring the Session.\n\n",
       "updated_at": 1793353326
     },
+    "docs/concepts.md:section:5c8e5f865e18953dac074734537906c1fcc4fa8d276ca652d29288330fde4c69": {
+      "kind": "section",
+      "source": "## 会话草稿\n\n仅限前台session，可用 `draft` 保存笔记或脚本。草稿是普通文件，放在 sandbox 同级的 `draft/<Session ID>/`，agent可直接读写、执行。手动删除会话或会话到期被清理时，对应草稿目录一起删除。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "b20ff1e6d56115b2f6e93c53162b84716eb4aecc14c4d1980516216c7e0cecc5",
+      "translation": "## Session Drafts\n\nAvailable only for foreground sessions, `draft` can be used to save notes or scripts. Drafts are ordinary files located in `draft/<Session ID>/` at the same level as the sandbox; the agent can read, write, and execute them directly. When a session is manually deleted or cleaned up upon expiration, the corresponding draft directory is deleted as well.\n\n",
+      "updated_at": 1795524358
+    },
     "docs/concepts.md:section:6da6df8ef31b1c2d41f6245dd3cc20ad957d557e92d5e54d978fe7728eb1dc63": {
       "kind": "section",
       "source": "## Hook\n\nHook Layer 用于在 Agent 的关键流程前后插入扩展逻辑，例如修改输入、补充上下文、追加输出意图或触发外部动作。\n\nHook 是扩展机制，不是权限机制。工具调用、危险操作和角色限制仍由 Security Layer 判断。\n\n完整配置和示例见 [Hook](hooks.md)。\n\n",
@@ -194,8 +202,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "3d7d64007c620988e8d22507b3c34f2e46c7fdc62406be676853765f7bf9d286",
+  "source_hash": "8d577d8c8ad046d3adc5cd7ec82594b405123be6dbe8cb98e017e0dc274591d7",
   "target": "docs.en/concepts.md",
-  "updated_at": 1795241343,
+  "updated_at": 1795524359,
   "version": 3
 }

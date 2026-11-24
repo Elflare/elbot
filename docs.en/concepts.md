@@ -49,6 +49,10 @@ Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))
 ```
 
+## Session Drafts
+
+Available only for foreground sessions, `draft` can be used to save notes or scripts. Drafts are ordinary files located in `draft/<Session ID>/` at the same level as the sandbox; the agent can read, write, and execute them directly. When a session is manually deleted or cleaned up upon expiration, the corresponding draft directory is deleted as well.
+
 ## View Image
 
 `view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results.
