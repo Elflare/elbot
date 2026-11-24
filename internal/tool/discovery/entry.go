@@ -2,7 +2,6 @@
 package discovery
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -61,40 +60,24 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 		activateTools := []string{}
 		needsElyphRules := false
 		for _, discovered := range result.Tools {
+			// 返回的发现结果可由调用方修改，不能共享目录中的参数容器。
+			if discovered.Schema != nil {
+				*discovered.Schema = share.CloneSchema(*discovered.Schema)
+			}
 			needsElyphRules = needsElyphRules || discovered.NeedsElyphRules
 			if discovered.Detail != "" {
 				activateTools = append(activateTools, targets[discovered.Info.Name].ActivateTools...)
 			}
 		}
-		data, err := marshalJSONNoEscape(result)
-		if err != nil {
-			callErr := fmt.Errorf("marshal discovery result: %w", err)
-			return operationresult.Result[*share.Result]{}, callErr.Error(), callErr
-		}
-		metadata := map[string]any{}
-		activateTools = normalizeNames(activateTools)
-		if len(activateTools) > 0 {
-			metadata[share.MetadataActivateTools] = activateTools
-		}
 		details, err := discoveryContent(ctx, targets, result)
 		if err != nil {
 			return operationresult.Result[*share.Result]{}, err.Error(), err
 		}
-		// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
+		// 结构化声明交给工具状态流程，正文只保留发现说明。
 		logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
 		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{
 			Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
-			DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,
+			DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Discovery: result, ActivateTools: normalizeNames(activateTools),
 		}}, logContent, nil
 	})}, nil
-}
-
-func marshalJSONNoEscape(value any) ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSpace(buf.Bytes()), nil
 }

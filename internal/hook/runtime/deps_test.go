@@ -60,7 +60,7 @@ func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (operati
 		return outcome, log, nil
 	}
 	value := result.Data
-	out := &tool.Result{NeedsElyphRules: value.NeedsElyphRules, Content: value.Content, Segments: value.Segments, Warnings: value.Warnings, Data: value.Data, Metadata: value.Metadata, Outputs: value.Outputs}
+	out := &tool.Result{NeedsElyphRules: value.NeedsElyphRules, Content: value.Content, Segments: value.Segments, Warnings: value.Warnings, ActivateTools: value.ActivateTools, Outputs: value.Outputs}
 	if value.DiscoveryText != nil {
 		out.DiscoveryText = &tool.DiscoveryText{Summary: value.DiscoveryText.Summary, Details: value.DiscoveryText.Details}
 	}

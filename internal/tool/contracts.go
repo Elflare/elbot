@@ -252,6 +252,30 @@ type CallRequest struct {
 	Arguments json.RawMessage // 已授权的调用参数。
 }
 
+// DiscoveryResult 保留发现的逐项结果；部分成功时 Tools 和 Errors 可以同时非空。
+type DiscoveryResult struct {
+	Tools  []DiscoveryItem
+	Errors []DiscoveryError
+}
+
+type DiscoveryError struct {
+	Name   string // 未能发现的名称。
+	Reason string // 此项失败原因。
+}
+
+type PublicInfo struct {
+	Name           string // 工具名称。
+	Description    string // 简短说明。
+	Source         Source // 注册来源。
+	ForegroundOnly bool   // 是否仅前台可用。
+}
+
+type DiscoveryItem struct {
+	Info   PublicInfo      // 本次选定的条目信息。
+	Schema *llm.ToolSchema // 可执行工具的声明；目录简介与文档条目不填。
+	Detail string          // 已加载的文档正文。
+}
+
 type DiscoveryText struct {
 	Summary string // 发现摘要。
 	Details string // 发现详情。
@@ -264,8 +288,8 @@ type Result struct {
 	Content         string               // 文本结果。
 	Segments        []llm.MessageSegment // 多模态结果，优先于 Content。
 	Warnings        []string             // 附加给模型的使用提示。
-	Data            json.RawMessage      // 发现结果的结构化数据。
-	Metadata        map[string]any       // 工具附加事实。
+	Discovery       *DiscoveryResult     // discover_tool 的结构化结果；普通工具不填。
+	ActivateTools   []string             // 请求激活的名称，不代表已授权。
 	Outputs         []delivery.Output    // 需要发送给用户的内容。
 }
 

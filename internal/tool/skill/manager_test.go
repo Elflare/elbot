@@ -199,8 +199,10 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(result.Data.Data), "private_doc") {
-		t.Fatalf("private skill should be hidden from normal user: %s", result.Data.Data)
+	for _, item := range result.Data.Discovery.Tools {
+		if item.Info.Name == "private_doc" {
+			t.Fatalf("private skill should be hidden from normal user: %+v", item)
+		}
 	}
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	if result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: args}); err != nil || result.Status == operationresult.Success {
@@ -394,10 +396,7 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			var discovery toolshare.DiscoveryResult
-			if err := json.Unmarshal(result.Data.Data, &discovery); err != nil {
-				t.Fatal(err)
-			}
+			discovery := result.Data.Discovery
 			if len(discovery.Tools) != 1 || discovery.Tools[0].Schema != nil {
 				t.Fatalf("discovered tools = %#v", discovery.Tools)
 			}

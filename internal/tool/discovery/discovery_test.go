@@ -228,7 +228,7 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 	}
 }
 
-func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
+func TestDiscoverToolContentAndActivation(t *testing.T) {
 	skill := testSkill{testTool: plainTool("skill"), block: share.DetailBlock{Content: "#skill demo\n<- $text:string!", Format: "elyph"}, activate: []string{"wrapper", "wrapper"}}
 	resolver, _ := newTestResolver(t,
 		(testDynamicTool{testTool: plainTool("append"), content: "追加说明"}).Definition(),
@@ -244,10 +244,10 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 			t.Fatalf("missing %q in %q", text, result.Data.Content)
 		}
 	}
-	if !result.Data.NeedsElyphRules || strings.Contains(string(result.Data.Data), `\u003c`) {
+	if !result.Data.NeedsElyphRules || len(result.Data.Discovery.Errors) != 1 || result.Data.Discovery.Errors[0].Name != "absent" {
 		t.Fatalf("skill result = %+v", result)
 	}
-	if got := strings.Join(metadataToolNames(result.Data.Metadata[share.MetadataActivateTools]), ","); got != "wrapper" {
+	if got := strings.Join(result.Data.ActivateTools, ","); got != "wrapper" {
 		t.Fatalf("activation = %q", got)
 	}
 	if log != "found=3 errors=1" {
@@ -282,8 +282,8 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	base := share.WithCallPolicy(context.Background(), share.CallPolicy{DisableForegroundTools: true})
 	ctx := withAvailability(t, resolver, base)
 	result := &share.Result{
-		Data:     json.RawMessage(`{"tools":[{"info":{"name":"base"},"schema":{"name":"base","parameters":{"type":"object"}}}]}`),
-		Metadata: map[string]any{share.MetadataActivateTools: []any{"hidden", 42, "admin", "foreground", "high", "api", "missing", "hidden"}},
+		Discovery:     &share.DiscoveryResult{Tools: []share.DiscoveryItem{{Info: share.PublicInfo{Name: "base"}, Schema: &llm.ToolSchema{Name: "base", Parameters: map[string]any{"type": "object", "minimum": int64(9007199254740993)}}}}},
+		ActivateTools: []string{"hidden", "admin", "foreground", "high", "api", "missing", "hidden"},
 	}
 	update, err := resolver.DiscoveryStateUpdate(ctx, result)
 	if err != nil {
@@ -292,13 +292,13 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	if len(update.Tools) != 2 || update.Tools[0].Name != "base" || update.Tools[1].Name != "hidden" {
 		t.Fatalf("update = %+v", update)
 	}
+	if got := update.Tools[0].Schema.Parameters["minimum"]; got != int64(9007199254740993) {
+		t.Fatalf("schema minimum lost precision: %T %v", got, got)
+	}
 	ctx = withAvailability(t, resolver, contextinfo.WithActor(base, contextinfo.Actor{Role: contextinfo.RoleSuperadmin}))
-	update, err = resolver.DiscoveryStateUpdate(ctx, &share.Result{Metadata: map[string]any{share.MetadataActivateTools: []string{"admin"}}})
+	update, err = resolver.DiscoveryStateUpdate(ctx, &share.Result{ActivateTools: []string{"admin"}})
 	if err != nil || len(update.Tools) != 1 || update.Tools[0].Name != "admin" {
 		t.Fatalf("admin update = %+v, %v", update, err)
-	}
-	if _, err := resolver.DiscoveryStateUpdate(ctx, &share.Result{Data: json.RawMessage(`invalid`)}); err == nil {
-		t.Fatal("invalid discovery data accepted")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cancel()
@@ -347,10 +347,7 @@ func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
 	if !strings.Contains(result.Data.Content, "original content") || strings.Contains(result.Data.Content, "replacement content") {
 		t.Fatalf("used replacement content: %q", result.Data.Content)
 	}
-	var discovered share.DiscoveryResult
-	if err := json.Unmarshal(result.Data.Data, &discovered); err != nil {
-		t.Fatal(err)
-	}
+	discovered := result.Data.Discovery
 	if len(discovered.Tools) != 1 || discovered.Tools[0].Schema == nil || discovered.Tools[0].Schema.Description != "original description" {
 		t.Fatalf("used replacement schema: %+v", discovered)
 	}
@@ -380,7 +377,7 @@ func TestDiscoveryKeepsSkillActivationDeclaration(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if got := strings.Join(metadataToolNames(result.Data.Metadata[share.MetadataActivateTools]), ","); got != "original_wrapper" {
+	if got := strings.Join(result.Data.ActivateTools, ","); got != "original_wrapper" {
 		t.Fatalf("activation declaration changed to %q", got)
 	}
 }

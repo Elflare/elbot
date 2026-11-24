@@ -365,10 +365,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			if store.dir != "" || !strings.Contains(result.Data.Content, "fallback rules") {
 				t.Fatalf("workspace=%q result=%q", store.dir, result.Data.Content)
 			}
-			var discovered toolshare.DiscoveryResult
-			if err := json.Unmarshal(result.Data.Data, &discovered); err != nil {
-				t.Fatal(err)
-			}
+			discovered := result.Data.Discovery
 			if len(discovered.Errors) != 0 {
 				t.Fatalf("discovery errors: %+v", discovered.Errors)
 			}
@@ -379,7 +376,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 				}
 			}
 			if !found {
-				t.Fatalf("missing schema for %s: %s", name, result.Data.Data)
+				t.Fatalf("missing schema for %s: %+v", name, discovered)
 			}
 			result, _, err = callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 			if err != nil || result.Status != operationresult.Success {

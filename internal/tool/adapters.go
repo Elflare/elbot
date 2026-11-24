@@ -132,16 +132,44 @@ func toInternalRunRequest(req RunRequest) share.RunRequest {
 	return share.RunRequest{Jobs: req.Jobs, Committer: req.Committer, Session: req.Session, Calls: req.Calls, AssistantText: req.AssistantText, AssistantRawText: req.AssistantRawText, ReasoningContent: req.ReasoningContent, DiscoveredTools: toInternalDiscoveredTools(req.DiscoveredTools), Actor: req.Actor}
 }
 
+func toPublicDiscovery(result *share.DiscoveryResult) *DiscoveryResult {
+	if result == nil {
+		return nil
+	}
+	out := &DiscoveryResult{}
+	for _, item := range result.Tools {
+		out.Tools = append(out.Tools, DiscoveryItem{Info: PublicInfo(item.Info), Schema: item.Schema, Detail: item.Detail})
+	}
+	for _, failure := range result.Errors {
+		out.Errors = append(out.Errors, DiscoveryError(failure))
+	}
+	return out
+}
+
+func toInternalDiscovery(result *DiscoveryResult) *share.DiscoveryResult {
+	if result == nil {
+		return nil
+	}
+	out := &share.DiscoveryResult{}
+	for _, item := range result.Tools {
+		out.Tools = append(out.Tools, share.DiscoveryItem{Info: share.PublicInfo(item.Info), Schema: item.Schema, Detail: item.Detail})
+	}
+	for _, failure := range result.Errors {
+		out.Errors = append(out.Errors, share.DiscoveryError(failure))
+	}
+	return out
+}
+
 func toPublicResult(result *share.Result) *Result {
 	if result == nil {
 		return nil
 	}
-	return &Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
+	return &Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Discovery: toPublicDiscovery(result.Discovery), ActivateTools: result.ActivateTools, Outputs: result.Outputs}
 }
 
 func toInternalResult(result *Result) *share.Result {
 	if result == nil {
 		return nil
 	}
-	return &share.Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*share.DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
+	return &share.Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*share.DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Discovery: toInternalDiscovery(result.Discovery), ActivateTools: result.ActivateTools, Outputs: result.Outputs}
 }

@@ -22,7 +22,7 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 	definition := ToolDefinition{
 		// 来源故意与注册参数不同，最终必须以 RegisterTools 的 SourceSkill 为准。
 		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow, Source: SourceBuiltin},
-		Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
+		Parameters: map[string]any{"type": "object", "properties": map[string]any{"count": map[string]any{"type": "integer", "minimum": int64(9007199254740993)}}},
 		Prepare: func(_ context.Context, req CallRequest) (operationresult.Result[*PreparedCall], error) {
 			return operationresult.Result[*PreparedCall]{Status: operationresult.Success, Data: &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Details: []ConfirmationDetailBlock{{Kind: ConfirmationDetailText, Content: "approved"}}, Run: func(context.Context) (operationresult.Result[*Result], string, error) {
 				return operationresult.Result[*Result]{Status: operationresult.Success, Data: &Result{Content: req.Name + " executed"}}, "external log", nil
@@ -52,6 +52,22 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 	infos, err := m.QueryTools(ctx, ToolQuery{Names: []string{"external"}})
 	if err != nil || len(infos) != 1 || infos[0].Definition.Source != SourceSkill {
 		t.Fatal(infos, err)
+	}
+	found, _, err := m.CallTool(ctx, CallRequest{Name: "discover_tool", Arguments: []byte(`{"names":["external","guide","absent"]}`)})
+	if err != nil || found.Status != operationresult.Success || found.Data.Discovery == nil {
+		t.Fatal(found, err)
+	}
+	discovery := found.Data.Discovery
+	if len(discovery.Errors) != 1 || discovery.Errors[0].Name != "absent" || len(discovery.Tools) != 2 || strings.Join(found.Data.ActivateTools, ",") != "external" {
+		t.Fatalf("discovery=%+v activate=%v", discovery, found.Data.ActivateTools)
+	}
+	count := discovery.Tools[0].Schema.Parameters["properties"].(map[string]any)["count"].(map[string]any)
+	if count["minimum"] != int64(9007199254740993) {
+		t.Fatalf("public schema minimum = %#v", count["minimum"])
+	}
+	count["minimum"] = 0
+	if infos[0].Parameters["properties"].(map[string]any)["count"].(map[string]any)["minimum"] != int64(9007199254740993) {
+		t.Fatal("public discovery changed registered schema")
 	}
 	definition.Definition.Risk = ""
 	if _, err := m.RegisterTools(ctx, SourceSkill, ToolRegistrationScope{}, []ToolDefinition{definition}); err == nil {

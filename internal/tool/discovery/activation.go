@@ -3,8 +3,6 @@ package discovery
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"elbot/internal/llm"
 	"elbot/internal/tool/share"
@@ -15,24 +13,16 @@ func (r *Resolver) DiscoveryStateUpdate(ctx context.Context, result *share.Resul
 	if err := ctx.Err(); err != nil {
 		return share.StateUpdate{}, err
 	}
-	update := share.StateUpdate{}
-	if len(result.Data) > 0 {
-		var discovery share.DiscoveryResult
-		if err := json.Unmarshal(result.Data, &discovery); err != nil {
-			return share.StateUpdate{}, fmt.Errorf("decode tool discovery: %w", err)
-		}
-		update.Tools = NativeDiscoveredToolsFromDiscovery(&discovery)
-	}
-	activated, err := r.activatedTools(ctx, result.Metadata)
+	tools := NativeDiscoveredToolsFromDiscovery(result.Discovery)
+	activated, err := r.activatedTools(ctx, result.ActivateTools)
 	if err != nil {
 		return share.StateUpdate{}, err
 	}
-	update.Tools = append(update.Tools, activated...)
-	return update, nil
+	return share.StateUpdate{Tools: append(tools, activated...)}, nil
 }
 
-func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) ([]share.DiscoveredTool, error) {
-	names := normalizeNames(metadataToolNames(metadata[share.MetadataActivateTools]))
+func (r *Resolver) activatedTools(ctx context.Context, names []string) ([]share.DiscoveredTool, error) {
+	names = normalizeNames(names)
 	if len(names) == 0 {
 		return nil, nil
 	}
@@ -77,22 +67,5 @@ func nativeDiscoveredTool(info share.PublicInfo, schema llm.ToolSchema) share.Di
 		Name: info.Name, Source: share.SourceKindNative,
 		Description: info.Description, Schema: share.CloneSchema(schema),
 		ForegroundOnly: info.ForegroundOnly,
-	}
-}
-
-func metadataToolNames(value any) []string {
-	switch names := value.(type) {
-	case []string:
-		return names
-	case []any:
-		out := make([]string, 0, len(names))
-		for _, name := range names {
-			if text, ok := name.(string); ok {
-				out = append(out, text)
-			}
-		}
-		return out
-	default:
-		return nil
 	}
 }

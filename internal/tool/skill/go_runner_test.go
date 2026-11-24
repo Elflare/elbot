@@ -258,7 +258,7 @@ func TestResultFromStdoutHandlesTextAndJSON(t *testing.T) {
 			t.Fatalf("stdout=%q result=%+v err=%v", tc.stdout, result, err)
 		}
 		if tc.status == operationresult.Success {
-			if result.Data.Content != tc.content || len(result.Data.Data) != 0 {
+			if result.Data.Content != tc.content || result.Data.Discovery != nil {
 				t.Fatalf("result=%+v", result.Data)
 			}
 		} else if result.Message == "" || result.Data != nil {

@@ -41,13 +41,10 @@ type Result struct {
 	// segments for images/files instead of relying on URL guessing.
 	Segments []llm.MessageSegment
 	// Warnings are appended to the LLM-visible tool result to nudge future tool use.
-	Warnings []string
-	// Data is reserved for discover_tool's DiscoveryResult, which Agent uses to
-	// inject discovered schemas as top-level tools. Normal tool call results must
-	// use Content or Segments instead.
-	Data     json.RawMessage
-	Metadata map[string]any
-	Outputs  []delivery.Output
+	Warnings      []string
+	Discovery     *DiscoveryResult // discover_tool 返回的结构化结果；普通工具不填。
+	ActivateTools []string         // 请求激活的工具名，提交时仍按当前身份筛选。
+	Outputs       []delivery.Output
 }
 
 // LogContent returns a log-only preview of the successful result, bounded to
@@ -79,7 +76,7 @@ func (r *Result) LLMSegments() (segments []llm.MessageSegment) {
 }
 
 func AppendWarnings(content string, warnings []string) string {
-	warningText := FormatWarnings(warnings)
+	warningText := formatWarnings(warnings)
 	if warningText == "" {
 		return content
 	}
@@ -90,7 +87,7 @@ func AppendWarnings(content string, warnings []string) string {
 	return content + "\n\n" + warningText
 }
 
-func FormatWarnings(warnings []string) string {
+func formatWarnings(warnings []string) string {
 	warnings = normalizeWarnings(warnings)
 	if len(warnings) == 0 {
 		return ""
@@ -106,7 +103,7 @@ func FormatWarnings(warnings []string) string {
 }
 
 func warningsSuffix(warnings []string) string {
-	warningText := FormatWarnings(warnings)
+	warningText := formatWarnings(warnings)
 	if warningText == "" {
 		return ""
 	}
