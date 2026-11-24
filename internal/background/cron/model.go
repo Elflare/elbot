@@ -128,10 +128,15 @@ func parseRunAt(value string) (time.Time, error) {
 	return runAt, nil
 }
 
+var (
+	invalidJobNameChars     = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+	invalidSandboxNameChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+)
+
 func normalizeJobName(name string) string {
 	name = strings.TrimSpace(name)
 	name = strings.TrimPrefix(name, "user.cron.")
-	name = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`).ReplaceAllString(name, "_")
+	name = invalidJobNameChars.ReplaceAllString(name, "_")
 	name = strings.Trim(name, "._-")
 	if name == "" {
 		return ""
@@ -141,7 +146,7 @@ func normalizeJobName(name string) string {
 
 func cronSandboxSubdir(jobName string) string {
 	name := strings.TrimPrefix(normalizeJobName(jobName), "user.cron.")
-	name = regexp.MustCompile(`[^a-zA-Z0-9_-]+`).ReplaceAllString(name, "_")
+	name = invalidSandboxNameChars.ReplaceAllString(name, "_")
 	name = strings.Trim(name, "_-")
 	if name == "" {
 		name = "default"

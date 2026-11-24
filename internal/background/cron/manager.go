@@ -396,37 +396,24 @@ func (m *Manager) runJob(name string) {
 	}
 	ctx, result, runErr := handler(ctx, *job)
 	identity = globalevents.LogIdentityFromContext(ctx)
-	resultStatus := globalevents.ResultSucceeded
-	if runErr != nil {
-		resultStatus = globalevents.ResultFailed
-		if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
-			resultStatus = globalevents.ResultCanceled
-		}
-	} else if result.Status != operationresult.Success {
-		resultStatus = globalevents.ResultFailed
-		if result.Status == operationresult.Canceled {
-			resultStatus = globalevents.ResultCanceled
-		}
-	}
-	duration := time.Since(startedAt)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
 		Category: globalevents.LogCategoryLog, Level: slog.LevelInfo,
 		EventName: "cron_job_completed", Module: "cron", Type: globalevents.ContentText,
-		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
-		ContentLimit: 4096, ResultStatus: resultStatus,
+		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, time.Since(startedAt)),
+		ContentLimit: 4096, ResultStatus: globalevents.LogStatus(runErr), Identity: identity,
 	}
 	if runErr != nil {
 		record.Content += "\n" + runErr.Error()
 	} else if result.Status != operationresult.Success {
 		record.Content += "\n" + result.Message
+		record.ResultStatus = globalevents.ResultFailed
+		if result.Status == operationresult.Canceled {
+			record.ResultStatus = globalevents.ResultCanceled
+		}
 	}
-
-	if resultStatus == globalevents.ResultFailed {
-		record.Level = slog.LevelWarn
-	}
-	record.Identity = identity
 	if record.ResultStatus == globalevents.ResultFailed {
+		record.Level = slog.LevelWarn
 		record.EventName = "cron_job_failed"
 	}
 	record.EventName += "." + job.Handler

@@ -32,7 +32,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 	finishTakeover := func() (operationresult.Result[struct{}], error) {
 		state.TakenOver = true
 		state.Report, state.ReportSegments = "", nil
-		if _, err := s.persistDeliveryState(ctx, job, state, nil); err != nil {
+		if _, err := s.persistDeliveryState(ctx, job, meta, state, nil); err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
 		if meta.Schedule.Mode == ScheduleOnce {
@@ -96,7 +96,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_fallback", Module: "cron", Content: message, Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
-				active, saveErr := s.persistDeliveryState(ctx, job, state, nil)
+				active, saveErr := s.persistDeliveryState(ctx, job, meta, state, nil)
 				if saveErr != nil {
 					return operationresult.Result[struct{}]{}, saveErr
 				}
@@ -118,7 +118,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				return operationresult.Result[struct{}]{Status: sent.Status, Message: sent.Message}, nil
 			}
 			outputState.Status = status
-			active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, sent.Data))
+			active, saveErr := s.persistDeliveryState(ctx, job, meta, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, sent.Data))
 			if saveErr != nil {
 				return operationresult.Result[struct{}]{}, saveErr
 			}
@@ -179,18 +179,11 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	return receipt, err
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job Job, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
-
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+func (s *Service) persistDeliveryState(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	ctx = cleanupCtx
-	meta, err := decodeMetadata(job.Metadata)
-	if err != nil {
-		return false, err
-	}
 	state.DeliveryComplete = s.deliveryComplete(meta, state)
-	encoded := encodeDeliveryState(state)
-	return s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
+	return s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encodeDeliveryState(state), mappings)
 }
 
 func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliveryToken string) error {
