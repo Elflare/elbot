@@ -19,8 +19,12 @@ func raw(text string) json.RawMessage {
 	return json.RawMessage(text)
 }
 
+func newTestResidentStore(t *testing.T) *residentmemory.Store {
+	return residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{Core: 64, Normal: 64})
+}
+
 func TestResidentMemoryToolsUseActorScope(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := newTestResidentStore(t)
 	coreTool := builtin.NewResidentMemoryTools(store)[3]
 	normalTool := builtin.NewResidentMemoryTools(store)[2]
 	readTool := builtin.NewResidentMemoryTools(store)[1]
@@ -54,7 +58,7 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 }
 
 func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := newTestResidentStore(t)
 	normalTool := builtin.NewResidentMemoryTools(store)[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
@@ -65,7 +69,7 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if result.Data.Content != "已追加普通常驻记忆。" {
 		t.Fatalf("append empty content = %q", result.Data.Content)
 	}
-	memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
+	memory, err := store.Read(ctx, contextinfo.ActorIdentity{Platform: "cli", ID: "local"})
 	if err != nil || memory.Normal != "第一条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
@@ -73,20 +77,20 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("append existing: %v", err)
 	}
-	memory, err = store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
+	memory, err = store.Read(ctx, contextinfo.ActorIdentity{Platform: "cli", ID: "local"})
 	if err != nil || memory.Normal != "第一条 第二条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
 	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("delete: %v", err)
 	}
-	if memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
+	if memory, err := store.Read(ctx, contextinfo.ActorIdentity{Platform: "cli", ID: "local"}); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after delete, err=%v", err)
 	}
 }
 
 func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := newTestResidentStore(t)
 	coreTool := builtin.NewResidentMemoryTools(store)[3]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
@@ -96,7 +100,7 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("clear core: %v", err)
 	}
-	if memory, err := store.Read(ctx, residentmemory.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
+	if memory, err := store.Read(ctx, contextinfo.ActorIdentity{Platform: "cli", ID: "local"}); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after clear, err=%v", err)
 	}
 	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{}`)}); err != nil || result.Status == operationresult.Success {
@@ -105,7 +109,7 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 }
 
 func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
-	store := residentmemory.NewStoreWithLimits("unused.toml", residentmemory.Limits{Core: 200, Normal: 300})
+	store := residentmemory.NewStore("unused.toml", residentmemory.Limits{Core: 200, Normal: 300})
 	entry := builtin.NewResidentMemoryTools(store)[0]
 	if entry.Definition.Risk != toolshare.RiskLow || len(entry.Definition.DependsOn) != 3 {
 		t.Fatalf("entry info = %#v", entry.Definition)
@@ -142,7 +146,7 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 }
 
 func TestResidentMemoryValidation(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := newTestResidentStore(t)
 	readTool := builtin.NewResidentMemoryTools(store)[1]
 	normalTool := builtin.NewResidentMemoryTools(store)[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})

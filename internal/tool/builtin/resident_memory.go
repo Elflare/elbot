@@ -10,7 +10,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/operationresult"
 	"elbot/internal/residentmemory"
-	"elbot/internal/session"
 	toolshare "elbot/internal/tool/share"
 )
 
@@ -86,15 +85,15 @@ func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.C
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "section must be all, core or normal"}, nil
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(toolshare.ConfirmationField{Key: "section", Label: "读取范围", Value: section})}, func(ctx context.Context) (result operationresult.Result[*toolshare.Result], logContent string, _ error) {
-		scope := memoryScope(ctx)
-		if scope.Status != operationresult.Success {
-			return operationresult.Result[*toolshare.Result]{Status: scope.Status, Message: scope.Message}, scope.Message, nil
+		owner := memoryOwner(ctx)
+		if owner.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: owner.Status, Message: owner.Message}, owner.Message, nil
 		}
-		memory, err := t.store.Read(ctx, scope.Data)
+		memory, err := t.store.Read(ctx, owner.Data)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
-		limits := t.store.LimitsOrDefault()
+		limits := t.store.Limits
 		var content string
 		switch section {
 		case "core":
@@ -141,22 +140,22 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 		toolshare.ConfirmationField{Key: "section", Label: "范围", Value: "normal"},
 		toolshare.ConfirmationField{Key: "content", Label: "正文", Value: content},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		scope := memoryScope(ctx)
-		if scope.Status != operationresult.Success {
-			return operationresult.Result[*toolshare.Result]{Status: scope.Status, Message: scope.Message}, scope.Message, nil
+		owner := memoryOwner(ctx)
+		if owner.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: owner.Status, Message: owner.Message}, owner.Message, nil
 		}
 		var written operationresult.Result[struct{}]
 		var err error
 		var text string
 		switch action {
 		case "append":
-			written, err = t.store.AppendNormal(ctx, scope.Data, content)
+			written, err = t.store.AppendNormal(ctx, owner.Data, content)
 			text = "已追加普通常驻记忆。"
 		case "write":
-			written, err = t.store.WriteNormal(ctx, scope.Data, content)
+			written, err = t.store.WriteNormal(ctx, owner.Data, content)
 			text = "已更新普通常驻记忆。"
 		case "delete":
-			written, err = t.store.DeleteNormal(ctx, scope.Data)
+			written, err = t.store.DeleteNormal(ctx, owner.Data)
 			text = "已清空普通常驻记忆。"
 		}
 		if err != nil {
@@ -188,11 +187,11 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 		toolshare.ConfirmationField{Key: "section", Label: "范围", Value: "core"},
 		toolshare.ConfirmationField{Key: "content", Label: "正文", Value: *args.Content},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		scope := memoryScope(ctx)
-		if scope.Status != operationresult.Success {
-			return operationresult.Result[*toolshare.Result]{Status: scope.Status, Message: scope.Message}, scope.Message, nil
+		owner := memoryOwner(ctx)
+		if owner.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: owner.Status, Message: owner.Message}, owner.Message, nil
 		}
-		written, err := t.store.WriteCore(ctx, scope.Data, *args.Content)
+		written, err := t.store.WriteCore(ctx, owner.Data, *args.Content)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
@@ -204,12 +203,12 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 	})}, nil
 }
 
-func memoryScope(ctx context.Context) operationresult.Result[session.Scope] {
+func memoryOwner(ctx context.Context) operationresult.Result[contextinfo.ActorIdentity] {
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok {
-		return operationresult.Result[session.Scope]{Status: operationresult.Unavailable, Message: "resident memory actor is not available"}
+		return operationresult.Result[contextinfo.ActorIdentity]{Status: operationresult.Unavailable, Message: "resident memory actor is not available"}
 	}
-	return operationresult.Result[session.Scope]{Status: operationresult.Success, Data: residentmemory.ActorScope(actor)}
+	return operationresult.Result[contextinfo.ActorIdentity]{Status: operationresult.Success, Data: actor.ActorIdentity}
 }
 
 func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshare.Builder {
@@ -217,12 +216,12 @@ func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshar
 }
 
 func normalDescription(store *residentmemory.Store) string {
-	limits := store.LimitsOrDefault()
+	limits := store.Limits
 	return fmt.Sprintf("写当前用户/平台的normal；上限%d单位(CJK字符各1，其余连续字母/数字各1)。%s", limits.Normal, residentMemoryWritingRule)
 }
 
 func coreDescription(store *residentmemory.Store) string {
-	limits := store.LimitsOrDefault()
+	limits := store.Limits
 	return fmt.Sprintf("重要内容可写入当前用户/平台的core；先resident_memory_read读完整core→整体覆盖。上限%d单位(CJK字符各1，其余连续字母/数字各1)。%s", limits.Core, residentMemoryWritingRule)
 }
 

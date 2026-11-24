@@ -13,7 +13,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/residentmemory"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
@@ -244,8 +243,8 @@ func (m *Supervisor) Remove(ctx context.Context, name string) (operationresult.R
 	return m.skillManager.Remove(ctx, name)
 }
 func (m *Supervisor) Reload(ctx context.Context) error { return m.skillManager.Reload(ctx) }
-func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (residentmemory.Memory, error) {
-	return m.residentMemoryStore.Read(ctx, scope)
+func (m *Supervisor) Read(ctx context.Context, owner contextinfo.ActorIdentity) (residentmemory.Memory, error) {
+	return m.residentMemoryStore.Read(ctx, owner)
 }
 func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, admission ...fileops.CommitAdmission) context.Context {
 	return m.fileRollback.WithBinding(ctx, binding, admission...)

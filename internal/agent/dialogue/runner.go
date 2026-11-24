@@ -249,7 +249,7 @@ type RunnerDeps struct {
 	MaxRounds int
 	SoulPath  string
 	Memory    interface {
-		Read(context.Context, session.Scope) (residentmemory.Memory, error)
+		Read(context.Context, contextinfo.ActorIdentity) (residentmemory.Memory, error)
 	}
 	Preloader interface {
 		TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)

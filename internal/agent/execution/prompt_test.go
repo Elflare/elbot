@@ -27,12 +27,12 @@ import (
 )
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	scope := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
-	if result, err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil || result.Status != operationresult.Success {
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{Core: 64, Normal: 64})
+	scope := session.Scope{Platform: "different", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
+	if result, err := store.WriteCore(context.Background(), scope.Owner, "用户喜欢被称为娅娅。"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("WriteCore: %+v %v", result, err)
 	}
-	if result, err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil || result.Status != operationresult.Success {
+	if result, err := store.WriteNormal(context.Background(), scope.Owner, "用户喜欢简短回答。"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("WriteNormal: %+v %v", result, err)
 	}
 	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: scope})
@@ -64,7 +64,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 }
 
 func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
-	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
+	store := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{Core: 64, Normal: 64})
 	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
@@ -181,8 +181,8 @@ func (s tagPromptTestService) TagPrompts(ctx context.Context, tags []string) ([]
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
 	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
-	memoryStore := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	if result, err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil || result.Status != operationresult.Success {
+	memoryStore := residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{Core: 64, Normal: 64})
+	if result, err := memoryStore.WriteCore(ctx, scope.Owner, "RESIDENT_ORDER"); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("WriteCore: %+v %v", result, err)
 	}
 	tagSource := dialogue.ToolTagsSystemPromptSource{Preloader: tagPromptTestService{preload.NewPreloadService(preload.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{

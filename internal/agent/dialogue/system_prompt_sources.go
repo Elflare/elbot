@@ -75,16 +75,16 @@ type SoulSystemPromptSource struct {
 
 type ResidentMemorySystemPromptSource struct {
 	Store interface {
-		Read(context.Context, session.Scope) (residentmemory.Memory, error)
+		Read(context.Context, contextinfo.ActorIdentity) (residentmemory.Memory, error)
 	}
 }
 
 func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
-	memory, err := s.Store.Read(ctx, req.Scope)
+	memory, err := s.Store.Read(ctx, req.Scope.Owner)
 	if err != nil {
 		return nil, err
 	}
-	content := strings.TrimSpace(memory.Text())
+	content := memory.Text()
 	if content == "" {
 		return nil, nil
 	}

@@ -15,7 +15,6 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/residentmemory"
 	"elbot/internal/security"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -68,7 +67,7 @@ type ToolCapabilities interface {
 	PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 	PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)
-	Read(context.Context, session.Scope) (residentmemory.Memory, error)
+	Read(context.Context, contextinfo.ActorIdentity) (residentmemory.Memory, error)
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	Forget(fileops.Binding)
 	ListRollbacks(context.Context) operationresult.Result[[]fileops.RollbackInfo]

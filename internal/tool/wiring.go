@@ -35,7 +35,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	environment := processenv.New(os.Environ()).Fill(dotEnv)
 	registry := toolregistry.NewRegistry(deps.Permission)
 	resolver := discovery.NewResolver(registry)
-	residentStore := residentmemory.NewStoreWithLimits(filepath.Join(configDir, "memories.toml"), residentmemory.Limits{
+	residentStore := residentmemory.NewStore(filepath.Join(configDir, "memories.toml"), residentmemory.Limits{
 		Core:   cfg.ResidentMemory.CoreMaxUnits,
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
 	})

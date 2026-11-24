@@ -18,13 +18,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/session"
 	"elbot/internal/storage"
-)
-
-const (
-	DefaultCoreMaxUnits   = 200
-	DefaultNormalMaxUnits = 300
 )
 
 type Limits struct {
@@ -42,14 +36,13 @@ func (m Memory) Empty() bool {
 }
 
 func (m Memory) Text() string {
-	parts := []string{}
-	for _, part := range []string{m.Core, m.Normal} {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			parts = append(parts, part)
-		}
+	if m.Core == "" {
+		return m.Normal
 	}
-	return strings.Join(parts, " ")
+	if m.Normal == "" {
+		return m.Core
+	}
+	return m.Core + " " + m.Normal
 }
 
 type ResidentMemory struct {
@@ -81,19 +74,11 @@ type fileState struct {
 	modTime time.Time
 }
 
-func NewStore(path string) *Store {
-	return NewStoreWithLimits(path, Limits{})
+func NewStore(path string, limits Limits) *Store {
+	return &Store{Path: path, Limits: limits}
 }
 
-func NewStoreWithLimits(path string, limits Limits) *Store {
-	return &Store{Path: path, Limits: normalizeLimits(limits)}
-}
-
-func ActorScope(actor contextinfo.Actor) session.Scope {
-	return session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform}
-}
-
-func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
+func (s *Store) Read(ctx context.Context, owner contextinfo.ActorIdentity) (Memory, error) {
 	if err := ctx.Err(); err != nil {
 		return Memory{}, err
 	}
@@ -103,33 +88,34 @@ func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
 	if err != nil {
 		return Memory{}, err
 	}
-	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
+	memory, exists := file[owner.Platform][owner.ID]
 	if !exists {
 		return Memory{}, nil
 	}
 	return Memory{Core: strings.TrimSpace(memory.Core), Normal: strings.TrimSpace(memory.Normal)}, nil
 }
 
-func (s *Store) WriteCore(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
-	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
+func (s *Store) WriteCore(ctx context.Context, owner contextinfo.ActorIdentity, content string) (operationresult.Result[struct{}], error) {
+	return s.update(ctx, owner, func(memory *ResidentMemory) operationresult.Result[struct{}] {
 		memory.Core = strings.TrimSpace(content)
 		return validatePart(memory.Core, s.Limits.Core, "core")
 	})
 }
 
-func (s *Store) WriteNormal(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
-	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
+func (s *Store) WriteNormal(ctx context.Context, owner contextinfo.ActorIdentity, content string) (operationresult.Result[struct{}], error) {
+	return s.update(ctx, owner, func(memory *ResidentMemory) operationresult.Result[struct{}] {
 		memory.Normal = strings.TrimSpace(content)
 		return validatePart(memory.Normal, s.Limits.Normal, "normal")
 	})
 }
 
-func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
+func (s *Store) AppendNormal(ctx context.Context, owner contextinfo.ActorIdentity, content string) (operationresult.Result[struct{}], error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "resident memory normal content is required"}, nil
 	}
-	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
+	return s.update(ctx, owner, func(memory *ResidentMemory) operationresult.Result[struct{}] {
+		memory.Normal = strings.TrimSpace(memory.Normal)
 		if memory.Normal == "" {
 			memory.Normal = content
 		} else {
@@ -139,15 +125,11 @@ func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content s
 	})
 }
 
-func (s *Store) DeleteNormal(ctx context.Context, scope session.Scope) (operationresult.Result[struct{}], error) {
-	return s.WriteNormal(ctx, scope, "")
+func (s *Store) DeleteNormal(ctx context.Context, owner contextinfo.ActorIdentity) (operationresult.Result[struct{}], error) {
+	return s.WriteNormal(ctx, owner, "")
 }
 
-func (s *Store) LimitsOrDefault() Limits {
-	return s.Limits
-}
-
-func (s *Store) update(ctx context.Context, scope session.Scope, update func(*ResidentMemory) operationresult.Result[struct{}]) (operationresult.Result[struct{}], error) {
+func (s *Store) update(ctx context.Context, owner contextinfo.ActorIdentity, update func(*ResidentMemory) operationresult.Result[struct{}]) (operationresult.Result[struct{}], error) {
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
@@ -158,14 +140,13 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 		return operationresult.Result[struct{}]{}, err
 	}
 	now := storage.FormatTime(storage.Now())
-	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
+	memory, exists := file[owner.Platform][owner.ID]
 	before := memory
-	memory.Core = strings.TrimSpace(memory.Core)
-	memory.Normal = strings.TrimSpace(memory.Normal)
 	if checked := update(&memory); checked.Status != operationresult.Success {
 		return checked, nil
 	}
-	if memory.Core == "" && memory.Normal == "" {
+	empty := (Memory{Core: memory.Core, Normal: memory.Normal}).Empty()
+	if empty {
 		if !exists {
 			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
@@ -179,19 +160,19 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 		memory.UpdatedAt = now
 	}
 	file = maps.Clone(file)
-	memories := maps.Clone(file[scope.Owner.Platform])
-	if memory.Core == "" && memory.Normal == "" {
-		delete(memories, scope.Owner.ID)
+	memories := maps.Clone(file[owner.Platform])
+	if empty {
+		delete(memories, owner.ID)
 	} else {
 		if memories == nil {
 			memories = make(map[string]ResidentMemory)
 		}
-		memories[scope.Owner.ID] = memory
+		memories[owner.ID] = memory
 	}
 	if len(memories) == 0 {
-		delete(file, scope.Owner.Platform)
+		delete(file, owner.Platform)
 	} else {
-		file[scope.Owner.Platform] = memories
+		file[owner.Platform] = memories
 	}
 	if err := s.saveLocked(file); err != nil {
 		return operationresult.Result[struct{}]{}, err
@@ -347,16 +328,6 @@ func currentFileState(path string) (fileState, error) {
 
 func sameFileState(left, right fileState) bool {
 	return left.exists == right.exists && left.size == right.size && left.modTime.Equal(right.modTime)
-}
-
-func normalizeLimits(limits Limits) Limits {
-	if limits.Core <= 0 {
-		limits.Core = DefaultCoreMaxUnits
-	}
-	if limits.Normal <= 0 {
-		limits.Normal = DefaultNormalMaxUnits
-	}
-	return limits
 }
 
 // migrateResidentMemory 仅将 v0.6.0 的常驻记忆列表迁到当前格式。

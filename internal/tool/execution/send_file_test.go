@@ -44,7 +44,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml")), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished)})); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{}), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished)})); err != nil {
 		t.Fatal(err)
 	}
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})
@@ -130,7 +130,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 func TestSendFileDirectCallRejectsLocalForRegularUser(t *testing.T) {
 	permission := security.NewPermission("critical", "high", nil)
 	registry := toolregistry.NewRegistry(permission)
-	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml")), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir()})); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: residentmemory.NewStore(filepath.Join(t.TempDir(), "memories.toml"), residentmemory.Limits{}), FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir()})); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, permission)

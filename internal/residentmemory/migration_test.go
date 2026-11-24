@@ -15,7 +15,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/session"
 )
 
 func TestResidentMigrationPreservesRecordsAndWritesOnce(t *testing.T) {
@@ -42,9 +41,9 @@ func TestResidentMigrationPreservesRecordsAndWritesOnce(t *testing.T) {
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "user:42.娅"}}
-	store := NewStore(path)
-	got, err := store.Read(t.Context(), scope)
+	owner := contextinfo.ActorIdentity{Platform: "telegram", ID: "user:42.娅"}
+	store := NewStore(path, Limits{})
+	got, err := store.Read(t.Context(), owner)
 	if err != nil || got != (Memory{Core: "keep memory", Normal: "first\nsecond"}) {
 		t.Fatalf("Read migrated = %+v, %v", got, err)
 	}
@@ -72,7 +71,7 @@ func TestResidentMigrationPreservesRecordsAndWritesOnce(t *testing.T) {
 	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = NewStore(path).Read(t.Context(), scope); err != nil {
+	if _, err = NewStore(path, Limits{}).Read(t.Context(), owner); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.Stat(path)
@@ -104,8 +103,8 @@ func TestResidentMigrationRejectsInvalidFiles(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.data), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			store := NewStore(path)
-			if _, err := store.Read(t.Context(), session.Scope{}); err == nil || !strings.Contains(err.Error(), tc.want) {
+			store := NewStore(path, Limits{})
+			if _, err := store.Read(t.Context(), contextinfo.ActorIdentity{}); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Read invalid file = %v; want %q", err, tc.want)
 			}
 			data, err := os.ReadFile(path)
@@ -134,8 +133,8 @@ func TestResidentMigrationPreservesExistingBackup(t *testing.T) {
 			} else if err := os.WriteFile(path+".bak", []byte("existing backup"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			store := NewStore(path)
-			if _, err := store.Read(t.Context(), session.Scope{}); !errors.Is(err, os.ErrExist) || !strings.Contains(err.Error(), "backup") {
+			store := NewStore(path, Limits{})
+			if _, err := store.Read(t.Context(), contextinfo.ActorIdentity{}); !errors.Is(err, os.ErrExist) || !strings.Contains(err.Error(), "backup") {
 				t.Fatalf("existing backup error = %v", err)
 			}
 			data, err := os.ReadFile(path)
@@ -158,7 +157,7 @@ func TestResidentMigrationEmptyLegacyFiles(t *testing.T) {
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if memory, err := NewStore(path).Read(t.Context(), session.Scope{}); err != nil || !memory.Empty() {
+	if memory, err := NewStore(path, Limits{}).Read(t.Context(), contextinfo.ActorIdentity{}); err != nil || !memory.Empty() {
 		t.Fatalf("Read empty legacy = %v", err)
 	}
 	backup, err := os.ReadFile(path + ".bak")
