@@ -5,13 +5,11 @@
 ### Added
 
 - QQ 官方适配器保存发送者头像。
-- 新增 `tool_weave`并禁止shell中使用py，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。
+- 新增 `tool_weave`并禁止shell中使用py，可执行Python代码并调用elbot工具。
 - 前台 `shell` 和 `tool_weave` 现在支持异步。技能也可配置为异步。
 - 新增前台工具 `ask_user`，默认异步。
 - 新增草稿工具 `draft`，方便agent随时读写、执行
-- AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。
-- AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。
-- AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。
+- AgentSkill TOML 新增 `depends_on` 、`use_workspace`、`tags`、`positional`、`weavable`
 - CLI 远程服务新增静态前端托管：自动识别主配置旁的 `frontend/index.html`。
 - 新增大量 CLI 远程协议
 - 新增配置文件锁，防止多个实例使用同一份配置文件。
@@ -48,7 +46,7 @@
 - 读文件不再限制200行（默认还是200）
 - 优化压缩逻辑
 - `read_file` 的 `ast` 模式改为 Go 单文件结构索引，返回声明骨架与行范围，支持限制条目数和按编号展开类型成员；移除 `ast_function`、标识符搜索及 Go／Shell 目录 AST 查询。
-- 优化chat hisotry
+- 优化chat hisotry，现在助手能看到自己发的内容了
 
 ### Fixed
 
