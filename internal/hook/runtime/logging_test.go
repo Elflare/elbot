@@ -456,7 +456,7 @@ func TestWorkerExitFactsPrecedeCanceledWaiters(t *testing.T) {
 			}
 			waitDone := make(chan struct{})
 			worker.stdin = protocolTestWriter{write: func([]byte) error {
-				go func() { worker.waitLoop(cmd); close(waitDone) }()
+				go func() { worker.waitLoop(cmd, nil); close(waitDone) }()
 				<-worker.done
 				cancel()
 				return nil

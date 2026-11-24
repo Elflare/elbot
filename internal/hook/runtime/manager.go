@@ -234,9 +234,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 	commit()
 	m.mu.Unlock()
 	if next != nil {
-		if err := m.startTask(next.run); err != nil {
-			return err
-		}
+		return next.start(m.rootCtx)
 	}
 	return nil
 }
@@ -389,10 +387,15 @@ func (m *Manager) Start(id string) (operationresult.Result[struct{}], error) {
 	if worker == nil {
 		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("persistent hook %q not found", id)}, nil
 	}
-	if err := worker.start(); err != nil {
+	ctx, cancel := worker.startupContext(m.rootCtx)
+	defer cancel()
+	worker.mu.Lock()
+	worker.manualStop = false
+	worker.mu.Unlock()
+	if err := worker.start(ctx); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
-	if err := worker.waitReady(context.Background()); err != nil {
+	if err := worker.waitReady(ctx); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
@@ -516,13 +519,14 @@ func (m *Manager) startTransient(ctx context.Context, id string, key routeKey) (
 		created = true
 	}
 	m.mu.Unlock()
+	ctx, cancel := worker.startupContext(ctx)
+	defer cancel()
 	if created {
-		if err := m.startTask(worker.run); err != nil {
+		if err := worker.start(ctx); err != nil {
 			return nil, err
 		}
 	}
-	err := worker.waitReady(ctx)
-	if err != nil {
+	if err := worker.waitReady(ctx); err != nil {
 		m.mu.Lock()
 		m.stopTransient(key, worker)
 		m.mu.Unlock()

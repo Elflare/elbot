@@ -5,6 +5,7 @@ package runtime
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"elbot/internal/operationresult"
 	"encoding/json"
@@ -44,7 +45,7 @@ type worker struct {
 	manualStop   bool
 	restartDelay time.Duration
 	done         chan struct{}
-	stdoutDone   chan struct{}
+	drained      chan struct{} // 最近一次进程的收尾信号；握手、stdout 和 pending 都结束后关闭。
 	active       int
 	reload       func() error
 	reloadArmed  bool
@@ -63,17 +64,11 @@ func newWorker(manager *Manager, config share.RuntimeConfig) *worker {
 	return &worker{manager: manager, config: config, eventTimeout: time.Duration(config.EventTimeoutSeconds) * time.Second, shutdownTimeout: time.Duration(config.ShutdownTimeoutSeconds) * time.Second, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, writeGate: make(chan struct{}, 1), routeLocks: map[routeKey]*routeLock{}}
 }
 
-func (w *worker) start() error {
-	w.mu.Lock()
-	w.manualStop = false
-	w.mu.Unlock()
-	return w.manager.startTask(w.run)
+func (w *worker) startupContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeoutCause(parent, time.Duration(w.config.StartupTimeoutSeconds)*time.Second, fmt.Errorf("hook worker %q startup timed out", w.config.ID))
 }
 
 func (w *worker) waitReady(ctx context.Context) error {
-	timeout := time.Duration(w.config.StartupTimeoutSeconds) * time.Second
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -84,16 +79,11 @@ func (w *worker) waitReady(ctx context.Context) error {
 		case StatusReady, StatusRunning:
 			return nil
 		case StatusFailed, StatusDegraded:
-			if detail == "" {
-				detail = string(status)
-			}
-			return fmt.Errorf("hook worker %q failed to start: %s", w.config.ID, detail)
+			return fmt.Errorf("hook worker %q failed to start: %s", w.config.ID, cmp.Or(detail, string(status)))
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("hook worker %q startup timed out", w.config.ID)
+			return context.Cause(ctx)
 		case <-ticker.C:
 		}
 	}
@@ -112,18 +102,38 @@ func (w *worker) setStatus(status Status, detail string) {
 	w.mu.Unlock()
 }
 
-func (w *worker) run() {
+func (w *worker) start(ctx context.Context) error {
 	w.mu.Lock()
-	if w.cmd != nil || w.starting || w.stopping || w.manualStop {
-		w.mu.Unlock()
-		return
-	}
-	w.starting = true
-	w.status = StatusStarting
-	w.detail = ""
-	w.done = make(chan struct{})
+	running, drained := w.cmd != nil || w.starting, w.drained
 	w.mu.Unlock()
+	if running {
+		return nil
+	}
+	if drained != nil {
+		select {
+		case <-drained:
+		case <-ctx.Done():
+		}
+	}
+	w.manager.mu.RLock()
+	defer w.manager.mu.RUnlock()
+	if w.manager.closed {
+		return share.ErrClosed
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := context.Cause(ctx); err != nil {
+		return err
+	}
+	if w.drained == drained && !w.starting && !w.stopping && !w.manualStop {
+		w.starting = true
+		w.status, w.detail = StatusStarting, ""
+		w.manager.workWG.Go(w.run)
+	}
+	return nil
+}
 
+func (w *worker) run() {
 	argv := w.config.Command
 	cwd, err := resolveCwd(w.config.Dir, w.config.Cwd)
 	if err != nil {
@@ -148,7 +158,7 @@ func (w *worker) run() {
 	cmd.Stderr = stderrLogger{hookID: w.config.ID, Log: w.manager.opts.Log}
 	w.manager.mu.RLock()
 	w.mu.Lock()
-	if w.manager.closed || w.cmd != nil || w.stopping || w.manualStop {
+	if w.manager.closed || w.stopping || w.manualStop {
 		w.starting = false
 		w.mu.Unlock()
 		w.manager.mu.RUnlock()
@@ -170,13 +180,15 @@ func (w *worker) run() {
 	w.cmd = cmd
 	w.stdin = stdin
 	w.starting = false
-	w.pending = map[string]chan frame{}
-	w.stdoutDone = make(chan struct{})
+	w.done = make(chan struct{})
+	drained := make(chan struct{})
+	w.drained = drained
 	w.mu.Unlock()
+	stdoutDone := make(chan struct{})
 	_ = stdoutWriter.Close()
 	// The owned pipe stays open across Wait, allowing stdout to drain all final frames.
 	w.manager.workWG.Go(func() {
-		defer close(w.stdoutDone)
+		defer close(stdoutDone)
 		defer stdout.Close()
 		w.readLoop(stdout)
 		w.mu.Lock()
@@ -187,10 +199,17 @@ func (w *worker) run() {
 			w.stdoutFault("hook stdout closed")
 		}
 	})
-	w.manager.workWG.Go(func() { w.waitLoop(cmd) })
+	initDone := make(chan struct{})
+	defer close(initDone)
+	w.manager.workWG.Go(func() {
+		w.waitLoop(cmd, stdoutDone)
+		// An unsuccessful init can still update status and kill its process.
+		<-initDone
+		close(drained)
+	})
 	w.manager.mu.RUnlock()
 
-	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
+	ctx, cancel := w.startupContext(w.manager.rootCtx)
 	defer cancel()
 	schemas, err := w.schemas(ctx)
 	if err != nil {
@@ -224,10 +243,9 @@ func (w *worker) startFailed(err error) {
 	}
 }
 
-func (w *worker) waitLoop(cmd *exec.Cmd) {
+func (w *worker) waitLoop(cmd *exec.Cmd, stdoutDone <-chan struct{}) {
 	err := cmd.Wait()
 	w.mu.Lock()
-	stdoutDone := w.stdoutDone
 	stopping := w.stopping
 	manualStop := w.manualStop
 	// Publish exit facts under the same lock before waking pending requests.
@@ -296,7 +314,7 @@ func (w *worker) restartLater() {
 		case <-w.manager.rootCtx.Done():
 			return
 		}
-		_ = w.manager.startTask(w.run)
+		_ = w.start(w.manager.rootCtx)
 	})
 }
 

@@ -239,7 +239,7 @@ func TestRuntimeCloseConcurrentWithStartup(t *testing.T) {
 		if err := <-applied; err != nil && !errors.Is(err, share.ErrClosed) {
 			t.Fatal(err)
 		}
-		if err := manager.startTask(newWorker(manager, config).run); !errors.Is(err, share.ErrClosed) {
+		if err := newWorker(manager, config).start(manager.rootCtx); !errors.Is(err, share.ErrClosed) {
 			t.Fatalf("startup admitted after Close: %v", err)
 		}
 	}

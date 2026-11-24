@@ -396,7 +396,7 @@ func TestWorkerResponsesConcurrentWithProcessExit(t *testing.T) {
 		w.pending[id] = responses[id]
 	}
 	finished := make(chan struct{})
-	go func() { w.waitLoop(cmd); close(finished) }()
+	go func() { w.waitLoop(cmd, nil); close(finished) }()
 	ok := true
 	for id := range responses {
 		w.deliverResponse(frame{ID: id, OK: &ok})
