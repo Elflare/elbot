@@ -91,21 +91,25 @@ func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest Agen
 	if err := json.Unmarshal(raw, &values); err != nil {
 		return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	for name, property := range properties {
-		value, ok := values[name]
+	return prepareMediaFields(ctx, values, properties, call, base, "")
+}
+
+func prepareMediaFields(ctx context.Context, fields map[string]json.RawMessage, properties map[string]any, call toolshare.MediaCall, base, prefix string) (operationresult.Result[json.RawMessage], error) {
+	for field, property := range properties {
+		value, ok := fields[field]
 		if !ok || !schemaContainsMedia(property) {
 			continue
 		}
-		prepared, err := prepareMediaValue(ctx, value, property, call, base, name)
+		prepared, err := prepareMediaValue(ctx, value, property, call, base, prefix+field)
 		if err != nil {
 			return operationresult.Result[json.RawMessage]{}, err
 		}
 		if prepared.Status != operationresult.Success {
 			return prepared, nil
 		}
-		values[name] = prepared.Data
+		fields[field] = prepared.Data
 	}
-	data, err := json.Marshal(values)
+	data, err := json.Marshal(fields)
 	if err != nil {
 		return operationresult.Result[json.RawMessage]{}, err
 	}
@@ -182,25 +186,7 @@ func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any
 			return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media argument %s must be an object", name)}, nil
 		}
 		properties, _ := schema["properties"].(map[string]any)
-		for field, property := range properties {
-			value, ok := fields[field]
-			if !ok || !schemaContainsMedia(property) {
-				continue
-			}
-			prepared, err := prepareMediaValue(ctx, value, property, call, base, name+"."+field)
-			if err != nil {
-				return operationresult.Result[json.RawMessage]{}, err
-			}
-			if prepared.Status != operationresult.Success {
-				return prepared, nil
-			}
-			fields[field] = prepared.Data
-		}
-		data, err := json.Marshal(fields)
-		if err != nil {
-			return operationresult.Result[json.RawMessage]{}, err
-		}
-		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
+		return prepareMediaFields(ctx, fields, properties, call, base, name+".")
 	default:
 		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: raw}, nil
 	}

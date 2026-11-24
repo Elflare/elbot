@@ -55,27 +55,7 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cancel := cmd.Cancel
-	cancelRequested := make(chan error, 1)
-	cmd.Cancel = func() error {
-		err := cancel()
-		cancelRequested <- err
-		return err
-	}
-	err := cmd.Run()
-	select {
-	case cancelErr := <-cancelRequested:
-		if cancelErr != nil {
-			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
-				events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
-					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
-					Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
-			}
-		} else if processenv.ExitCanceled(cmd, true) {
-			err = ctx.Err()
-		}
-	default:
-	}
+	err := runSkillProcess(ctx, ctx, cmd)
 	if err != nil {
 		out := truncateOutput(stdout.String())
 		errText := stderr.String()
@@ -96,6 +76,31 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: fmt.Sprintf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))}, nil
 	}
 	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
+}
+
+func runSkillProcess(runCtx, logCtx context.Context, cmd *exec.Cmd) error {
+	cancel := cmd.Cancel
+	cancelRequested := make(chan error, 1)
+	cmd.Cancel = func() error {
+		err := cancel()
+		cancelRequested <- err
+		return err
+	}
+	err := cmd.Run()
+	select {
+	case cancelErr := <-cancelRequested:
+		if cancelErr != nil {
+			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
+				events.AsyncLog(logCtx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
+					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
+					Identity: events.LogIdentityFromContext(logCtx), ResultStatus: events.LogStatus(cancelErr)})
+			}
+		} else if processenv.ExitCanceled(cmd, true) {
+			err = runCtx.Err()
+		}
+	default:
+	}
+	return err
 }
 
 func commandError(label string, err error, stdout, stderr string) error {
@@ -191,27 +196,7 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environme
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cancelCommand := cmd.Cancel
-	cancelRequested := make(chan error, 1)
-	cmd.Cancel = func() error {
-		err := cancelCommand()
-		cancelRequested <- err
-		return err
-	}
-	err = cmd.Run()
-	select {
-	case cancelErr := <-cancelRequested:
-		if cancelErr != nil {
-			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
-				events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
-					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
-					Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
-			}
-		} else if processenv.ExitCanceled(cmd, true) {
-			err = runCtx.Err()
-		}
-	default:
-	}
+	err = runSkillProcess(runCtx, ctx, cmd)
 	if err != nil {
 		callErr := commandError("go build", err, truncateOutput(stdout.String()), stderr.String())
 		switch {
