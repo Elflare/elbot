@@ -29,7 +29,7 @@ type Options struct {
 		CallTool(context.Context, tool.CallRequest) (operationresult.Result[*tool.Result], string, error)
 	} // 只借用工具调用能力，工具查找和执行由 Tool 负责。
 
-	Notices *[]string // Optional reload report collector; never a sending dependency.
+	Report *share.ReloadReport // 收集本轮配置提示和未能加载的插件 ID。
 	// Send returns business receipts and the original delivery error.
 	Send            func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	CallPlatformAPI func(context.Context, string, string, map[string]any) (json.RawMessage, error)

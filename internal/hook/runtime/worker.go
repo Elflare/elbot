@@ -721,7 +721,7 @@ func (w *worker) readLoop(reader io.Reader) error {
 			if err := w.manager.startTask(func() { w.handlePluginRequest(value) }); err != nil {
 				ok := false
 				ctx, cancel := context.WithTimeout(w.manager.rootCtx, w.eventTimeout)
-				_ = w.write(ctx, frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
+				_ = w.write(ctx, frame{Type: "response", ID: value.ID, OK: &ok, Error: share.ErrClosed.Error()})
 				cancel()
 			}
 		case "event":

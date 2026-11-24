@@ -5,10 +5,15 @@ package control
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 
+	"elbot/internal/events"
 	"elbot/internal/hook/share"
 )
 
@@ -41,30 +46,34 @@ func (s *Service) HookReload() (share.ReloadReport, error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	report, candidate, err := s.loader()
-	if err != nil {
-		return report, err
+	if err != nil { // 总配置未通过校验，loader 已报告；没有可提交的候选。
+		return report, nil
 	}
-	runtimeIDs := map[string]bool{}
+	next := map[string]*share.RuntimeConfig{}
+	for _, info := range append(s.manager.List(), candidate.Infos...) {
+		next[info.PluginID] = nil
+	}
 	for _, info := range s.runtime.List() {
-		runtimeIDs[info.ID] = true
+		next[info.ID] = nil
 	}
-	for _, config := range candidate.Runtimes {
-		runtimeIDs[config.ID] = true
+	for i := range candidate.Runtimes {
+		config := &candidate.Runtimes[i]
+		next[config.ID] = config
 	}
-	ids := map[string]bool{}
-	for _, info := range s.manager.List() {
-		ids[info.PluginID] = true
+	for _, id := range report.FailedIDs {
+		delete(next, id)
 	}
-	for _, info := range candidate.Infos {
-		ids[info.PluginID] = true
-	}
-	for id := range ids {
-		if !runtimeIDs[id] {
-			candidate.Commit(id)
+	for _, id := range slices.Sorted(maps.Keys(next)) {
+		err := s.runtime.ReplacePlugin(id, next[id], func() { candidate.Commit(id) })
+		if errors.Is(err, share.ErrClosed) {
+			return report, err
+		}
+		if err != nil {
+			report.Notices = append(report.Notices, err.Error())
+			events.Notify(context.Background(), events.Notification{Text: err.Error(), Level: slog.LevelWarn})
 		}
 	}
-	err = s.runtime.Apply(candidate.Runtimes, candidate.Commit)
-	return report, err
+	return report, nil
 }
 
 // PreparePluginReload validates a complete candidate snapshot immediately and

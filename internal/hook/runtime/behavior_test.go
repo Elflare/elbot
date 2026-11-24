@@ -96,7 +96,7 @@ func behaviorWorkerWithLog(t *testing.T, mode string, timeout time.Duration, log
 		Command: []string{os.Args[0], "-test.run=^TestRuntimeBehaviorHelper$", "--", "runtime-behavior", mode},
 		Dir:     t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, EventTimeoutSeconds: 1,
 		ShutdownTimeoutSeconds: 1, MaxWaitSeconds: 60, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
-	if err := m.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
+	if err := m.ReplacePlugin(config.ID, &config, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	w := m.worker(mode)
@@ -557,7 +557,7 @@ func TestWaitingTimerLifecycle(t *testing.T) {
 func TestTransientWaitingExpiresAndExitsWithoutLookup(t *testing.T) {
 	m := simplificationManager(t)
 	config := share.RuntimeConfig{ID: "transient", Mode: share.RuntimeModeTransient, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, EventTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, MaxWaitSeconds: 60}
-	if err := m.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
+	if err := m.ReplacePlugin(config.ID, &config, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}

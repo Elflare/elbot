@@ -163,7 +163,7 @@ func TestRuntimeCloseJoinsWorkerReadLoop(t *testing.T) {
 	}
 	closeRuntimeAfterRelease(t, manager, unblock)
 	config := share.RuntimeConfig{ID: "blocked-log", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -192,7 +192,7 @@ func TestWorkerSelfReloadCanStopItsOwnProcess(t *testing.T) {
 	}
 	closeRuntimeAfterRelease(t, manager, func() {})
 	config := share.RuntimeConfig{ID: "demo", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
@@ -224,7 +224,7 @@ func TestRuntimeCloseConcurrentWithStartup(t *testing.T) {
 		}
 		config := share.RuntimeConfig{ID: "demo", Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 1, EventTimeoutSeconds: 2, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
 		applied := make(chan error, 1)
-		go func() { applied <- manager.Apply([]share.RuntimeConfig{config}, func(string) {}) }()
+		go func() { applied <- manager.ReplacePlugin(config.ID, &config, func() {}) }()
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		err = manager.Close(ctx)
 		cancel()
@@ -236,10 +236,10 @@ func TestRuntimeCloseConcurrentWithStartup(t *testing.T) {
 		default:
 			t.Fatal("Close returned before actual exit")
 		}
-		if err := <-applied; err != nil && !errors.Is(err, ErrClosed) {
+		if err := <-applied; err != nil && !errors.Is(err, share.ErrClosed) {
 			t.Fatal(err)
 		}
-		if err := manager.startTask(newWorker(manager, config).run); !errors.Is(err, ErrClosed) {
+		if err := manager.startTask(newWorker(manager, config).run); !errors.Is(err, share.ErrClosed) {
 			t.Fatalf("startup admitted after Close: %v", err)
 		}
 	}

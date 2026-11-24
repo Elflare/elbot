@@ -450,15 +450,15 @@ text = "user rule"
 	if err := os.WriteFile(filepath.Join(pluginDir, "hook.toml"), []byte(plugin), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	var notices []string
+	var report share.ReloadReport
 	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify,
 		ConfigDir: dir,
-		Notices:   &notices,
+		Report:    &report,
 	})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
-	if len(notices) != 1 || !strings.Contains(notices[0], "rule_group") || !strings.Contains(notices[0], "rule_user") || !strings.Contains(notices[0], "[plugin]") {
+	if notices := report.Notices; len(notices) != 1 || !strings.Contains(notices[0], "rule_group") || !strings.Contains(notices[0], "rule_user") || !strings.Contains(notices[0], "[plugin]") {
 		t.Fatalf("notices = %#v", notices)
 	}
 	for _, rule := range cfg.Rules {
@@ -543,10 +543,10 @@ text = "good"
 	if err := os.WriteFile(filepath.Join(goodPluginDir, "hook.toml"), []byte(goodPlugin), 0o644); err != nil {
 		t.Fatalf("write good plugin: %v", err)
 	}
-	notices := []string{}
+	var report share.ReloadReport
 	cfg, _, err := loadConfig(Options{Log: testLog, Notify: testNotify,
 		ConfigDir: dir,
-		Notices:   &notices,
+		Report:    &report,
 	})
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
@@ -558,7 +558,10 @@ text = "good"
 	if !names["root_ok"] || !names["good_ok"] || names["bad_old_field"] {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	if len(notices) != 1 || !strings.Contains(notices[0], "bad") || !strings.Contains(notices[0], "message.content_text") {
+	if len(report.FailedIDs) != 1 || report.FailedIDs[0] != "bad" {
+		t.Fatalf("FailedIDs = %v", report.FailedIDs)
+	}
+	if notices := report.Notices; len(notices) != 1 || !strings.Contains(notices[0], "bad") || !strings.Contains(notices[0], "message.content_text") {
 		t.Fatalf("notices = %#v", notices)
 	}
 }

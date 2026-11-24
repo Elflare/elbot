@@ -48,11 +48,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	loadHooks := func() (share.ReloadReport, control.ReloadCandidate, error) {
 		candidate := pipeline.NewManager(events.AsyncLog, nil)
-		var notices []string
+		var report share.ReloadReport
 		loadOpts := opts
-		loadOpts.Notices = &notices
+		loadOpts.Report = &report
 		module, err := rules.NewModule(loadOpts)
-		report := share.ReloadReport{Notices: notices}
 		if err != nil {
 			return report, control.ReloadCandidate{}, err
 		}

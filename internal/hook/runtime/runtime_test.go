@@ -202,8 +202,8 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -220,8 +220,8 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	manager, _, _, _ := testMediaRuntime(t)
 	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "demo", Dir: t.TempDir()}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -276,8 +276,8 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				Dir:                    t.TempDir(),
 				ProcessEnv:             baseEnv.Overlay(map[string]string{"ELBOT_WORKER_HOOK_ENV_TEST": "from-dotenv"}),
 			}
-			if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-				t.Fatalf("Apply: %v", err)
+			if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+				t.Fatalf("ReplacePlugin: %v", err)
 			}
 			t.Cleanup(func() { manager.Close(context.Background()) })
 			if mode == share.RuntimeModePersistent {
@@ -341,8 +341,8 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -400,8 +400,8 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "transient"}, Actor: share.ActorContext{ID: "transient"}}
@@ -446,8 +446,8 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "stop"}, Actor: share.ActorContext{ID: "stop"}}
@@ -482,8 +482,8 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -533,8 +533,8 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 		ID:                     "demo",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -572,8 +572,8 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 		t.Fatal(err)
 	}
 	config := share.RuntimeConfig{Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}, ID: "cancel-aware", Dir: t.TempDir()}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, config.ID, StatusReady)
@@ -677,8 +677,10 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	}
 	demo := config("demo")
 	other := config("other")
-	if err := manager.Apply([]share.RuntimeConfig{demo, other}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	for _, cfg := range []share.RuntimeConfig{demo, other} {
+		if err := manager.ReplacePlugin(cfg.ID, &cfg, func() {}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
@@ -712,8 +714,8 @@ func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
-	if err := manager.Apply(nil, func(string) {}); !errors.Is(err, ErrClosed) {
-		t.Fatalf("Apply after Close = %v, want ErrClosed", err)
+	if err := manager.ReplacePlugin("demo", nil, func() {}); !errors.Is(err, share.ErrClosed) {
+		t.Fatalf("ReplacePlugin after Close = %v, want share.ErrClosed", err)
 	}
 	if result, err := manager.Start("missing"); err != nil || result.Status != operationresult.Unavailable {
 		t.Fatalf("Start after Close = %+v, %v", result, err)
@@ -737,8 +739,8 @@ func TestManagerCloseCallerDeadlinePreservesWorkerShutdown(t *testing.T) {
 		ID:                     "slow-shutdown",
 		Dir:                    t.TempDir(),
 	}
-	if err := manager.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	if err := manager.ReplacePlugin(config.ID, &config, func() {}); err != nil {
+		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
 

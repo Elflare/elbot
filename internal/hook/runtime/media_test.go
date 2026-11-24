@@ -180,7 +180,7 @@ func TestMediaProtocolRejectsSymlinkEscape(t *testing.T) {
 func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 	m, _, dir, _ := testMediaRuntime(t)
 	cfg := share.RuntimeConfig{ID: "media", Dir: dir, Mode: share.RuntimeModePersistent, Command: runtimeHelperCommand(), Cwd: ".", StartupTimeoutSeconds: 5, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 5, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never", InitialDelaySeconds: 1, MaxDelaySeconds: 1}}
-	if err := m.Apply([]share.RuntimeConfig{cfg}, func(string) {}); err != nil {
+	if err := m.ReplacePlugin(cfg.ID, &cfg, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)

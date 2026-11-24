@@ -54,83 +54,10 @@ func loadConfig(opts Options) (Config, string, error) {
 		if !ref.enabled() {
 			continue
 		}
-		pluginPath, err := pluginConfigPath(configDir, ref)
-		if err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), "", err)
-			continue
+		ref.Name = strings.TrimSpace(ref.Name)
+		if path, err := cfg.loadPlugin(opts, ref, rootSource); err != nil {
+			reportPluginConfigError(context.Background(), opts, ref.Name, path, err)
 		}
-		var pcfg pluginConfig
-		if err := decodeTOMLFile(pluginPath, &pcfg); err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-			continue
-		}
-		if infoName := strings.TrimSpace(pcfg.Plugin.Name); infoName != "" && infoName != strings.TrimSpace(ref.Name) {
-			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
-		}
-		warnIgnoredPluginRuleBlocks(opts, strings.TrimSpace(ref.Name), pluginPath, pcfg.Rules)
-		pluginDir := filepath.Dir(pluginPath)
-		pluginEnvPath := filepath.Join(pluginDir, ".env")
-		pluginValues, err := appconfig.LoadEnvFile(pluginEnvPath)
-		if err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginEnvPath, err)
-			continue
-		}
-		pluginProcessEnv := sharedProcessEnv.Overlay(pluginValues)
-		block, err := share.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
-		if err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-			continue
-		}
-		runtimeID := ""
-		if pcfg.Plugin.Runtime != nil {
-			runtimeConfig := *pcfg.Plugin.Runtime
-			runtimeConfig.ID = strings.TrimSpace(ref.Name)
-			runtimeConfig.Description = strings.TrimSpace(pcfg.Plugin.Description)
-			runtimeConfig.Dir = pluginDir
-			runtimeConfig.ConfigPath = pluginPath
-			runtimeConfig.Block = block
-			runtimeConfig.ProcessEnv = pluginProcessEnv
-			for i, name := range runtimeConfig.Tools.Allow {
-				runtimeConfig.Tools.Allow[i] = strings.TrimSpace(name)
-			}
-			for i, name := range runtimeConfig.Tools.BackgroundAllow {
-				runtimeConfig.Tools.BackgroundAllow[i] = strings.TrimSpace(name)
-			}
-			if runtimeConfig.IsWorker() {
-				if err := runtimeConfig.Validate(); err != nil {
-					reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-					continue
-				}
-				pcfg.Plugin.Runtime = &runtimeConfig
-				runtimeID = runtimeConfig.ID
-			}
-		}
-		source := ruleSource{
-			PluginName:        strings.TrimSpace(ref.Name),
-			PluginDescription: strings.TrimSpace(pcfg.Plugin.Description),
-			ConfigPath:        pluginPath,
-			BaseDir:           pluginDir,
-			StrictDir:         pluginDir,
-			RuntimeID:         runtimeID,
-			Block:             block,
-			ProcessEnv:        pluginProcessEnv,
-		}
-		for i := range pcfg.Rules {
-			pcfg.Rules[i].source = source
-			pcfg.Rules[i].clearBlockConfig()
-		}
-		if err := normalizeLoadedRules(pcfg.Rules); err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-			continue
-		}
-		if err := validateLoadedRules(pcfg.Rules); err != nil {
-			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
-			continue
-		}
-		if runtimeID != "" {
-			cfg.Runtimes = append(cfg.Runtimes, *pcfg.Plugin.Runtime)
-		}
-		cfg.Rules = append(cfg.Rules, pcfg.Rules...)
 	}
 
 	seen := map[string]int{}
@@ -164,6 +91,65 @@ func loadConfig(opts Options) (Config, string, error) {
 		}
 	}
 	return cfg, path, nil
+}
+
+// loadPlugin 只在配置和规则都校验通过后写入本轮候选。
+func (cfg *Config) loadPlugin(opts Options, ref PluginRef, source ruleSource) (string, error) {
+	path, err := pluginConfigPath(source.BaseDir, ref)
+	if err != nil {
+		return path, err
+	}
+	var pcfg pluginConfig
+	if err := decodeTOMLFile(path, &pcfg); err != nil {
+		return path, err
+	}
+	if name := strings.TrimSpace(pcfg.Plugin.Name); name != "" && name != ref.Name {
+		reportPluginConfigWarning(context.Background(), opts, ref.Name, path, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", name, ref.Name))
+	}
+	warnIgnoredPluginRuleBlocks(opts, ref.Name, path, pcfg.Rules)
+	source.PluginName, source.PluginDescription = ref.Name, strings.TrimSpace(pcfg.Plugin.Description)
+	source.ConfigPath, source.BaseDir = path, filepath.Dir(path)
+	source.StrictDir = source.BaseDir
+	envPath := filepath.Join(source.BaseDir, ".env")
+	values, err := appconfig.LoadEnvFile(envPath)
+	if err != nil {
+		return envPath, err
+	}
+	source.ProcessEnv = source.ProcessEnv.Overlay(values)
+	source.Block, err = share.NewBlockPolicy(pcfg.Plugin.BlockedPlatforms, pcfg.Plugin.BlockedGroups, pcfg.Plugin.BlockedIDs)
+	if err != nil {
+		return path, err
+	}
+	if runtime := pcfg.Plugin.Runtime; runtime != nil && runtime.IsWorker() {
+		runtime.ID, runtime.Description = ref.Name, source.PluginDescription
+		runtime.Dir, runtime.ConfigPath = source.BaseDir, path
+		runtime.Block, runtime.ProcessEnv = source.Block, source.ProcessEnv
+		for i, name := range runtime.Tools.Allow {
+			runtime.Tools.Allow[i] = strings.TrimSpace(name)
+		}
+		for i, name := range runtime.Tools.BackgroundAllow {
+			runtime.Tools.BackgroundAllow[i] = strings.TrimSpace(name)
+		}
+		if err := runtime.Validate(); err != nil {
+			return path, err
+		}
+		source.RuntimeID = runtime.ID
+	}
+	for i := range pcfg.Rules {
+		pcfg.Rules[i].source = source
+		pcfg.Rules[i].clearBlockConfig()
+	}
+	if err := normalizeLoadedRules(pcfg.Rules); err != nil {
+		return path, err
+	}
+	if err := validateLoadedRules(pcfg.Rules); err != nil {
+		return path, err
+	}
+	if source.RuntimeID != "" {
+		cfg.Runtimes = append(cfg.Runtimes, *pcfg.Plugin.Runtime)
+	}
+	cfg.Rules = append(cfg.Rules, pcfg.Rules...)
+	return path, nil
 }
 
 func (p PluginRef) enabled() bool {
@@ -241,8 +227,11 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 	})
 	label := firstNonEmpty(strings.TrimSpace(name), path)
 	text := fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err)
-	if opts.Notices != nil {
-		*opts.Notices = append(*opts.Notices, text)
+	if opts.Report != nil {
+		if name != "" { // 空 ID 属于根规则，缺少名字的插件不能屏蔽它。
+			opts.Report.FailedIDs = append(opts.Report.FailedIDs, name)
+		}
+		opts.Report.Notices = append(opts.Report.Notices, text)
 	}
 	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
@@ -259,8 +248,8 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 	})
 	label := firstNonEmpty(strings.TrimSpace(name), path)
 	text := fmt.Sprintf("Hook 插件 %s 警告：%s", label, message)
-	if opts.Notices != nil {
-		*opts.Notices = append(*opts.Notices, text)
+	if opts.Report != nil {
+		opts.Report.Notices = append(opts.Report.Notices, text)
 	}
 	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
@@ -277,8 +266,8 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 		ResultStatus: globalevents.ResultFailed,
 	})
 	text := fmt.Sprintf("Hook rules 配置错误：%v", err)
-	if opts.Notices != nil {
-		*opts.Notices = append(*opts.Notices, text)
+	if opts.Report != nil {
+		opts.Report.Notices = append(opts.Report.Notices, text)
 	}
 	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }

@@ -30,7 +30,8 @@ type Info struct {
 }
 
 type ReloadReport struct {
-	Notices []string
+	Notices   []string
+	FailedIDs []string // 本轮读配置失败的插件；保持其已提交的规则和 worker。
 }
 
 // Registrar registers hook handlers for modules.

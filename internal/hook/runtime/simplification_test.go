@@ -217,8 +217,10 @@ func TestTransientWorkersAreIsolatedByPlugin(t *testing.T) {
 	config := share.RuntimeConfig{ID: "first", Mode: share.RuntimeModeTransient, Command: runtimeHelperCommand(), Dir: t.TempDir(), Cwd: ".", StartupTimeoutSeconds: 2, ShutdownTimeoutSeconds: 2, EventTimeoutSeconds: 2, MaxWaitSeconds: 30, Restart: share.RuntimeRestartConfig{Strategy: "never"}}
 	second := config
 	second.ID = "second"
-	if err := m.Apply([]share.RuntimeConfig{config, second}, func(string) {}); err != nil {
-		t.Fatal(err)
+	for _, cfg := range []share.RuntimeConfig{config, second} {
+		if err := m.ReplacePlugin(cfg.ID, &cfg, func() {}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "actor"}}
 	firstWorker, err := m.startTransient(t.Context(), config.ID, key)

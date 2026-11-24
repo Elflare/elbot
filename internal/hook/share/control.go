@@ -5,6 +5,7 @@ import (
 	"context"
 	"elbot/internal/operationresult"
 	"encoding/json"
+	"errors"
 )
 
 // PipelineControl 供 control 查询和停止活动规则，不暴露执行器或注册表。
@@ -14,9 +15,10 @@ type PipelineControl interface {
 	Stop(string) int
 }
 
+var ErrClosed = errors.New("hook runtime manager is closed")
+
 // RuntimeControl 供 control 协调插件配置提交与进程管理。
 type RuntimeControl interface {
-	Apply([]RuntimeConfig, func(string)) error
 	ValidatePlugin(RuntimeConfig) error
 	ReplacePlugin(string, *RuntimeConfig, func()) error
 	List() []RuntimeInfo

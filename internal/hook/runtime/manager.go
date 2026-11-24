@@ -6,7 +6,6 @@ import (
 	"context"
 	"elbot/internal/operationresult"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -41,14 +40,12 @@ type Manager struct {
 	closeMedia chan struct{} // 串行关闭重试；等待可由调用方取消。
 }
 
-var ErrClosed = errors.New("hook runtime manager is closed")
-
 // beginMediaCall 与关闭原子登记完整调用；取消链和在途计数归 runtime。
 func (m *Manager) beginMediaCall(ctx context.Context) (context.Context, func(), error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return nil, nil, ErrClosed
+		return nil, nil, share.ErrClosed
 	}
 	if err := ctx.Err(); err != nil {
 		m.mu.Unlock()
@@ -140,37 +137,6 @@ func (m *Manager) preparePluginReload(id string) (func() error, error) {
 	return prepare(id)
 }
 
-// Apply reconciles configured workers. Persistent workers start immediately;
-// transient worker definitions are retained until a trigger rule matches.
-func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) error {
-	next := make(map[string]*share.RuntimeConfig, len(configs))
-	for i := range configs {
-		next[configs[i].ID] = &configs[i]
-	}
-	m.mu.RLock()
-	if m.closed {
-		m.mu.RUnlock()
-		return ErrClosed
-	}
-	for id := range m.configs {
-		if _, ok := next[id]; !ok {
-			next[id] = nil
-		}
-	}
-	m.mu.RUnlock()
-	ids := make([]string, 0, len(next))
-	for id := range next {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		if err := m.ReplacePlugin(id, next[id], func() { commit(id) }); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (m *Manager) validateConfig(config share.RuntimeConfig) error {
 	names := config.Tools.Allow
 	if len(names) == 0 {
@@ -216,14 +182,13 @@ func (m *Manager) ValidatePlugin(config share.RuntimeConfig) error {
 func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) error {
 	if config != nil {
 		if err := m.validateConfig(*config); err != nil {
-			m.opts.Notify(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
-			return fmt.Errorf("hook %s config: %w", id, err)
+			return fmt.Errorf("Hook %s 配置应用失败：%w", id, err)
 		}
 	}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return ErrClosed
+		return share.ErrClosed
 	}
 	workers := make([]*worker, 0)
 	if old := m.workers[id]; old != nil {
@@ -248,7 +213,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 		m.mu.Lock()
 		if m.closed {
 			m.mu.Unlock()
-			return ErrClosed
+			return share.ErrClosed
 		}
 	}
 	for key, old := range m.transient {
@@ -364,7 +329,7 @@ func (m *Manager) startTask(task func()) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return ErrClosed
+		return share.ErrClosed
 	}
 	m.workWG.Go(task)
 	m.mu.Unlock()
@@ -522,7 +487,7 @@ func (m *Manager) startTransient(ctx context.Context, id string, key routeKey) (
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		return nil, ErrClosed
+		return nil, share.ErrClosed
 	}
 	config, ok := m.configs[id]
 	if !ok {

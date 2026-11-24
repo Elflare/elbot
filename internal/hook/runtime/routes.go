@@ -152,7 +152,7 @@ func (m *Manager) beginInvocation(worker *worker, ctx context.Context, event sha
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
-		return "", ErrClosed
+		return "", share.ErrClosed
 	}
 	worker.mu.Lock()
 	stopped := worker.manualStop
@@ -192,7 +192,7 @@ func (m *Manager) setLease(worker *worker, ctx context.Context, event share.Even
 		return err
 	}
 	if m.closed {
-		return ErrClosed
+		return share.ErrClosed
 	}
 	key := routeKeyFor(event)
 	current, ok := m.routes[key]

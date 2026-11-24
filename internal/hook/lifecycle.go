@@ -24,9 +24,9 @@ func (m *Supervisor) Start() error {
 	m.mu.Unlock()
 	defer m.calls.Done()
 
-	// The loader reports configuration failures at their source. Initial load
-	// remains non-fatal; management commands can reload a corrected configuration.
-	_, _ = m.control.HookReload()
+	if _, err := m.control.HookReload(); err != nil {
+		return err
+	}
 	if err := m.startPlatformEvents(m.parent); err != nil {
 		return err
 	}

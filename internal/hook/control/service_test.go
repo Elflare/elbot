@@ -33,17 +33,6 @@ type fakeRuntime struct {
 	replaced  string
 }
 
-func (r *fakeRuntime) Apply(configs []share.RuntimeConfig, commit func(string)) error {
-	if r.applyErr != nil {
-		return r.applyErr
-	}
-	r.applied = append([]share.RuntimeConfig(nil), configs...)
-	for _, config := range configs {
-		commit(config.ID)
-	}
-	return nil
-}
-
 func (r *fakeRuntime) ValidatePlugin(config share.RuntimeConfig) error {
 	if r.applyErr != nil {
 		return r.applyErr
@@ -52,8 +41,11 @@ func (r *fakeRuntime) ValidatePlugin(config share.RuntimeConfig) error {
 }
 
 func (r *fakeRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) error {
-	if r.applyErr != nil {
+	if id == "demo" && r.applyErr != nil {
 		return r.applyErr
+	}
+	if config != nil {
+		r.applied = append(r.applied, *config)
 	}
 	r.replaced = id
 	commit()
@@ -83,25 +75,28 @@ func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
 	}))
 
 	report, err := service.HookReload()
-	if err == nil || len(report.Notices) != 1 {
+	if err != nil || len(report.Notices) != 1 {
 		t.Fatalf("HookReload report=%#v err=%v", report, err)
 	}
 	assertHookNames(t, active.List(), "old")
 }
 
-func TestReloadPublishesIndependentRulesWhenRuntimeApplyFails(t *testing.T) {
+func TestReloadKeepsFailedPluginsAndAppliesRemainingChanges(t *testing.T) {
 	active := pipeline.NewManager(testLog, nil)
-	registerTestHook(t, active, "old")
-	runtime := &fakeRuntime{applyErr: errors.New("old worker shutdown failed")}
+	registerPluginTestHook(t, active, "demo", "old-worker")
+	registerPluginTestHook(t, active, "invalid", "old-rule")
+	registerPluginTestHook(t, active, "removed", "removed-rule")
+	runtime := &fakeRuntime{applyErr: errors.New("hook demo stop: timeout")}
 	service := New(active, runtime, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
-		registerTestHook(t, candidate, "new")
-		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}}, nil
+		registerPluginTestHook(t, candidate, "demo", "not-committed")
+		registerPluginTestHook(t, candidate, "later", "new")
+		return share.ReloadReport{FailedIDs: []string{"invalid"}}, []share.RuntimeConfig{{ID: "demo"}, {ID: "later"}}, nil
 	}))
-
-	if _, err := service.HookReload(); err == nil {
-		t.Fatal("expected runtime apply error")
+	report, err := service.HookReload()
+	if err != nil || len(report.Notices) != 1 || report.Notices[0] != runtime.applyErr.Error() {
+		t.Fatalf("HookReload report=%#v err=%v", report, err)
 	}
-	assertHookNames(t, active.List(), "new")
+	assertHookNames(t, active.List(), "new", "old-rule", "old-worker")
 }
 
 func TestReloadReplacesHooksAndAppliesRuntimeConfig(t *testing.T) {

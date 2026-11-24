@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"elbot/internal/hook/share"
 	"encoding/base64"
 	"image"
 	"image/png"
@@ -70,7 +71,7 @@ func TestMessageMediaImportsOnceAndOwnsBatchLeases(t *testing.T) {
 	if err != nil || len(refs) != 0 {
 		t.Fatal("lease survived runtime close", refs, err)
 	}
-	if _, err := m.BuildMessageSegments(t.Context(), []hookoutput.MessageSegment{{Type: "image", URL: segments[0].MediaID}}, dir); err != ErrClosed {
+	if _, err := m.BuildMessageSegments(t.Context(), []hookoutput.MessageSegment{{Type: "image", URL: segments[0].MediaID}}, dir); err != share.ErrClosed {
 		t.Fatal(err)
 	}
 }
