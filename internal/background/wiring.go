@@ -176,9 +176,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	// Execution 只声明 Agent.RunBackground；Runner 准备任务目录和后台来源。
 	// 会话与工具准备由 Agent 完成，报告解析和重试由 Cron、Elnis 负责。
-	runner := execution.NewBackgroundRunner(execution.BackgroundRunnerDeps{
-		Execution: deps.Agent, SandboxRoot: cfg.Sandbox.Root,
-	})
+	runner := execution.NewBackgroundRunner(cfg.Sandbox.Root, deps.Agent)
 	cron := cronBridge{repo: deps.Store.CronJobs()}
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	targets := enabledCronPlatforms(cfg)

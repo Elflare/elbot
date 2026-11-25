@@ -43,12 +43,8 @@ func MapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []R
 	return mappings
 }
 
-func PathInstruction() string {
-	return "后台任务的本地附件路径必须基于任务工作目录，使用相对路径；不得使用绝对路径、~、冒号或 .. 路径段。"
-}
-
 // BuildReportSegmentOutput 在任务目录内打开本地附件，只向发送方交付媒体 ID。
-func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scope workspace.PathScope, importer ReportMedia, limits media.ImportLimits) (out operationresult.Result[delivery.Output], err error) {
+func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scope workspace.PathScope, importer ReportMedia, limits media.ImportLimits) (operationresult.Result[delivery.Output], error) {
 	if segment.Source.Path == "" {
 		return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: segment}, nil
 	}
@@ -56,11 +52,12 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	if err != nil {
 		return operationresult.Result[delivery.Output]{}, err
 	}
-	defer func() {
-		if closeErr := root.Close(); closeErr != nil {
+	closeMedia := func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
 			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
-	}()
+	}
+	defer closeMedia(root)
 	file, err := root.Open(segment.Source.Path)
 	if errors.Is(err, os.ErrNotExist) {
 		return operationresult.Result[delivery.Output]{Status: operationresult.NotFound, Message: fmt.Sprintf("report media %q not found", segment.Source.Path)}, nil
@@ -68,11 +65,7 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	if err != nil {
 		return operationresult.Result[delivery.Output]{}, fmt.Errorf("open report media: %w", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer closeMedia(file)
 	stat, err := file.Stat()
 	if err != nil {
 		return operationresult.Result[delivery.Output]{}, err

@@ -49,6 +49,6 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 }
 
 // NewBackgroundRunner initializes BackgroundRunner without installing cross-service callbacks.
-func NewBackgroundRunner(deps BackgroundRunnerDeps) *BackgroundRunner {
-	return &BackgroundRunner{execution: deps.Execution, sandboxRoot: deps.SandboxRoot}
+func NewBackgroundRunner(sandboxRoot string, execution BackgroundExecution) *BackgroundRunner {
+	return &BackgroundRunner{execution: execution, sandboxRoot: sandboxRoot}
 }

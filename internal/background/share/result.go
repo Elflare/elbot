@@ -96,5 +96,5 @@ func (r JSONResult) MarshalJSON() ([]byte, error) {
 }
 
 func DefaultJSONRetryPrompt() string {
-	return "格式错误。只输出严格 JSON：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}。need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报。report_segments 可选，url 使用工作目录内的相对路径或直接使用 HTTP(S) URL；远程 URL 不会下载。" + PathInstruction()
+	return "格式错误。只输出严格 JSON：{\"completed\":true,\"need_report\":false,\"report\":\"\",\"report_segments\":[]}。need_report 表示是否需要向目标平台汇报；成功、失败或阻塞都可以请求汇报。report_segments 可选，url 使用工作目录内的相对路径或直接使用 HTTP(S) URL；远程 URL 不会下载。后台任务的本地附件路径必须基于任务工作目录，使用相对路径；不得使用绝对路径、~、冒号或 .. 路径段。"
 }

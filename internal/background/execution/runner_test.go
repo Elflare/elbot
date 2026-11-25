@@ -47,7 +47,7 @@ func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
 			calls := 0
-			runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: root, Execution: backgroundAgentFunc(func(ctx context.Context, req agent.BackgroundRequest) (agent.BackgroundResult, error) {
+			runner := NewBackgroundRunner(root, backgroundAgentFunc(func(ctx context.Context, req agent.BackgroundRequest) (agent.BackgroundResult, error) {
 				calls++
 				scope, ok := workspace.PathScopeFromContext(ctx)
 				if !ok || scope.Dir != filepath.Join(root, tc.wantDir) || !scope.Restricted {
@@ -61,7 +61,7 @@ func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
 					t.Fatalf("task type=%q", req.TaskType)
 				}
 				return agent.BackgroundResult{}, nil
-			})})
+			}))
 			ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir()})
 			_, _, err := runner.RunBackground(ctx, background.RunRequest{TaskType: tc.kind, SandboxSubdir: tc.subdir})
 			if err != nil || calls != 1 {
@@ -102,13 +102,13 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 				ELwispTools: req.ELwispTools, Metadata: req.Metadata,
 			}
 			calls := 0
-			runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: t.TempDir(), Execution: backgroundAgentFunc(func(_ context.Context, got agent.BackgroundRequest) (agent.BackgroundResult, error) {
+			runner := NewBackgroundRunner(t.TempDir(), backgroundAgentFunc(func(_ context.Context, got agent.BackgroundRequest) (agent.BackgroundResult, error) {
 				calls++
 				if !reflect.DeepEqual(got, want) {
 					t.Fatalf("request=%+v want=%+v", got, want)
 				}
 				return tc.result, tc.err
-			})})
+			}))
 			_, outcome, err := runner.RunBackground(t.Context(), req)
 			if calls != 1 || !errors.Is(err, tc.err) {
 				t.Fatalf("calls=%d result=%+v err=%v", calls, outcome, err)
@@ -129,9 +129,9 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 
 func TestRunnerPreservesNoCurrentSessionResult(t *testing.T) {
 	want := operationresult.Result[agent.BackgroundResult]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}
-	runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: t.TempDir(), Execution: backgroundAgentResultFunc(func(context.Context, agent.BackgroundRequest) (operationresult.Result[agent.BackgroundResult], error) {
+	runner := NewBackgroundRunner(t.TempDir(), backgroundAgentResultFunc(func(context.Context, agent.BackgroundRequest) (operationresult.Result[agent.BackgroundResult], error) {
 		return want, nil
-	})})
+	}))
 	_, result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: "task"})
 	if err != nil || result.Status != want.Status || result.Message != want.Message {
 		t.Fatalf("result=%+v err=%v", result, err)
@@ -142,7 +142,7 @@ func TestRunnerPreservesCallerCancellationAndValues(t *testing.T) {
 	type callerKey struct{}
 	ctx, cancel := context.WithCancel(context.WithValue(t.Context(), callerKey{}, "caller"))
 	defer cancel()
-	runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: t.TempDir(), Execution: backgroundAgentFunc(func(ctx context.Context, _ agent.BackgroundRequest) (agent.BackgroundResult, error) {
+	runner := NewBackgroundRunner(t.TempDir(), backgroundAgentFunc(func(ctx context.Context, _ agent.BackgroundRequest) (agent.BackgroundResult, error) {
 		if ctx.Value(callerKey{}) != "caller" {
 			t.Fatal("lost caller context")
 		}
@@ -151,7 +151,7 @@ func TestRunnerPreservesCallerCancellationAndValues(t *testing.T) {
 			t.Fatal("caller cancellation not propagated")
 		}
 		return agent.BackgroundResult{SessionID: "prepared"}, ctx.Err()
-	})})
+	}))
 	_, outcome, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
 	if !errors.Is(err, context.Canceled) || outcome.Status != "" {
 		t.Fatalf("result=%+v err=%v", outcome, err)
@@ -165,10 +165,10 @@ func TestRunnerRejectsWorkspaceFailureBeforeAgent(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, "blocked"), []byte("file"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: root, Execution: backgroundAgentFunc(func(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error) {
+			runner := NewBackgroundRunner(root, backgroundAgentFunc(func(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error) {
 				t.Fatal("Agent called before successful workspace preparation")
 				return agent.BackgroundResult{}, nil
-			})})
+			}))
 			_, result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: subdir})
 			if err == nil || result.Status != "" {
 				t.Fatalf("result=%+v err=%v", result, err)

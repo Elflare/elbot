@@ -69,75 +69,50 @@ func SetupCron(ctx context.Context, configure func(context.Context, share.Mainte
 	return nil
 }
 
-func (s *Service) RunLogCleanup(ctx context.Context) (err error) {
-	err = s.logs.CleanupOldLogs()
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("retention_days=%d", s.logs.RetentionDays())}
-	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
+func logCleanupResult(ctx context.Context, eventName, content string, err error) {
+	status := globalevents.LogStatus(err)
+	level := slog.LevelInfo
+	if status == globalevents.ResultFailed {
+		level = slog.LevelError
 	}
-	record.EventName = "maintenance.log_cleanup"
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	globalevents.Log(ctx, record)
+	if err != nil {
+		content += fmt.Sprintf("\nerror=%q", err.Error())
+	}
+	globalevents.Log(ctx, globalevents.LogRecord{
+		Category: globalevents.LogCategoryLog, Level: level, Module: "maintenance", EventName: eventName,
+		ResultStatus: status, Content: content, Identity: globalevents.LogIdentityFromContext(ctx),
+	})
+}
+
+func (s *Service) RunLogCleanup(ctx context.Context) error {
+	err := s.logs.CleanupOldLogs()
+	logCleanupResult(ctx, "maintenance.log_cleanup", fmt.Sprintf("retention_days=%d", s.logs.RetentionDays()), err)
 	return err
 }
 
-func (s *Service) RunSessionCleanup(ctx context.Context) (err error) {
+func (s *Service) RunSessionCleanup(ctx context.Context) error {
 	if !s.sessionCleanup.Enabled {
 		return nil
 	}
 	deleted, err := s.cleanupSessions(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays)}
-	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
-	}
-	record.EventName = "maintenance.session_cleanup"
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	globalevents.Log(ctx, record)
+	logCleanupResult(ctx, "maintenance.session_cleanup", fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays), err)
 	return err
 }
 
-func (s *Service) RunChatHistoryCleanup(ctx context.Context) (err error) {
+func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
 	if !s.chatHistoryCleanup.Enabled {
 		return nil
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
 	deleted, err := s.cleanupChatHistory(ctx, cutoff)
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays)}
-	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
-	}
-	record.EventName = "maintenance.chat_history_cleanup"
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	globalevents.Log(ctx, record)
+	logCleanupResult(ctx, "maintenance.chat_history_cleanup", fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays), err)
 	return err
 }
 
-func (s *Service) RunSandboxCleanup(ctx context.Context) (err error) {
+func (s *Service) RunSandboxCleanup(ctx context.Context) error {
 	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
 	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sandboxCleanup.RetentionDays)}
-	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
-	}
-	record.EventName = "maintenance.sandbox_cleanup"
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	globalevents.Log(ctx, record)
+	logCleanupResult(ctx, "maintenance.sandbox_cleanup", fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sandboxCleanup.RetentionDays), err)
 	return err
 }
 
