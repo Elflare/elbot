@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
-	"elbot/internal/directive"
 	"elbot/internal/tool"
 )
 
@@ -27,7 +27,7 @@ type ToolDirectiveSource struct {
 
 func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	cursor := req.CursorOrEnd()
-	token := directive.ParseCompletionToken(req.Text, cursor)
+	token := command.ParseCompletionToken(req.Text, cursor)
 	if token.Kind == "" {
 		return nil, nil
 	}
@@ -80,7 +80,7 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	return out, nil
 }
 
-func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.CompletionToken, cursor int) []Item {
+func (s ToolDirectiveSource) completeSkills(ctx context.Context, token command.DirectiveCompletionToken, cursor int) []Item {
 	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
 	names := matchCandidates(availability.Skills, token.Query)
 	out := make([]Item, 0, len(names))

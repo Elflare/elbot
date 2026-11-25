@@ -75,7 +75,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:commands -->
 ## 命令与补全
 
-- `internal/command/`：`types.go`、`result.go` 命令契约；`wiring.go` 内置命令装配；`router.go` 路由；`parse.go` 解析；`format.go` 命令文本组装；`completion.go` 补全。
+- `internal/command/`：`types.go`、`result.go` 命令契约；`wiring.go` 内置命令装配；`router.go` 路由；`parse.go` 解析命令；`directive.go` 解析正文和补全中的 `@tool` / `@skill` 指令；`format.go` 命令文本组装；`completion.go` 补全。
 - `internal/command/share/`：内部共用契约及纯辅助逻辑。
 - `internal/command/builtin/`：`register.go` 内部模块登记；其他命令按同名文件定位。
 - `internal/command/builtin/`：`log.go` 日志入口；`log_query.go` 查询解析；`usage.go` 用量统计。

@@ -1,19 +1,8 @@
-package directive
+package command
 
 import (
 	"regexp"
 	"strings"
-)
-
-const (
-	ToolPrefix       = "@tool:"
-	ToolFullPrefix   = "@tool："
-	ToolShortPrefix  = "@t:"
-	ToolShortFull    = "@t："
-	SkillPrefix      = "@skill:"
-	SkillFullPrefix  = "@skill："
-	SkillShortPrefix = "@s:"
-	SkillShortFull   = "@s："
 )
 
 var (
@@ -29,7 +18,7 @@ type ToolMatch struct {
 
 type SkillMatch = ToolMatch
 
-type CompletionToken struct {
+type DirectiveCompletionToken struct {
 	Start      int
 	Query      string
 	Prefix     string
@@ -46,6 +35,9 @@ func SkillMatches(text string) []SkillMatch {
 }
 
 func matches(text string, pattern *regexp.Regexp) []ToolMatch {
+	if !strings.Contains(text, "@") {
+		return []ToolMatch{}
+	}
 	indexes := pattern.FindAllStringSubmatchIndex(text, -1)
 	out := make([]ToolMatch, 0, len(indexes))
 	for _, index := range indexes {
@@ -68,7 +60,7 @@ func StripToolMatches(text string, matches []ToolMatch, remove []bool) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
-func ParseCompletionToken(text string, cursor int) CompletionToken {
+func ParseCompletionToken(text string, cursor int) DirectiveCompletionToken {
 	if cursor < 0 || cursor > len(text) {
 		cursor = len(text)
 	}
@@ -78,26 +70,26 @@ func ParseCompletionToken(text string, cursor int) CompletionToken {
 	}
 	token := text[start:cursor]
 	if token == "" || token[0] != '@' {
-		return CompletionToken{}
+		return DirectiveCompletionToken{}
 	}
 	// 单独的 @ 同时匹配两类指令，优先补成 @s:。
 	for _, p := range [...]struct{ prefix, kind string }{
-		{SkillShortPrefix, "skill"}, {SkillShortFull, "skill"}, {SkillPrefix, "skill"}, {SkillFullPrefix, "skill"},
-		{ToolShortPrefix, "tool"}, {ToolShortFull, "tool"}, {ToolPrefix, "tool"}, {ToolFullPrefix, "tool"},
+		{"@s:", "skill"}, {"@s：", "skill"}, {"@skill:", "skill"}, {"@skill：", "skill"},
+		{"@t:", "tool"}, {"@t：", "tool"}, {"@tool:", "tool"}, {"@tool：", "tool"},
 	} {
 		if query, ok := strings.CutPrefix(token, p.prefix); ok {
 			for i := 0; i < len(query); i++ {
 				if !IsToolNameByte(query[i]) {
-					return CompletionToken{}
+					return DirectiveCompletionToken{}
 				}
 			}
-			return CompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, Query: query}
+			return DirectiveCompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, Query: query}
 		}
 		if strings.HasPrefix(p.prefix, token) {
-			return CompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, PrefixOnly: true}
+			return DirectiveCompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, PrefixOnly: true}
 		}
 	}
-	return CompletionToken{}
+	return DirectiveCompletionToken{}
 }
 
 func IsToolNameByte(c byte) bool {
