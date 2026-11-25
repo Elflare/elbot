@@ -14,18 +14,10 @@ const signedURLRefreshMargin = 5 * time.Minute
 
 // SignedURL 基于已有持有取得远端 URL，必要时上传并更新对象及签名记录。
 func (h *heldMedia) SignedURL(ctx context.Context) (string, error) {
-
 	if h.released.Load() {
-
 		return "", fmt.Errorf("media hold is closed")
 	}
-
-	return h.manager.presignMedia(ctx, h.record.ID)
-}
-
-// presignMedia 在对象锁内重读副本事实，复用或更新签名缓存。
-// 仅内部接收已持有对象的 ID，后端只接收实际对象位置。
-func (m *Manager) presignMedia(ctx context.Context, id string) (string, error) {
+	m, id := h.manager, h.record.ID
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {
 		return "", err

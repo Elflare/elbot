@@ -44,9 +44,13 @@ func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (operationre
 	return mediaInfoResult(m.objects.ValidateImage(ctx, id))
 }
 
+func (input Input) shared() share.Input {
+	return share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}
+}
+
 // ImportSource 读取已有 ID 的元数据，或归档调用方允许的来源。
 func (m *MediaCenter) ImportSource(ctx context.Context, source delivery.Source, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.transfer.ImportSource(ctx, source, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
+	return mediaInfoResult(m.transfer.ImportSource(ctx, source, input.shared(), share.ImportLimits(limits)))
 }
 
 // PrepareOutputs 成功时返回整批的使用 ID，发送与回执处理结束后由调用方发布。
@@ -60,22 +64,22 @@ func (m *MediaCenter) PrepareOutputs(ctx context.Context, requests []OutputReque
 
 // ImportBytes 归档字节内容并返回通用信息。
 func (m *MediaCenter) ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.objects.ImportBytes(ctx, data, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
+	return mediaInfoResult(m.objects.ImportBytes(ctx, data, input.shared(), share.ImportLimits(limits)))
 }
 
 // ImportURL 按配置下载、归档内容并清理持久化来源中的敏感信息。
 func (m *MediaCenter) ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.objects.ImportURL(ctx, rawURL, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
+	return mediaInfoResult(m.objects.ImportURL(ctx, rawURL, input.shared(), share.ImportLimits(limits)))
 }
 
 // ImportFile 归档调用方已按其路径边界解析的普通文件。
 func (m *MediaCenter) ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.objects.ImportFile(ctx, path, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
+	return mediaInfoResult(m.objects.ImportFile(ctx, path, input.shared(), share.ImportLimits(limits)))
 }
 
 // ImportReader 读取受限内容并归档，size 是调用方已知的长度。
 func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	return mediaInfoResult(m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits)))
+	return mediaInfoResult(m.objects.ImportReader(ctx, input, size, spec.shared(), share.ImportLimits(limits)))
 }
 
 // AcquireForLLM 准备请求副本；实际请求结束后发布对应使用 ID。

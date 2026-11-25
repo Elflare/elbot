@@ -64,9 +64,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 	}
 	m := &MediaCenter{objects: objects, chatHistory: deps.ChatHistory}
 	m.transfer = transfer.NewManager(objects, transfer.Options{
-		Log: func(ctx context.Context, record events.LogRecord) {
-			events.Log(context.WithoutCancel(ctx), record)
-		},
+		Log:     events.Log,
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
 	})

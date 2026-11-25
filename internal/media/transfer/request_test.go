@@ -142,8 +142,6 @@ func TestAcquireModesDedupNamesAndIsolation(t *testing.T) {
 				if tc.remote && (h.signs.Load() != 1 || h.opens.Load() != 0) || !tc.remote && (h.opens.Load() != 1 || h.signs.Load() != 0) {
 					t.Fatal("duplicated or wrong delivery")
 				}
-			}
-			if !tc.fail {
 				m.FinishUsages([]string{usageID})
 				if err := m.CleanupUsages(t.Context(), nil); err != nil || h.closes.Load() != 1 {
 					t.Fatalf("usageID repeats success: %v %d", err, h.closes.Load())
@@ -330,8 +328,7 @@ func TestRemoteFailureCancelsAndWaitsForPeers(t *testing.T) {
 	if !errors.Is(err, fault) || ctx.Err() != nil || first.closes.Load() != 1 || second.closes.Load() != 1 {
 		t.Fatalf("peer not canceled by failure: %v parent=%v", err, ctx.Err())
 	}
-	m.FinishUsages([]string{usageID})
-	if err := m.CleanupUsages(t.Context(), nil); err != nil {
-		t.Fatal(err)
+	if usageID != "" {
+		t.Fatalf("failed request returned usage ID %q", usageID)
 	}
 }
