@@ -4,7 +4,7 @@
 - [ ] control
 - [ ] storage
 - [ ] logging
-- [ ] session 
+- [x] session 
 
 ## 代码精简
 
@@ -56,7 +56,7 @@
 - [x] llm包
 - [x] media包
 - [ ] storage包
-- [ ] session包
+- [x] session包
 - [x] command包
 - [ ] control包
 - [x] delivery包
