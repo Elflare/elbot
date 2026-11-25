@@ -52,7 +52,7 @@
     - [x] execution、maintenance、share
 - [x] completion包
 - [x] fileops包
-- [ ] workspace包
+- [x] workspace包
 - [x] llm包
 - [ ] media包
 - [ ] storage包

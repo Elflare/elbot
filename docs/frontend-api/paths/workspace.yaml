@@ -99,7 +99,10 @@
         schema: { type: string, enum: [agent, user] }
     responses:
       '200':
-        description: Git status relative to HEAD, including staged, worktree, and untracked files.
+        description: >-
+          Git status relative to HEAD, including staged, worktree, and untracked files.
+          If Git cannot detect the worktree or read its status, the endpoint still returns HTTP 200
+          with `is_git: false` and `changes: []`. A clean worktree returns `is_git: true` and `changes: []`.
         content:
           application/json:
             schema: { $ref: '../components/schemas.yaml#/schemas/WorkspaceGit' }

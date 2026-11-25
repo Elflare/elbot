@@ -119,8 +119,8 @@ func ParseFileReferenceToken(text string, cursor int) (FileReferenceToken, bool)
 	if cursor < 0 || cursor > len(text) {
 		cursor = len(text)
 	}
-	for start := cursor - 1; start >= 0; start-- {
-		if text[start] != '#' || start+1 >= len(text) || text[start+1] != '"' || !referenceBoundary(text, start) {
+	for start := cursor - 2; start >= 0; start-- {
+		if text[start] != '#' || text[start+1] != '"' || !referenceBoundary(text, start) {
 			continue
 		}
 		value := text[start+2 : cursor]
@@ -195,12 +195,7 @@ func ExpandFileReferences(ctx context.Context, rootPath, text string) (operation
 			return operationresult.Result[string]{}, err
 		}
 		if text[i] != '#' {
-			r, size := utf8.DecodeRuneInString(text[i:])
-			if r == utf8.RuneError && size == 1 {
-				out.WriteByte(text[i])
-				i++
-				continue
-			}
+			_, size := utf8.DecodeRuneInString(text[i:])
 			out.WriteString(text[i : i+size])
 			i += size
 			continue

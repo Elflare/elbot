@@ -39,11 +39,15 @@ func (s *Service) GetCurrentState(ctx context.Context) (operationresult.Result[C
 	if current.Status != operationresult.Success {
 		return operationresult.Result[CurrentState]{Status: current.Status, Message: current.Message}, nil
 	}
-	state, err := s.getSessionState(ctx, current.Data)
+	return s.sessionStateResult(ctx, current.Data)
+}
+
+func (s *Service) sessionStateResult(ctx context.Context, sessionID string) (operationresult.Result[CurrentState], error) {
+	state, err := s.getSessionState(ctx, sessionID)
 	if err != nil {
 		return operationresult.Result[CurrentState]{}, err
 	}
-	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: current.Data, State: state}}, nil
+	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: sessionID, State: state}}, nil
 }
 
 func (s *Service) getSessionState(ctx context.Context, sessionID string) (State, error) {
@@ -81,11 +85,7 @@ func (s *Service) SetUserDir(ctx context.Context, dir string) (operationresult.R
 	if err := store.SetUserWorkspaceDir(ctx, dir); err != nil {
 		return operationresult.Result[CurrentState]{}, err
 	}
-	state, err := s.getSessionState(ctx, sessionID)
-	if err != nil {
-		return operationresult.Result[CurrentState]{}, err
-	}
-	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: sessionID, State: state}}, nil
+	return s.sessionStateResult(ctx, sessionID)
 }
 
 func (s *Service) SetSync(ctx context.Context, agentToUser, userToAgent bool) (operationresult.Result[CurrentState], error) {
@@ -105,9 +105,5 @@ func (s *Service) SetSync(ctx context.Context, agentToUser, userToAgent bool) (o
 	if err := store.SetWorkspaceSync(ctx, agentToUser, userToAgent, state.Dir); err != nil {
 		return operationresult.Result[CurrentState]{}, err
 	}
-	state, err = s.getSessionState(ctx, sessionID)
-	if err != nil {
-		return operationresult.Result[CurrentState]{}, err
-	}
-	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: sessionID, State: state}}, nil
+	return s.sessionStateResult(ctx, sessionID)
 }

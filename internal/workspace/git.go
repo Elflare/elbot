@@ -43,18 +43,18 @@ func ReadGitStatus(ctx context.Context, path string) (operationresult.Result[Git
 	}
 	path = checked.Data
 	root, err := gitOutput(ctx, path, "rev-parse", "--show-toplevel")
-	if err != nil {
-		if errors.Is(err, errNotGit) {
-			return operationresult.Result[GitStatus]{Status: operationresult.Success, Data: GitStatus{Path: path, Changes: []GitChange{}}}, nil
-		}
-		return operationresult.Result[GitStatus]{}, err
-	}
 	root = strings.TrimSpace(root)
-	output, err := gitBytes(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--renames")
-	if err != nil {
-		return operationresult.Result[GitStatus]{}, err
+	var output []byte
+	if err == nil {
+		output, err = gitBytes(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--renames")
 	}
-	changes := parseGitStatus(output, root)
+	if err != nil {
+		if err := ctx.Err(); err != nil {
+			return operationresult.Result[GitStatus]{}, err
+		}
+		return operationresult.Result[GitStatus]{Status: operationresult.Success, Data: GitStatus{Path: path, Changes: []GitChange{}}}, nil
+	}
+	changes := parseGitStatus(output)
 	return operationresult.Result[GitStatus]{Status: operationresult.Success, Data: GitStatus{IsGit: true, Path: path, Root: root, Changes: changes}}, nil
 }
 
@@ -68,7 +68,7 @@ func ReadGitDiff(ctx context.Context, path, relative string) (operationresult.Re
 	}
 	status := loaded.Data
 	if !status.IsGit {
-		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "workspace is not a Git repository"}, nil
+		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "非 Git 仓库或 Git 配置无效"}, nil
 	}
 	relative = filepath.Clean(filepath.FromSlash(strings.TrimSpace(relative)))
 	if !filepath.IsLocal(relative) || relative == "." {
@@ -130,25 +130,13 @@ func ReadGitDiff(ctx context.Context, path, relative string) (operationresult.Re
 	return operationresult.Result[string]{Status: operationresult.Success, Data: staged + diff}, nil
 }
 
-var errNotGit = errors.New("not a Git repository")
-
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
 	data, err := gitBytes(ctx, dir, args...)
 	return string(data), err
 }
 
 func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	env := os.Environ()
-	for i, entry := range env {
-		if strings.HasPrefix(entry, "LC_ALL=") {
-			env[i] = "LC_ALL=C"
-			cmd.Env = env
-			return cmd
-		}
-	}
-	cmd.Env = append(env, "LC_ALL=C")
-	return cmd
+	return exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 }
 
 func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
@@ -157,14 +145,11 @@ func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	if err == nil {
 		return data, nil
 	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "not a git repository") {
-		return nil, errNotGit
-	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if exit != nil {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(exit.Stderr)))
 	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -214,7 +199,7 @@ func (b *boundedBuffer) Write(data []byte) (int, error) {
 
 func (b *boundedBuffer) String() string { return b.buffer.String() }
 
-func parseGitStatus(data []byte, root string) []GitChange {
+func parseGitStatus(data []byte) []GitChange {
 	changes := []GitChange{}
 	for len(data) > 0 {
 		end := bytes.IndexByte(data, 0)

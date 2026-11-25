@@ -6,6 +6,8 @@ ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管
 
 在主配置旁放置 `frontend/index.html`，首次添加后重启 CLI 远程服务，即可从 `/` 访问。静态文件公开，不提供目录列表或 SPA 路径回退；操作 ElBot 仍须鉴权。监听地址和 token 见 [CLI 远程配置](configuration.md#cli-远程配置)。
 
+工作区面板用 `is_git` 区分两种空列表：`true` 表示工作区干净；`false` 表示无法读取 Git 状态，显示“非 Git 仓库或 Git 配置无效”。
+
 ## 连接与鉴权
 
 连接 `/cli/v1/ws`（默认 `ws://127.0.0.1:32172/cli/v1/ws`；对外部署使用 HTTPS/WSS），立即发送：
