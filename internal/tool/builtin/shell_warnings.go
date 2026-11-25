@@ -89,10 +89,6 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 	checked := fileGuard.CheckWrite(resolved)
 	if checked.Status != operationresult.Success {
 		a.blocked = checked
-		return
-	}
-	if strings.Contains(op, "<") {
-		a.addWarning(warnUseReadFile)
 	}
 }
 

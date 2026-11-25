@@ -308,7 +308,7 @@ func TestAnalyzeBashShellAdviceSuggestsForFirstCommand(t *testing.T) {
 		{"printf alpha | head -10", ""},
 		{"printf alpha | tee sample.txt", ""},
 		{"echo ok; sed -i 's/a/b/' sample.txt", ""},
-		{"echo ok; cat < sample.txt", warnUseReadFile},
+		{"echo ok; cat < sample.txt", ""},
 		{"echo ok; echo alpha > sample.txt", ""},
 	} {
 		t.Run(tc.cmd, func(t *testing.T) {
