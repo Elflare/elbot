@@ -16,6 +16,14 @@
       "translation": "# Frontend API\n\nThe ElBot client sends and receives conversations via WebSocket and manages Sessions and transfers attachments via the HTTP interface on the same port. The endpoints, requests, responses, and errors of the `/api/v1` management interface follow [OpenAPI](../docs/frontend-api.openapi.yaml), which can also be [viewed online](https://elfreese.github.io/elbot-landing/docs/api/). This document explains how to integrate them into a single conversation.\n\n",
       "updated_at": 1795177068
     },
+    "docs/frontend-api.md:section:6419f10530c3cd9391df0be97fa6bffa31d0007cffa7ff16643cddb0a16c0279": {
+      "kind": "section",
+      "source": "## 静态前端托管\n\n在主配置旁放置 `frontend/index.html`，首次添加后重启 CLI 远程服务，即可从 `/` 访问。静态文件公开，不提供目录列表或 SPA 路径回退；操作 ElBot 仍须鉴权。监听地址和 token 见 [CLI 远程配置](configuration.md#cli-远程配置)。\n\n工作区面板用 `is_git` 区分两种空列表：`true` 表示工作区干净；`false` 表示无法读取 Git 状态，显示“非 Git 仓库或 Git 配置无效”。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "cd04efa0c564e885481cb7133abe44ac6092e716d61c9ac5e593bda9bc2b0ae3",
+      "translation": "## Static Frontend Hosting\n\nPlace `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it via `/`. Static files are public, and directory listing or SPA path fallback is not provided; authentication is still required to operate ElBot. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.\n\nThe workspace panel uses `is_git` to distinguish between two types of empty lists: `true` indicates the workspace is clean; `false` indicates that the Git status cannot be read, displaying \"Not a Git repository or invalid Git configuration\".\n\n",
+      "updated_at": 1795597014
+    },
     "docs/frontend-api.md:section:6c13858b77acecbf882e1d8ea947647d8fed11809d4e2608064a94380c638ddd": {
       "kind": "section",
       "source": "## 会话与首条消息\n\n1. **进入新对话**：清空本连接的订阅，显示空白页。不创建会话，也不停止旧会话的任务。\n2. **首次发送**：先创建会话，订阅返回的 ID，再发 WebSocket `input`。打开已有会话则直接订阅并读取历史，不必创建。\n3. **后续输入**：每次发送使用新的 `id`，`session_id` 必须与本连接的订阅一致。未订阅的普通 CLI 可省略 `session_id`，使用平台当前会话。订阅不等于 `/resume`。\n4. **重连**：重新登录、订阅并读取历史。服务端不重放断线期间的增量，客户端也不要自动重放写请求。切换会话后按 `session_id` 忽略旧会话在途的输出。\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"你好\"}\n```\n\n",
@@ -39,19 +47,11 @@
       "source_hash": "35ac1838f0c2c8f839e2bcdd01a09c1a5c4f71cd74b2db7d7ea873485b3a4efa",
       "translation": "## Connection and Authentication\n\nConnect to `/cli/v1/ws` (default `ws://127.0.0.1:32172/cli/v1/ws`; use HTTPS/WSS for external deployment) and immediately send:\n\n```json\n{\"type\":\"hello\",\"client_id\":\"my-client\",\"token\":\"your-token\"}\n```\n\nIf login fails, `error` is returned and the connection is closed. On success, `hello_ok` is returned, where `api_token` is used for management interfaces and `media_token` is used for attachments. Both are sent via HTTP `Authorization: Bearer <token>` and should not be placed in the URL. Long-term tokens are used for login only; connection credentials are stored only in memory, and different connections under the same account cannot be mixed.\n\n",
       "updated_at": 1795164977
-    },
-    "docs/frontend-api.md:section:db69a6169274e4b7bf3702d184f1534daa9c18597cdd17c9303c55ac50b77d0b": {
-      "kind": "section",
-      "source": "## 静态前端托管\n\n在主配置旁放置 `frontend/index.html`，首次添加后重启 CLI 远程服务，即可从 `/` 访问。静态文件公开，不提供目录列表或 SPA 路径回退；操作 ElBot 仍须鉴权。监听地址和 token 见 [CLI 远程配置](configuration.md#cli-远程配置)。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "0fdd084b6f000b855a4f558a72dd4d82a5f782eecc3257e1c0ee2111798753f4",
-      "translation": "## Static Frontend Hosting\n\nPlace `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it from `/`. Static files are public, and directory listing or SPA path fallback is not provided; operating ElBot still requires authentication. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.\n\n",
-      "updated_at": 1795164932
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "b1687680dab2da16e099ca398cdb2606cead8ed72551c07b16c7117191f307ea",
+  "source_hash": "71413c8aceec542a904309e4aa0b21446ebcd3872bb196c2ca332afeb3403c61",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1795184665,
+  "updated_at": 1795597014,
   "version": 3
 }

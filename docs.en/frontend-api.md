@@ -6,7 +6,9 @@ The ElBot client sends and receives conversations via WebSocket and manages Sess
 
 ## Static Frontend Hosting
 
-Place `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it from `/`. Static files are public, and directory listing or SPA path fallback is not provided; operating ElBot still requires authentication. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.
+Place `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it via `/`. Static files are public, and directory listing or SPA path fallback is not provided; authentication is still required to operate ElBot. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.
+
+The workspace panel uses `is_git` to distinguish between two types of empty lists: `true` indicates the workspace is clean; `false` indicates that the Git status cannot be read, displaying "Not a Git repository or invalid Git configuration".
 
 ## Connection and Authentication
 
