@@ -18,7 +18,7 @@ func TestMissingObjectReturnsBusinessStatus(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	absent := share.IDPrefix + strings.Repeat("f", 64)
 	item := importTestMedia(t, m, "deleting content")
-	if _, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(time.Hour)); err != nil {
+	if _, err := store.ClaimOrphans(t.Context(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{absent, item.ID} {
@@ -28,19 +28,19 @@ func TestMissingObjectReturnsBusinessStatus(t *testing.T) {
 		if result, err := m.Hold(t.Context(), id); err != nil || result.Status != operationresult.NotFound || result.Message != "media unavailable" {
 			t.Fatalf("Hold: %+v %v", result, err)
 		}
-		if err := store.Media().Touch(t.Context(), id, time.Now()); !errors.Is(err, storage.ErrNotFound) {
+		if err := store.Touch(t.Context(), id, time.Now()); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("Touch: %v", err)
 		}
-		if err := store.MediaReferences().Add(t.Context(), &storage.MediaReference{MediaID: id, OwnerType: "request", OwnerID: "test", Purpose: "temporary"}); !errors.Is(err, storage.ErrNotFound) {
+		if err := store.AddMediaReference(t.Context(), &storage.MediaReference{MediaID: id, OwnerType: "request", OwnerID: "test", Purpose: "temporary"}); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("Add: %v", err)
 		}
 	}
 	valid := importTestMedia(t, m, "valid content")
-	err := store.MediaReferences().AddAll(t.Context(), []storage.MediaReference{{MediaID: valid.ID, OwnerType: "request", OwnerID: "first", Purpose: "temporary"}, {MediaID: absent, OwnerType: "request", OwnerID: "second", Purpose: "temporary"}})
+	err := store.AddMediaReferences(t.Context(), []storage.MediaReference{{MediaID: valid.ID, OwnerType: "request", OwnerID: "first", Purpose: "temporary"}, {MediaID: absent, OwnerType: "request", OwnerID: "second", Purpose: "temporary"}})
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), valid.ID)
+	refs, err := store.ListMediaIDs(t.Context(), valid.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("failed batch was not atomic: %+v %v", refs, err)
 	}

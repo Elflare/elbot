@@ -208,7 +208,7 @@ type RunnerDeps struct {
 	}
 	Routes    loopResolver
 	Dialogues interface {
-		Commit(context.Context, storage.DialogueCommit) error
+		CommitDialogue(context.Context, storage.DialogueCommit) error
 	}
 	Sessions interface {
 		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)

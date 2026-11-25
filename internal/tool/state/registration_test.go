@@ -9,7 +9,7 @@ import (
 
 func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 	store, row := stateTestStore(t, `{"workspace":"keep"}`)
-	service := NewStateService(store.Sessions(), registry.BackgroundDiscoveredTools)
+	service := NewStateService(store, registry.BackgroundDiscoveredTools)
 	catalog := registry.NewRegistry(security.DefaultPermission())
 	register := func(event, name string) share.StateUpdate {
 		t.Helper()
@@ -24,7 +24,7 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 		return update
 	}
 	first := register("first", "old")
-	unchanged, _ := store.Sessions().Get(t.Context(), row.ID)
+	unchanged, _ := store.GetSession(t.Context(), row.ID)
 	definitions, err := catalog.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
 	if err != nil || unchanged.Metadata != row.Metadata || len(definitions) != 0 {
 		t.Fatal("registration published before commit")
@@ -41,11 +41,11 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 	if err != nil || len(loaded.DiscoveredTools) != 2 || loaded.DiscoveredTools[0].Name != "keep" || loaded.DiscoveredTools[1].Name != "new" || loaded.DiscoveredTools[1].TimeoutSeconds != 10 || loaded.DiscoveredTools[1].Risk != share.RiskLow {
 		t.Fatalf("restored=%+v err=%v", loaded, err)
 	}
-	before, _ := store.Sessions().Get(t.Context(), row.ID)
+	before, _ := store.GetSession(t.Context(), row.ID)
 	if _, err := service.Commit(t.Context(), row.ID, register("first", "keep")); err == nil {
 		t.Fatal("cross-event collision accepted")
 	}
-	after, _ := store.Sessions().Get(t.Context(), row.ID)
+	after, _ := store.GetSession(t.Context(), row.ID)
 	if after.Metadata != before.Metadata {
 		t.Fatal("rejected patch changed persisted state")
 	}

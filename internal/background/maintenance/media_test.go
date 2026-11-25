@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,14 +10,13 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	toolmedia "elbot/internal/tool/media"
 )
 
 func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

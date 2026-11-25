@@ -17,14 +17,14 @@ type ModelCapabilities interface {
 
 type Options struct {
 	Compactors CompactorResolver
-	Store      storage.Store
+	Store      Store
 	Models     ModelCapabilities
 	Config     config.ContextConfig
 }
 
 type Service struct {
 	compactors   CompactorResolver
-	store        storage.Store
+	store        Store
 	models       ModelCapabilities
 	usageWriteMu sync.Mutex
 	config       config.ContextConfig
@@ -43,7 +43,7 @@ func (s *Service) Load(ctx context.Context, id string) (*LoadedContext, error) {
 func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) error {
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
-	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
+	_, err := s.store.MutateSession(ctx, id, func(row *storage.Session) error {
 		row.UpdatedAt = storage.Now()
 		if usage == nil {
 			return nil

@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	"errors"
 	"fmt"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"elbot/internal/media"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/share"
 	"elbot/internal/workspace"
@@ -19,7 +19,7 @@ import (
 
 func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil || info.ModTime().Before(time.Now().Add(-time.Minute)) {
 		t.Fatalf("cache not touched: %v %v", info, err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+	refs, err := store.ListMediaIDs(ctx, item.Data.ID)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("refs %v %v", refs, err)
 	}
@@ -93,7 +93,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+	refs, err = store.ListMediaIDs(ctx, item.Data.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("refs after close %v %v", refs, err)
 	}
@@ -121,7 +121,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.Data.ID)
+	refs, err = store.ListMediaIDs(ctx, imported.Data.ID)
 	if err != nil || len(refs) == 0 || refs[0].OwnerType != "request" {
 		t.Fatalf("output is not held by the invocation: %v %v", refs, err)
 	}
@@ -129,7 +129,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.Data.ID)
+	refs, err = store.ListMediaIDs(ctx, imported.Data.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("import references survived close: %v %v", refs, err)
 	}
@@ -160,7 +160,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 	for _, shared := range []bool{false, true} {
 		t.Run(fmt.Sprintf("shared=%t", shared), func(t *testing.T) {
 			ctx := t.Context()
-			store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+			store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -224,7 +224,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
-			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+			refs, err := store.ListMediaIDs(ctx, item.Data.ID)
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("export references survived close: %v %v", refs, err)
 			}

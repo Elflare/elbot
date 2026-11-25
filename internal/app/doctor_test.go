@@ -73,7 +73,7 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 				t.Error(err)
 			}
 		})
-		supervisor := lines[componentAgent].supervisor.(*agent.Supervisor)
+		supervisor := lines.active[componentAgent].supervisor.(*agent.Supervisor)
 
 		// Change files after assembly: diagnosis must reread disk using the selected
 		// path and module schemas without reloading or starting their runtimes.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
+	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
@@ -15,14 +16,13 @@ import (
 	"testing"
 
 	"elbot/internal/media"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/workspace"
 )
 
 func TestShellMediaInputsAndCleanup(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: t.TempDir()})
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
-			refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+			refs, refErr := store.ListMediaIDs(ctx, item.Data.ID)
 			if refErr != nil || len(refs) != 0 {
 				t.Fatalf("leaked refs %v %v", refs, refErr)
 			}
@@ -95,7 +95,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		if err := center.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
-		refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+		refs, _ := store.ListMediaIDs(ctx, item.Data.ID)
 		if len(refs) != 0 {
 			t.Fatal("partial preparation leaked references")
 		}

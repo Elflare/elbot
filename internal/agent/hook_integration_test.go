@@ -27,7 +27,6 @@ import (
 	platformshare "elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/signal"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
 	"fmt"
@@ -100,7 +99,7 @@ func TestHookManagementUsesControlAndBridgeRemainsActive(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hooks.toml"), []byte(rule), 0600); err != nil {
 		t.Fatal(err)
 	}
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

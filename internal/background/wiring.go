@@ -61,7 +61,7 @@ func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (
 	if err != nil {
 		return nil, err
 	}
-	return elnisEvent(b.repo.Create(ctx, storage.CreateElnisEventRequest{
+	return elnisEvent(b.repo.CreateElnisEvent(ctx, storage.CreateElnisEventRequest{
 		ID:       id,
 		MediaIDs: req.MediaIDs, EventKey: req.EventKey, OriginKind: req.OriginKind, OriginName: req.OriginName, ElwispName: req.ElwispName,
 		Source: req.Source, SourceID: req.SourceID, Tags: req.Tags, Mode: req.Mode, ModelSlot: req.ModelSlot,
@@ -72,7 +72,7 @@ func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (
 }
 
 func (b elnisBridge) Get(ctx context.Context, id string) (*elnis.EventRecord, error) {
-	return elnisEvent(b.repo.Get(ctx, id))
+	return elnisEvent(b.repo.GetElnisEvent(ctx, id))
 }
 
 func (b elnisBridge) GetByKey(ctx context.Context, name, source, sourceID string) (*elnis.EventRecord, error) {
@@ -80,7 +80,7 @@ func (b elnisBridge) GetByKey(ctx context.Context, name, source, sourceID string
 }
 
 func (b elnisBridge) Update(ctx context.Context, req elnis.UpdateEventRequest) error {
-	return elnisError(b.repo.Update(ctx, storage.UpdateElnisEventRequest{ID: req.ID, ResolvedTargets: req.ResolvedTargets,
+	return elnisError(b.repo.UpdateElnisEvent(ctx, storage.UpdateElnisEventRequest{ID: req.ID, ResolvedTargets: req.ResolvedTargets,
 		Status: req.Status, SessionID: req.SessionID, Result: req.Result, Error: req.Error}))
 }
 
@@ -177,7 +177,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	// Execution 只声明 Agent.RunBackground；Runner 准备任务目录和后台来源。
 	// 会话与工具准备由 Agent 完成，报告解析和重试由 Cron、Elnis 负责。
 	runner := execution.NewBackgroundRunner(cfg.Sandbox.Root, deps.Agent)
-	cron := cronBridge{repo: deps.Store.CronJobs()}
+	cron := cronBridge{repo: deps.Store}
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	targets := enabledCronPlatforms(cfg)
 	m.cronManager = elcron.NewManager(cron)
@@ -194,7 +194,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler)
 
 	// 维护组件只接收日志最小接口、两项清理函数和媒体 Cleanup 接口。
-	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.ChatHistory.DeleteBefore, cfg, deps.Agent.CleanupSessions)
+	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.Store.DeleteHistoryBefore, cfg, deps.Agent.CleanupSessions)
 	maint.Media = deps.Media
 	maint.RegisterCronHandlers(m.cronManager.RegisterMaintenanceHandler)
 
@@ -210,7 +210,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	for _, target := range targets {
 		platforms = append(platforms, target.Name)
 	}
-	elnisDeps := elnisBridge{next: deps.Store.NextIDSequence, repo: deps.Store.ElnisEvents(), media: deps.Media}
+	elnisDeps := elnisBridge{next: deps.Store.NextIDSequence, repo: deps.Store, media: deps.Media}
 	// ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
 	// 平台能力分别注入发送与按名称调用 API 的函数，模型解析只返回所需选择数据。
 	service, err := elnis.NewService(elnis.Options{
@@ -304,7 +304,7 @@ func cronError(err error) error {
 }
 
 func (b cronBridge) Upsert(ctx context.Context, req elcron.UpsertJobRequest) (*elcron.Job, error) {
-	row, err := b.repo.Upsert(ctx, storage.UpsertCronJobRequest{Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, NextRunAt: req.NextRunAt})
+	row, err := b.repo.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: req.Name, Handler: req.Handler, Schedule: req.Schedule, Enabled: req.Enabled, NextRunAt: req.NextRunAt})
 	if err != nil {
 		return nil, cronError(err)
 	}

@@ -30,7 +30,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
-	if err := store.Sessions().Create(ctx, row); err != nil {
+	if err := store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	if result, err := svc.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Success {
@@ -44,7 +44,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if got, err := workspace.CurrentWorkspaceDir(workspace.WithWorkspaceStore(ctx, adapter)); err != nil || got != cwd {
 		t.Fatalf("fallback=%q err=%v", got, err)
 	}
-	latest, err := store.Sessions().Get(ctx, row.ID)
+	latest, err := store.GetSession(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_, err := store.Sessions().Mutate(ctx, row.ID, func(latest *storage.Session) error {
+			_, err := store.MutateSession(ctx, row.ID, func(latest *storage.Session) error {
 				fields, err := storage.DecodeSessionMetadata(latest.Metadata)
 				if err != nil {
 					return err
@@ -135,7 +135,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	latest, err := store.Sessions().Get(ctx, row.ID)
+	latest, err := store.GetSession(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

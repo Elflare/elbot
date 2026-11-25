@@ -9,7 +9,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
 	"path/filepath"
 	"testing"
@@ -18,20 +18,20 @@ import (
 func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
 	root := t.TempDir()
-	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history.Repository()}, root)
-	a := NewMessageHandler(MessageHandlerDeps{Media: center, History: history.Repository()})
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history}, root)
+	a := NewMessageHandler(MessageHandlerDeps{Media: center, History: history})
 	resolver := &inboundMediaResolver{}
 	segments := []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}}, {Type: "text", Text: "hello"}, {Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "good"}}}
 	row := &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "1", SenderID: "u", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}, {Type: "text", Text: "hello"}, {Type: "image", PlatformFileID: "good"},
 	})}
-	if err := history.Repository().Append(ctx, row); err != nil {
+	if err := history.AppendChatMessage(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}, PlatformMessageID: "1"}), agentshare.MessageContext{
@@ -55,7 +55,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Err != nil || items[0].Media.Status != operationresult.Success || items[0].Media.Data.ID != ids[2] || resolver.calls != 1 {
 		t.Fatalf("reimport = %#v %v calls %d", items, err, resolver.calls)
 	}
-	original, err := history.Repository().GetByPlatformMessage(ctx, "p", "", "s", "1")
+	original, err := history.GetByPlatformMessage(ctx, "p", "", "s", "1")
 	if err != nil || original.Segments != row.Segments {
 		t.Fatalf("raw history mutated: %#v %v", original, err)
 	}

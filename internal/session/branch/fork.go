@@ -21,7 +21,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	if fromMessageID == "" {
 		return operationresult.Result[*storage.Session]{Status: operationresult.InvalidArguments, Message: "message id is required"}, nil
 	}
-	message, err := s.deps.Messages.Get(ctx, fromMessageID)
+	message, err := s.deps.Messages.GetMessage(ctx, fromMessageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "分支来源消息不存在"}, nil
 	}
@@ -46,7 +46,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 		if original != nil && s.sessionBusy(original.SessionID()) {
 			return operationresult.Result[struct{}]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 		}
-		source, err = s.deps.Sessions.Get(locked, sourceID)
+		source, err = s.deps.Sessions.GetSession(locked, sourceID)
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "分支来源会话不存在"}, nil
 		}
@@ -60,7 +60,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 		if err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
-		message, err = s.deps.Messages.Get(locked, fromMessageID)
+		message, err = s.deps.Messages.GetMessage(locked, fromMessageID)
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "分支来源消息不存在"}, nil
 		}
@@ -106,7 +106,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	if original != nil && s.sessionBusy(original.SessionID()) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
-	latest, err := s.deps.Sessions.Get(locked, sourceID)
+	latest, err := s.deps.Sessions.GetSession(locked, sourceID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "分支来源会话不存在"}, nil
 	}
@@ -123,7 +123,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	if origin != after {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "source session origin changed"}, nil
 	}
-	message, err = s.deps.Messages.Get(locked, fromMessageID)
+	message, err = s.deps.Messages.GetMessage(locked, fromMessageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "分支来源消息不存在"}, nil
 	}
@@ -159,7 +159,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
 		Mode: mode, Status: storage.SessionStatusActive, Title: forkTitle(latest.Title), Metadata: metadata}
 	if prepared.Data == nil {
-		err = s.deps.Sessions.Create(locked, row)
+		err = s.deps.Sessions.CreateSession(locked, row)
 	} else {
 		err = s.deps.Sessions.CreateMaterial(locked, materialCreate(row, sourceID, prepared.Data))
 	}
@@ -194,7 +194,7 @@ func (s *Service) forkBoundary(ctx context.Context, sourceID string, message *st
 	if len(resultIDs) == 0 {
 		return operationresult.Result[string]{Status: operationresult.Success, Data: message.ID}, nil
 	}
-	result, err := s.deps.Messages.Get(ctx, resultIDs[len(resultIDs)-1])
+	result, err := s.deps.Messages.GetMessage(ctx, resultIDs[len(resultIDs)-1])
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}

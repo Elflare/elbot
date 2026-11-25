@@ -22,7 +22,7 @@ type captureGroupHistory struct {
 	rows []*storage.ChatMessage
 }
 
-func (h *captureGroupHistory) Append(_ context.Context, row *storage.ChatMessage) error {
+func (h *captureGroupHistory) AppendChatMessage(_ context.Context, row *storage.ChatMessage) error {
 	h.rows = append(h.rows, row)
 	return nil
 }

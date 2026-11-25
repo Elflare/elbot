@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	"errors"
 	"image"
 	"image/png"
@@ -15,14 +16,13 @@ import (
 
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/share"
 )
 
 func newMediaAPITest(t *testing.T, history media.History) (*MediaRuntime, *media.MediaCenter) {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(t.Context(), filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,18 +103,18 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 }
 
 func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
-	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	runtime, center := newMediaAPITest(t, history.Repository())
+	runtime, center := newMediaAPITest(t, history)
 	record, err := center.ImportBytes(t.Context(), []byte("file"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored := storage.ChatMessage{Platform: "test", ChatID: "chat", PlatformMessageID: "message", Segments: `[{"type":"file","platform_file_id":"file"}]`}
-	if err := history.Repository().Append(t.Context(), &stored); err != nil {
+	if err := history.AppendChatMessage(t.Context(), &stored); err != nil {
 		t.Fatal(err)
 	}
 	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ChatID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}

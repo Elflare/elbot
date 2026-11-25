@@ -20,8 +20,8 @@ type Deps struct {
 	LocalSourcePath func(string) (string, error) // 共用文件 URI 解析规则。
 	SensitivePath   func(string) bool            // 共用敏感路径限制。
 	Repository      interface {
-		Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
-		Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
+		SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
+		ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
 		GetBySeq(context.Context, string, contextinfo.ChatType, string, int64, bool) (*storage.ChatMessage, error)
 	}
 	Media interface {

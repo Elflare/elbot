@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/contextmgr"
+	"elbot/internal/session"
+	"time"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -21,11 +24,8 @@ import (
 
 // SupervisorDeps borrows shared resources and business capabilities; their owners retain lifecycle control.
 type SupervisorDeps struct {
-	Control     *control.Supervisor // App 创建的统一操作入口，Agent 仅接入自身能力并供命令消费。
-	Store       storage.Store
-	ChatHistory interface {
-		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
-	} // 借用历史身份查询，用于入站媒体关联。
+	Control    *control.Supervisor // App 创建的统一操作入口，Agent 仅接入自身能力并供命令消费。
+	Store      Store
 	Models     ModelCapabilities
 	Media      *media.MediaCenter
 	Permission *security.Permission // Shared permission service; Agent does not own its lifecycle.
@@ -82,4 +82,19 @@ type PlatformCapabilities interface {
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error)
+}
+
+// Store 是本业务借用的持久化操作，不拥有连接或关闭权。
+type Store interface {
+	FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*storage.Message, error)
+	session.Store
+	contextmgr.Store
+	storage.DialogueRepository
+	GetMedia(ctx context.Context, id string) (*storage.Media, error)
+	FindOutputs(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string, now time.Time) ([]storage.MediaOutput, error)
+	UsageBySession(ctx context.Context, sessionID string) ([]storage.ToolUsageSummary, error)
+	ListInputHistory(ctx context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error)
+	SuccessfulIDs(ctx context.Context, sessionID string, toolCallIDs []string) (map[string]bool, error)
+	CreateToolCallRecord(ctx context.Context, record *storage.ToolCallRecord) error
+	GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 }

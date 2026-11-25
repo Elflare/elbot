@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/operationresult"
 	"elbot/internal/security"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -16,7 +17,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	toolregistry "elbot/internal/tool/registry"
 )
@@ -60,7 +60,7 @@ func (value failingMediaTool) PrepareCall(ctx context.Context, req toolshare.Cal
 
 func TestRunValidatesExactMediaArguments(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 
 func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

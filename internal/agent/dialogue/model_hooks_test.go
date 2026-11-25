@@ -19,7 +19,7 @@ type hookInputCommitter struct {
 	calls int
 }
 
-func (c *hookInputCommitter) Commit(_ context.Context, commit storage.DialogueCommit) error {
+func (c *hookInputCommitter) CommitDialogue(_ context.Context, commit storage.DialogueCommit) error {
 	m := commit.Messages[0]
 	c.calls++
 	c.text = m.Content

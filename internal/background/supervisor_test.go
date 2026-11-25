@@ -19,7 +19,6 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool"
 )
 
@@ -62,17 +61,12 @@ func backgroundDeps(t *testing.T) (*config.Config, SupervisorDeps) {
 	if err := tools.Start(); err != nil {
 		t.Fatal(err)
 	}
-	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = history.Close() })
-	return cfg, SupervisorDeps{Store: store, ChatHistory: history.Repository(), Media: b.media, Tools: tools, Agent: &backgroundExecutionStub{}, Platform: backgroundPlatformStub{}}
+	return cfg, SupervisorDeps{Store: store, Media: b.media, Tools: tools, Agent: &backgroundExecutionStub{}, Platform: backgroundPlatformStub{}}
 }
 
 func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	cfg, deps := backgroundDeps(t)
-	row, err := deps.Store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(), EventKey: "interrupted", ElwispName: "test", Source: "test", SourceID: "one", Status: elnis.StatusQueued})
+	row, err := deps.Store.CreateElnisEvent(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(), EventKey: "interrupted", ElwispName: "test", Source: "test", SourceID: "one", Status: elnis.StatusQueued})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +84,7 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	recovered, err := deps.Store.ElnisEvents().Get(t.Context(), row.ID)
+	recovered, err := deps.Store.GetElnisEvent(t.Context(), row.ID)
 	if err != nil || recovered.Status != elnis.StatusFailed {
 		t.Fatalf("recovery=%#v, %v", recovered, err)
 	}
@@ -117,10 +111,10 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 		t.Fatal("borrowed Tool closed")
 	default:
 	}
-	if _, err := deps.Store.ElnisEvents().Get(t.Context(), row.ID); err != nil {
+	if _, err := deps.Store.GetElnisEvent(t.Context(), row.ID); err != nil {
 		t.Fatal("borrowed store closed", err)
 	}
-	if _, err := deps.ChatHistory.DeleteBefore(t.Context(), time.Time{}); err != nil {
+	if _, err := deps.Store.DeleteHistoryBefore(t.Context(), time.Time{}); err != nil {
 		t.Fatal("borrowed history closed", err)
 	}
 	if err := m.Start(); !errors.Is(err, context.Canceled) {

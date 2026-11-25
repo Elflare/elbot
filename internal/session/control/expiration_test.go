@@ -73,7 +73,7 @@ func TestIdleExpirationIgnoresMetadataAndPreservesHistory(t *testing.T) {
 		if record := records[0]; record.Category != events.LogCategoryLog || record.Level != slog.LevelInfo || record.Identity.SessionID != row.ID || record.Content != fmt.Sprintf("session idle expired binding_version=%d", old.Version()) {
 			t.Fatalf("unexpected idle expiration log: %+v", record)
 		}
-		if _, err := f.store.Sessions().Get(ctx, row.ID); err != nil {
+		if _, err := f.store.GetSession(ctx, row.ID); err != nil {
 			t.Fatal("idle expiry deleted history", err)
 		}
 		if sessions, bindings := f.releaseCounts(); sessions != 1 || bindings != 1 {

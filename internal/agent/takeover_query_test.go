@@ -12,7 +12,7 @@ import (
 func TestBackgroundTakeoverQueryUsesOwnedSessionAndCancellation(t *testing.T) {
 	m, deps, _, ctx := newBackgroundAgent(t)
 	row := &storage.Session{ID: "promoted", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: `{"foreground_origin":{"kind":"cron"}}`, ChatType: "private"}
-	if err := deps.Store.Sessions().Create(ctx, row); err != nil {
+	if err := deps.Store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"", "missing", "promoted"} {

@@ -83,7 +83,7 @@ func (s *Service) mutateTarget(ctx context.Context, scope share.Scope, id string
 	}
 	ctx, id, release := entered.Data.Context, entered.Data.ID, entered.Data.Release
 	defer release()
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
 	}
@@ -93,7 +93,7 @@ func (s *Service) mutateTarget(ctx context.Context, scope share.Scope, id string
 	if !share.CanAccess(scope, row) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Forbidden, Message: "无权访问该会话"}, nil
 	}
-	row, err = s.deps.Sessions.Mutate(ctx, id, update)
+	row, err = s.deps.Sessions.MutateSession(ctx, id, update)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -115,7 +115,7 @@ func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (res
 			err = s.removeDrafts(id)
 		}
 	}()
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
 	}
@@ -128,7 +128,7 @@ func (s *Service) Delete(ctx context.Context, scope share.Scope, id string) (res
 	if s.sessionBusy(id) {
 		return operationresult.Result[struct{}]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
-	if err := s.deps.Sessions.Delete(ctx, id); err != nil {
+	if err := s.deps.Sessions.DeleteSession(ctx, id); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
 	s.clearSessionBindings(ctx, id)

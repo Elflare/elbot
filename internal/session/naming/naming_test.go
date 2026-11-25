@@ -2,6 +2,7 @@ package naming
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type textClient struct {
@@ -34,13 +34,13 @@ func (c textClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.
 
 type fixture struct {
 	s         *Service
-	store     *sqlite.Store
+	store     *storage.Supervisor
 	completed chan NamingCompletedEvent
 }
 
 func newFixture(t *testing.T, step int, call func(context.Context, llm.TextRequest) (llm.TextResult, error)) *fixture {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "session.db"))
+	store, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "session.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func newFixture(t *testing.T, step int, call func(context.Context, llm.TextReque
 			t.Error(err)
 		}
 	})
-	s, err := newTestService(Config{TriggerStep: step}, ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), ResolveNaming: func(context.Context) modelmgr.NamingSelection {
+	s, err := newTestService(Config{TriggerStep: step}, ServiceDeps{Sessions: store, Messages: store, ResolveNaming: func(context.Context) modelmgr.NamingSelection {
 		return modelmgr.NamingSelection{Naming: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "provider", Model: "title"}, Client: textClient{call: call}}}
 	}})
 	if err != nil {
@@ -78,12 +78,12 @@ func newFixture(t *testing.T, step int, call func(context.Context, llm.TextReque
 func (f *fixture) row(t *testing.T, messages ...storage.Message) string {
 	t.Helper()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "user"}, Platform: "test", ChatID: "scope", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"keep":9007199254740993}`, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
-	if err := f.store.Sessions().Create(t.Context(), row); err != nil {
+	if err := f.store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
 	for _, message := range messages {
 		message.SessionID = row.ID
-		if err := f.store.Messages().Append(t.Context(), &message); err != nil {
+		if err := f.store.AppendMessage(t.Context(), &message); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -146,11 +146,11 @@ func TestThresholdFilteringAndPersistentCompletion(t *testing.T) {
 				if i == 1 {
 					role = storage.RoleAssistant
 				}
-				if err := f.store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: fmt.Sprintf("message%d", i)}); err != nil {
+				if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: fmt.Sprintf("message%d", i)}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := f.store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "excluded later"}); err != nil {
+			if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "excluded later"}); err != nil {
 				t.Fatal(err)
 			}
 			e := f.attempt(t, id)
@@ -161,7 +161,7 @@ func TestThresholdFilteringAndPersistentCompletion(t *testing.T) {
 			if e.ResultStatus != events.ResultSucceeded || *e.MessageCount != step {
 				t.Fatalf("event=%+v", e)
 			}
-			row, err := f.store.Sessions().Get(t.Context(), id)
+			row, err := f.store.GetSession(t.Context(), id)
 			if err != nil || row.Title != "雪与火" {
 				t.Fatalf("row=%+v err=%v", row, err)
 			}
@@ -199,12 +199,12 @@ type faultSessions struct {
 	mutations atomic.Int32
 }
 
-func (r *faultSessions) Mutate(ctx context.Context, id string, fn func(*storage.Session) error) (*storage.Session, error) {
+func (r *faultSessions) MutateSession(ctx context.Context, id string, fn func(*storage.Session) error) (*storage.Session, error) {
 	r.mutations.Add(1)
 	if r.err != nil {
 		return nil, r.err
 	}
-	return r.SessionRepository.Mutate(ctx, id, fn)
+	return r.SessionRepository.MutateSession(ctx, id, fn)
 }
 
 func TestThreeFailuresThenFallbackAndPersistenceRetry(t *testing.T) {
@@ -223,14 +223,14 @@ func TestThreeFailuresThenFallbackAndPersistenceRetry(t *testing.T) {
 				return llm.TextResult{Text: output}, nil
 			})
 			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant, Content: "first assistant"}, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "fallback text"})
-			repo := &faultSessions{SessionRepository: f.store.Sessions(), err: errors.New("write failed")}
+			repo := &faultSessions{SessionRepository: f.store, err: errors.New("write failed")}
 			f.s.deps.Sessions = repo
 			for i := 1; i <= 3; i++ {
 				e := f.attempt(t, id)
 				if e.FailureCount != i {
 					t.Fatalf("event=%+v", e)
 				}
-				row, _ := f.store.Sessions().Get(t.Context(), id)
+				row, _ := f.store.GetSession(t.Context(), id)
 				if row.Title != "original" {
 					t.Fatalf("premature fallback: %+v", row)
 				}
@@ -249,7 +249,7 @@ func TestThreeFailuresThenFallbackAndPersistenceRetry(t *testing.T) {
 			if e.FallbackResultStatus != events.ResultSucceeded || e.GenerationResultStatus != events.ResultUnspecified || calls.Load() != 3 {
 				t.Fatalf("retry=%+v calls=%d", e, calls.Load())
 			}
-			row, _ := f.store.Sessions().Get(t.Context(), id)
+			row, _ := f.store.GetSession(t.Context(), id)
 			fields, _ := storage.DecodeSessionMetadata(row.Metadata)
 			if row.Title != "fallback text" || string(fields["title_source"]) != `"fallback"` || string(fields["title_renamed"]) != "true" {
 				t.Fatalf("row=%+v", row)
@@ -268,7 +268,7 @@ func TestStorageFailureDoesNotConsumeGenerationRetries(t *testing.T) {
 		return llm.TextResult{Text: "generated"}, nil
 	})
 	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
-	repo := &faultSessions{SessionRepository: f.store.Sessions(), err: errors.New("storage unavailable")}
+	repo := &faultSessions{SessionRepository: f.store, err: errors.New("storage unavailable")}
 	f.s.deps.Sessions = repo
 	for i := 0; i < 4; i++ {
 		e := f.attempt(t, id)
@@ -292,7 +292,7 @@ func TestManualRenameWinsAndMalformedMetadataFailsPreparation(t *testing.T) {
 	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 	f.s.MaybeScheduleNaming(t.Context(), id)
 	receive(t, started)
-	_, err := f.store.Sessions().Mutate(t.Context(), id, func(row *storage.Session) error {
+	_, err := f.store.MutateSession(t.Context(), id, func(row *storage.Session) error {
 		row.Title = "manual"
 		row.Metadata = `{"title_renamed":true,"title_source":"manual"}`
 		return nil
@@ -308,7 +308,7 @@ func TestManualRenameWinsAndMalformedMetadataFailsPreparation(t *testing.T) {
 	}
 	for _, metadata := range []string{`{`, `{"title_renamed":"bad"}`, `null`} {
 		id := f.row(t)
-		_, err := f.store.Sessions().Mutate(t.Context(), id, func(row *storage.Session) error { row.Metadata = metadata; return nil })
+		_, err := f.store.MutateSession(t.Context(), id, func(row *storage.Session) error { row.Metadata = metadata; return nil })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -329,11 +329,11 @@ func TestNoUserFallbackKeepsOriginalAndDoesNotComplete(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		f.attempt(t, id)
 	}
-	row, _ := f.store.Sessions().Get(t.Context(), id)
+	row, _ := f.store.GetSession(t.Context(), id)
 	if calls.Load() != 3 || row.Title != "original" || strings.Contains(row.Metadata, "title_renamed") {
 		t.Fatalf("row=%+v calls=%d", row, calls.Load())
 	}
-	if err := f.store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "late user"}); err != nil {
+	if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "late user"}); err != nil {
 		t.Fatal(err)
 	}
 	if e := f.attempt(t, id); e.FallbackResultStatus != events.ResultSucceeded || calls.Load() != 3 {
@@ -348,7 +348,7 @@ func TestProtectedTitlesAndMissingRows(t *testing.T) {
 	})
 	for _, source := range []string{"manual", "cron", "compact", "auto", "fallback"} {
 		id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
-		_, err := f.store.Sessions().Mutate(t.Context(), id, func(row *storage.Session) error {
+		_, err := f.store.MutateSession(t.Context(), id, func(row *storage.Session) error {
 			row.Metadata = fmt.Sprintf(`{"title_renamed":true,"title_source":%q}`, source)
 			return nil
 		})
@@ -394,7 +394,7 @@ func TestPreparationFailureIdentityAndRetry(t *testing.T) {
 	if e.MessageCount != nil || !sameNamingError(e.PreparationError, original) || e.FailureCount != 0 || e.Identity.SessionID != id || e.Identity.RequestID != "request" {
 		t.Fatalf("event=%+v", e)
 	}
-	f.s.deps.Messages = f.store.Messages()
+	f.s.deps.Messages = f.store
 	if e := f.attempt(t, id); e.ResultStatus != events.ResultSucceeded {
 		t.Fatalf("retry=%+v", e)
 	}
@@ -402,7 +402,7 @@ func TestPreparationFailureIdentityAndRetry(t *testing.T) {
 
 type messageFunc func(context.Context, string) ([]storage.Message, error)
 
-func (fn messageFunc) ListBySession(ctx context.Context, id string) ([]storage.Message, error) {
+func (fn messageFunc) ListSessionMessages(ctx context.Context, id string) ([]storage.Message, error) {
 	return fn(ctx, id)
 }
 
@@ -419,7 +419,7 @@ func TestSourceDeletedWhileGeneratingDoesNotRetainCache(t *testing.T) {
 	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 	f.s.MaybeScheduleNaming(t.Context(), id)
 	receive(t, started)
-	if err := f.store.Sessions().Delete(t.Context(), id); err != nil {
+	if err := f.store.DeleteSession(t.Context(), id); err != nil {
 		t.Fatal(err)
 	}
 	unblock()

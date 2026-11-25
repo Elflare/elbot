@@ -45,7 +45,7 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	if result, err := f.s.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Incompatible {
 		t.Fatalf("incompatible promotion: %+v %v", result, err)
 	}
-	stored, err := f.store.Sessions().Get(ctx, row.ID)
+	stored, err := f.store.GetSession(ctx, row.ID)
 	if err != nil || !share.IsBackground(stored) || share.WasPromoted(stored) {
 		t.Fatalf("failed promotion committed: %+v %v", stored, err)
 	}
@@ -100,7 +100,7 @@ func TestBindingNotificationFailureDoesNotPreventRelease(t *testing.T) {
 	if sessions, bindings := f.releaseCounts(); sessions != 1 || bindings != 1 {
 		t.Fatalf("missed releases: %d %d", sessions, bindings)
 	}
-	if _, err := f.store.Sessions().Get(ctx, row.ID); err != nil {
+	if _, err := f.store.GetSession(ctx, row.ID); err != nil {
 		t.Fatal(err)
 	}
 }

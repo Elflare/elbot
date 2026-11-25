@@ -805,7 +805,7 @@ func deliveryPlatformDone(state CronDeliveryState, platformName string) bool {
 	return found
 }
 
-func newCronSQLiteStore(t *testing.T) storage.Store {
+func newCronSQLiteStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	return store

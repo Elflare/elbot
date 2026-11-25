@@ -53,7 +53,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "mixed", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "a"}, {Type: "image", PlatformFileID: "b"},
 	})}
-	if err := get.history.Append(ctx, &row); err != nil {
+	if err := get.history.AppendChatMessage(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
 	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.deps})

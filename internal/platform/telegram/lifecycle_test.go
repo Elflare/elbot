@@ -153,7 +153,7 @@ func TestRuntimeStopsIngressAndWaitsForAcceptedWork(t *testing.T) {
 	if handled.Load() != 1 {
 		t.Fatalf("handled=%d", handled.Load())
 	}
-	if err := a.chatHistory.Append(context.Background(), &storage.ChatMessage{Platform: config.PlatformTelegram, ChatType: "private", ChatID: "9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
+	if err := a.chatHistory.AppendChatMessage(context.Background(), &storage.ChatMessage{Platform: config.PlatformTelegram, ChatType: "private", ChatID: "9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
 		t.Fatalf("borrowed history closed: %v", err)
 	}
 	if err := a.Wait(observer); err != nil {

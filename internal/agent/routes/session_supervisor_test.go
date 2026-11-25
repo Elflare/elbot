@@ -26,7 +26,7 @@ func (sessionTestMaterials) MaterialFor(llm.Origin) (session.MaterialPreparer, e
 }
 
 // newSessionSupervisor uses the real Session lifecycle; each test owns its store.
-func newSessionSupervisor(t *testing.T, store storage.Store, configure ...func(*session.SupervisorDeps)) *session.Supervisor {
+func newSessionSupervisor(t *testing.T, store session.Store, configure ...func(*session.SupervisorDeps)) *session.Supervisor {
 	t.Helper()
 	cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 100000}}}
 	deps := session.SupervisorDeps{Store: store, Models: sessionTestModels{}, Materials: sessionTestMaterials{},

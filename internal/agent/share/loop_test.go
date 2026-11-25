@@ -18,7 +18,9 @@ import (
 
 type loopSession struct{ row storage.Session }
 
-func (s *loopSession) Get(context.Context, string) (*storage.Session, error) { return &s.row, nil }
+func (s *loopSession) GetSession(context.Context, string) (*storage.Session, error) {
+	return &s.row, nil
+}
 
 func TestLoopRefreshAcrossTakeover(t *testing.T) {
 	live := &loopSession{row: storage.Session{ID: "session", Mode: storage.SessionModeBackground}}

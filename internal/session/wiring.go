@@ -36,8 +36,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		}
 	}()
 
-	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
-	s.nextSequence = sessions.NextSequence
+	s.nextSequence = deps.Store.NextSessionSequence
 	s.sessionIDCode = deps.SessionIDCode
 	s.bindings = binding.NewManager()
 	s.control = control.NewService(
@@ -51,8 +50,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 				deps.AdoptForeground(ctx, row, (*Binding)(b))
 			},
 			AllocateID:       s.allocateID,
-			Sessions:         sessions,
-			Messages:         messages,
+			Sessions:         deps.Store,
+			Messages:         deps.Store,
 			Bindings:         s.bindings,
 			ActiveSessionIDs: deps.ActiveSessionIDs,
 			CheckForeground:  deps.CheckForeground,
@@ -68,10 +67,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	s.branches = branch.NewService(branch.ServiceDeps{
 		NewMessageID:     storage.IDSequence(deps.Store.NextIDSequence).MessageID,
 		AllocateID:       s.allocateID,
-		Sessions:         sessions,
-		Messages:         messages,
-		ToolCalls:        deps.Store.ToolCalls(),
-		Dialogues:        deps.Store.Dialogues(),
+		Sessions:         deps.Store,
+		Messages:         deps.Store,
+		ToolCalls:        deps.Store,
+		Dialogues:        deps.Store,
 		Bindings:         s.control,
 		ActiveSessionIDs: deps.ActiveSessionIDs,
 		MaterialFor: func(origin llm.Origin) (branch.MaterialPreparer, error) {
@@ -88,8 +87,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			Log: func(ctx context.Context, record events.LogRecord) {
 				events.Log(context.WithoutCancel(ctx), record)
 			},
-			Sessions:      sessions,
-			Messages:      messages,
+			Sessions:      deps.Store,
+			Messages:      deps.Store,
 			ResolveNaming: deps.Models.ResolveNaming,
 		},
 	)

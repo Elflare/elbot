@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
@@ -20,14 +21,13 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/processenv"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
 
 func TestSkillMediaBridge(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, ":memory:")
+	store, err := testutil.OpenStore(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	assertPrepared := func(t *testing.T) {
 		t.Helper()
-		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+		refs, err := store.ListMediaIDs(ctx, item.Data.ID)
 		if err != nil || len(refs) != 1 || refs[0].OwnerType != "request" {
 			t.Fatalf("input was not retained before execution: %v %v", refs, err)
 		}
@@ -71,7 +71,7 @@ func TestSkillMediaBridge(t *testing.T) {
 		if err := center.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
-		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
+		refs, err := store.ListMediaIDs(ctx, item.Data.ID)
 		if err != nil || len(refs) != 0 {
 			t.Fatalf("refs %v %v", refs, err)
 		}
@@ -128,25 +128,25 @@ func TestSkillMediaBridge(t *testing.T) {
 					if err := center.Cleanup(ctx); err != nil {
 						t.Fatal(err)
 					}
-					refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)
+					refs, _ := store.ListMediaIDs(ctx, segment.MediaID)
 					if len(refs) != 0 {
 						t.Fatal("output refs leaked")
 
 					}
 					session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "skill-test"}, Platform: "test", ChatID: "test"}
-					if err := store.Sessions().Create(ctx, session); err != nil {
+					if err := store.CreateSession(ctx, session); err != nil {
 						t.Fatal(err)
 					}
 					segments, _ := json.Marshal(result.Data.LLMSegments())
 					message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
-					if err := store.Messages().Append(ctx, message); err != nil {
+					if err := store.AppendMessage(ctx, message); err != nil {
 						t.Fatal(err)
 					}
-					persistent, err := store.MediaReferences().ListByOwner(ctx, "tool_result", message.ID)
+					persistent, err := store.ListByOwner(ctx, "tool_result", message.ID)
 					if err != nil || len(persistent) != 1 || persistent[0].MediaID != segment.MediaID {
 						t.Fatalf("transcript refs %v %v", persistent, err)
 					}
-					if err := store.Sessions().Delete(ctx, session.ID); err != nil {
+					if err := store.DeleteSession(ctx, session.ID); err != nil {
 						t.Fatal(err)
 					}
 				} else if mode != "wait" && mode != "cancel" && (err != nil || result.Status == operationresult.Success) {

@@ -19,7 +19,7 @@ type testReferences struct {
 	remove func(context.Context, storage.MediaReference) error
 }
 
-func (r testReferences) Remove(ctx context.Context, ref storage.MediaReference) error {
+func (r testReferences) RemoveMediaReference(ctx context.Context, ref storage.MediaReference) error {
 	return r.remove(ctx, ref)
 }
 
@@ -67,7 +67,7 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if refs, _ := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); len(refs) != 1 {
+	if refs, _ := store.ListMediaIDs(t.Context(), item.ID); len(refs) != 1 {
 		t.Fatalf("Open added references: %#v", refs)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }

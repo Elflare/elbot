@@ -12,7 +12,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
 )
 
@@ -128,14 +127,14 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 	for _, state := range []string{"current", "missing", "replaced", "unavailable", "without history"} {
 		t.Run(state, func(t *testing.T) {
 			store := testutil.NewSQLiteStore(t)
-			history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+			history, err := testutil.OpenChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = history.Close() })
 			row := &storage.ChatMessage{ID: "missing-history", Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
 			if state != "missing" && state != "without history" {
-				if err := history.Repository().Append(t.Context(), row); err != nil {
+				if err := history.AppendChatMessage(t.Context(), row); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -163,7 +162,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			}
 
 			failure := errors.New("history unavailable")
-			var query History = history.Repository()
+			var query History = history
 			switch state {
 			case "unavailable":
 				query = unavailableHistory{cause: failure}
@@ -183,7 +182,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			items, err := store.Media().FindHistory(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
+			items, err := store.FindHistory(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
 			want := 1
 			if state == "missing" || state == "replaced" {
 				want = 0
@@ -191,10 +190,10 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			if err != nil || len(items) != want {
 				t.Fatalf("history associations=%v error=%v", items, err)
 			}
-			if _, err := store.Media().Get(t.Context(), item.Data.ID); err != nil {
+			if _, err := store.GetMedia(t.Context(), item.Data.ID); err != nil {
 				t.Fatal("Media closed borrowed media store", err)
 			}
-			_, err = history.Repository().GetByPlatformMessage(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
+			_, err = history.GetByPlatformMessage(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
 			if state == "missing" || state == "without history" {
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("history lookup = %v", err)

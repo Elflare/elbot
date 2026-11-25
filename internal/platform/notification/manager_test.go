@@ -21,7 +21,6 @@ import (
 	"elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/signal"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
@@ -290,7 +289,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := sqlite.New(context.Background(), ":memory:")
+	store, err := testutil.OpenStore(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

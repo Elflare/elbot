@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/testutil"
 	"errors"
 	"io"
 	"os"
@@ -15,18 +16,17 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type controlledReferences struct {
-	storage.MediaReferenceRepository
+	Store
 	fail    atomic.Bool
 	calls   atomic.Int32
 	started chan struct{}
 	unblock chan struct{}
 }
 
-func (r *controlledReferences) Remove(ctx context.Context, ref storage.MediaReference) error {
+func (r *controlledReferences) RemoveMediaReference(ctx context.Context, ref storage.MediaReference) error {
 	n := r.calls.Add(1)
 	if n == 1 && r.started != nil {
 		close(r.started)
@@ -35,28 +35,21 @@ func (r *controlledReferences) Remove(ctx context.Context, ref storage.MediaRefe
 	if r.fail.Load() {
 		return errors.New("reference store unavailable")
 	}
-	return r.MediaReferenceRepository.Remove(ctx, ref)
+	return r.Store.RemoveMediaReference(ctx, ref)
 }
 
-type usageStore struct {
-	Store
-	refs *controlledReferences
-}
-
-func (s usageStore) MediaReferences() storage.MediaReferenceRepository { return s.refs }
-
-func newUsageCenter(t *testing.T) (*MediaCenter, *sqlite.Store, *controlledReferences) {
+func newUsageCenter(t *testing.T) (*MediaCenter, *storage.Supervisor, *controlledReferences) {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "db"))
+	store, err := testutil.OpenStore(t.Context(), filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	refs := &controlledReferences{MediaReferenceRepository: store.MediaReferences()}
+	refs := &controlledReferences{Store: store}
 	cfg := config.Default()
 	cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
 	cfg.FileDelivery.Backend = "base64"
-	m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: usageStore{Store: store, refs: refs}})
+	m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: refs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +103,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	remaining, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 1 {
 		t.Fatalf("other usage lost: %v %v", remaining, err)
 	}
@@ -132,7 +125,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	}
 	m.PublishUsageFinished(ctx, []UsageID{b.UsageID})
 	drainUsageEvents(t, m)
-	remaining, err = store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	remaining, err = store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 0 {
 		t.Fatal(remaining, err)
 	}
@@ -153,7 +146,7 @@ func TestMediaCenterCloseReturnsUsageReleaseError(t *testing.T) {
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), mediaID); err != nil || len(remaining) != 0 {
+	if remaining, err := store.ListMediaIDs(t.Context(), mediaID); err != nil || len(remaining) != 0 {
 		t.Fatalf("references after retry = %v, err = %v", remaining, err)
 	}
 }
@@ -192,7 +185,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	if result, err := m.Hold(t.Context(), item.ID); err != nil || result.Status != operationresult.Unavailable {
 		t.Fatalf("accepted after close: result=%+v err=%v", result, err)
 	}
-	remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	remaining, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 2 {
 		t.Fatal("released before cleanup exited", remaining, err)
 	}
@@ -200,7 +193,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	remaining, err = store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	remaining, err = store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 0 {
 		t.Fatal("rejected end fact lost", remaining, err)
 	}
@@ -210,7 +203,7 @@ func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 	m, store, refs := newUsageCenter(t)
 	itemResult, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
 	item := requireMediaSuccess(t, itemResult, err)
-	metadata, err := store.Media().Get(t.Context(), item.ID)
+	metadata, err := store.GetMedia(t.Context(), item.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +236,7 @@ func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("workspace survived", err)
 	}
-	remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	remaining, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 0 {
 		t.Fatal(remaining, err)
 	}

@@ -33,14 +33,14 @@ func TestHistoryMergesMatchingAssociationsAndOutputs(t *testing.T) {
 		{Platform: "test", ChatID: "scope", MessageID: "message", SegmentIndex: 1, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(time.Hour)},
 		{Platform: "test", ChatID: "scope", MessageID: "message", SegmentIndex: 2, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(-time.Hour)},
 	} {
-		if err := store.Media().SaveOutput(t.Context(), output); err != nil {
+		if err := store.SaveOutput(t.Context(), output); err != nil {
 			t.Fatal(err)
 		}
 	}
 	gets := map[string]int{}
 	m.media = testRepository{MediaRepository: m.media, get: func(ctx context.Context, id string) (*storage.Media, error) {
 		gets[id]++
-		return store.Media().Get(ctx, id)
+		return store.GetMedia(ctx, id)
 	}}
 	entries, err := m.LoadHistoryMedia(t.Context(), key)
 	if err != nil {
@@ -76,11 +76,11 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	if err := m.Cleanup(t.Context(), unavailable); !errors.Is(err, failure) {
 		t.Fatalf("query failure = %v", err)
 	}
-	records, err := store.Media().FindHistory(t.Context(), "test", "", "scope", "message")
+	records, err := store.FindHistory(t.Context(), "test", "", "scope", "message")
 	if err != nil || len(records) != 105 {
 		t.Fatalf("failure removed associations: %d %v", len(records), err)
 	}
-	record, _ := store.Media().Get(t.Context(), item.ID)
+	record, _ := store.GetMedia(t.Context(), item.ID)
 	if record.Deleting {
 		t.Fatal("query failure did not stop cleanup")
 	}
@@ -92,11 +92,11 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	if err := m.ReconcileHistory(t.Context(), replaced); err != nil {
 		t.Fatal(err)
 	}
-	records, err = store.Media().FindHistory(t.Context(), "test", "", "scope", "message")
+	records, err = store.FindHistory(t.Context(), "test", "", "scope", "message")
 	if err != nil || len(records) != 0 || calls != 1 {
 		t.Fatalf("pagination = %d queries=%d %v", len(records), calls, err)
 	}
-	if refs, _ := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); len(refs) != 0 {
+	if refs, _ := store.ListMediaIDs(t.Context(), item.ID); len(refs) != 0 {
 		t.Fatal("history references retained")
 	}
 }
@@ -119,7 +119,7 @@ func TestReconcileKeepsExistingAndDeletesConfirmedMissing(t *testing.T) {
 	if err := m.ReconcileHistory(t.Context(), history); err != nil {
 		t.Fatal(err)
 	}
-	records, err := store.Media().ListHistory(t.Context(), "", 10)
+	records, err := store.ListHistory(t.Context(), "", 10)
 	if err != nil || len(records) != 1 || records[0].HistoryID != "0" {
 		t.Fatalf("associations = %#v %v", records, err)
 	}
@@ -152,11 +152,11 @@ func TestReconcileHistorySeparatesChatTypes(t *testing.T) {
 				if kind == missing {
 					want = 0
 				}
-				records, err := store.Media().FindHistory(t.Context(), "test", kind, "same", "same")
+				records, err := store.FindHistory(t.Context(), "test", kind, "same", "same")
 				if err != nil || len(records) != want {
 					t.Errorf("%s associations = %v, %v; want %d", kind, records, err, want)
 				}
-				refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+				refs, err := store.ListMediaIDs(t.Context(), id)
 				if err != nil || len(refs) != want {
 					t.Errorf("%s references = %v, %v; want %d", kind, refs, err, want)
 				}

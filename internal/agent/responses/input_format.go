@@ -62,7 +62,7 @@ func (s *turnState) ensureInputFormat(ctx context.Context) (operationresult.Resu
 	}
 	defer release()
 	result := operationresult.Result[struct{}]{Status: operationresult.Success}
-	row, err := s.route.SessionRows.Mutate(locked, s.Session.ID, func(row *storage.Session) error {
+	row, err := s.route.SessionRows.MutateSession(locked, s.Session.ID, func(row *storage.Session) error {
 		version, err := sessionInputVersion(row)
 		if err != nil {
 			return err

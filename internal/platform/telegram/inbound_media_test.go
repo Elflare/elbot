@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,12 +16,11 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 		fmt.Fprint(w, "image")
 	}))
 	defer server.Close()
-	a := newTestAdapter(t, Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, history.Repository())
+	a := newTestAdapter(t, Config{BotToken: "123:secret", APIBaseURL: server.URL, FileBaseURL: server.URL}, history)
 
 	var captured share.MessageContext
 	handled := 0
@@ -51,7 +51,7 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	if captured.Conversation.Source.ChatID != "9" || captured.Conversation.Source.ChatType != "group" {
 		t.Fatalf("conversation source = %+v", captured.Conversation.Source)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformTelegram, "group", "9", "1")
+	row, err := history.GetByPlatformMessage(ctx, config.PlatformTelegram, "group", "9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}

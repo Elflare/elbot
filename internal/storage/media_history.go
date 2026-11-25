@@ -1,0 +1,60 @@
+package storage
+
+import (
+	"context"
+	"elbot/internal/contextinfo"
+	"fmt"
+)
+
+func (r *Supervisor) SaveHistory(ctx context.Context, item HistoryMedia) error {
+	if item.HistoryID == "" || item.Platform == "" || item.ChatID == "" || item.MessageID == "" || item.MediaIndex < 1 || item.MediaID == "" {
+		return fmt.Errorf("history media requires message identity, positive media index and media ID")
+	}
+	if item.Kind != "image" && item.Kind != "file" && item.Kind != "record" {
+		return fmt.Errorf("invalid history media kind %q", item.Kind)
+	}
+	// Each replacement gets a new owner, so delayed reconciliation cannot delete a newer association.
+	item.OwnerID = NewID()
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_history WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? AND media_index=?`, item.Platform, item.ChatType, item.ChatID, item.MessageID, item.MediaIndex); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_history(history_id,platform,chat_type,chat_id,message_id,media_index,kind,media_id,owner_id) VALUES(?,?,?,?,?,?,?,?,?)`, item.HistoryID, item.Platform, item.ChatType, item.ChatID, item.MessageID, item.MediaIndex, item.Kind, item.MediaID, item.OwnerID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *Supervisor) FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]HistoryMedia, error) {
+	return r.queryHistory(ctx, `WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? ORDER BY media_index`, platform, conversationKind, scopeID, messageID)
+}
+
+func (r *Supervisor) ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error) {
+	return r.queryHistory(ctx, `WHERE owner_id>? ORDER BY owner_id LIMIT ?`, afterOwnerID, limit)
+}
+
+func (r *Supervisor) DeleteHistory(ctx context.Context, ownerID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM media_history WHERE owner_id=?`, ownerID)
+	return err
+}
+
+func (r *Supervisor) queryHistory(ctx context.Context, suffix string, args ...any) ([]HistoryMedia, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT history_id,platform,chat_type,chat_id,message_id,media_index,kind,media_id,owner_id FROM media_history `+suffix, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HistoryMedia
+	for rows.Next() {
+		var item HistoryMedia
+		if err := rows.Scan(&item.HistoryID, &item.Platform, &item.ChatType, &item.ChatID, &item.MessageID, &item.MediaIndex, &item.Kind, &item.MediaID, &item.OwnerID); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}

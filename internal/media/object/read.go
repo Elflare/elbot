@@ -25,7 +25,7 @@ func (m *Manager) Info(ctx context.Context, id string) (operationresult.Result[s
 	if !share.ValidID(id) {
 		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidArguments, Message: "invalid media ID"}, nil
 	}
-	item, err := m.media.Get(ctx, id)
+	item, err := m.media.GetMedia(ctx, id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[share.MediaInfo]{Status: operationresult.NotFound, Message: "media unavailable"}, nil

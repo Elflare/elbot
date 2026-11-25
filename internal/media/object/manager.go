@@ -48,8 +48,8 @@ type MediaRepository interface {
 	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]storage.HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]storage.HistoryMedia, error)
 	DeleteHistory(ctx context.Context, ownerID string) error
-	Get(ctx context.Context, id string) (*storage.Media, error)
-	Upsert(ctx context.Context, media *storage.Media) error
+	GetMedia(ctx context.Context, id string) (*storage.Media, error)
+	UpsertMedia(ctx context.Context, media *storage.Media) error
 	GetSignedURL(ctx context.Context, mediaID string) (*storage.MediaSignedURL, error)
 	UpsertSignedURL(ctx context.Context, record *storage.MediaSignedURL) error
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]storage.Media, error)
@@ -63,8 +63,8 @@ type MediaRepository interface {
 
 // ReferenceRepository 不承接会话引用的事务提交。
 type ReferenceRepository interface {
-	Add(ctx context.Context, reference *storage.MediaReference) error
-	Remove(ctx context.Context, reference storage.MediaReference) error
+	AddMediaReference(ctx context.Context, reference *storage.MediaReference) error
+	RemoveMediaReference(ctx context.Context, reference storage.MediaReference) error
 }
 
 // History 只在对账、清理调用时借用，不保存完整历史服务。

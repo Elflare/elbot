@@ -109,7 +109,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: permission})
 	sessions := newSessionSupervisor(t, store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
-	stateService := toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	stateService := toolstate.NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Identity: identity, Execution: directiveExecution{}, ToolState: directiveState{stateService},
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return sessions.WorkspaceStore(id)
@@ -123,14 +123,14 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	row := created.Data
 	before := row.Metadata
 	failure := errors.New("commit rejected")
-	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
+	repo := &toolStateFaultRepo{SessionRepository: store, failure: failure}
 	*stateService = *toolstate.NewStateService(repo, toolregistry.BackgroundDiscoveredTools)
 	input := "question @tool:worker @skill:doc"
 	_, tools, skills, err := coordinator.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) {
 		t.Fatalf("err=%v", err)
 	}
-	latest, _ := store.Sessions().Get(ctx, row.ID)
+	latest, _ := store.GetSession(ctx, row.ID)
 	if row.Metadata != before || latest.Metadata != before {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
@@ -150,7 +150,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if strings.Join(tools.Data.Injected, ",") != "alpha" || strings.Join(skills.InjectedWrappers, ",") != "wrapper" {
 		t.Fatalf("results=%+v %+v", tools, skills)
 	}
-	latest, _ = store.Sessions().Get(ctx, row.ID)
+	latest, _ = store.GetSession(ctx, row.ID)
 	if latest.Metadata != row.Metadata {
 		t.Fatal("call snapshot differs from committed row")
 	}
@@ -166,20 +166,13 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	}
 }
 
-type toolStateFaultStore struct {
-	storage.Store
-	repo *toolStateFaultRepo
-}
-
-func (s toolStateFaultStore) Sessions() storage.SessionRepository { return s.repo }
-
 type toolStateFaultRepo struct {
 	storage.SessionRepository
 	failure error
 }
 
-func (r *toolStateFaultRepo) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
-	return r.SessionRepository.Mutate(ctx, id, func(row *storage.Session) error {
+func (r *toolStateFaultRepo) MutateSession(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
+	return r.SessionRepository.MutateSession(ctx, id, func(row *storage.Session) error {
 		if err := update(row); err != nil {
 			return err
 		}

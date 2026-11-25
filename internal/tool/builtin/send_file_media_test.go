@@ -5,19 +5,19 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"path/filepath"
 	"testing"
 
 	"elbot/internal/media"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
 
 func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

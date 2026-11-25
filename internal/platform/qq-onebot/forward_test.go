@@ -5,6 +5,7 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -14,17 +15,16 @@ import (
 
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := newTestAdapter(t, Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history)
 	a.transport = newTestTransport(t, func(req request) response {
 		t.Errorf("unquoted forward called %s", req.Action)
 		return response{Status: "failed", Retcode: 1}
@@ -35,7 +35,7 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	if handler.text != "前[forward]后" {
 		t.Fatalf("text=%q", handler.text)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group", "9", "123")
+	row, err := history.GetByPlatformMessage(ctx, "qqonebot", "group", "9", "123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +55,12 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 				ctx := context.Background()
 				var repo storage.ChatHistoryRepository
 				if withHistory {
-					history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+					history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 					if err != nil {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { _ = history.Close() })
-					repo = history.Repository()
+					repo = history
 				}
 				original := Event{MessageType: kind, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 987654321, Sender: Sender{UserID: 1, Nickname: "外层发送者"}, Message: json.RawMessage(`[{"type":"text","data":{"text":"外层前\n"}},{"type":"forward","data":{"id":"resource-secret"}},{"type":"text","data":{"text":"\n外层后"}},{"type":"image","data":{"file":"outside-image","url":"https://example.com/outside.png"}}]`)}
 				var forwardCalls, getCalls atomic.Int32

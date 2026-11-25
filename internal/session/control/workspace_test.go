@@ -17,7 +17,7 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := context.Background(), privateScope()
 	row := f.create(t, scope, "one")
-	if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+	if _, err := f.store.MutateSession(ctx, row.ID, func(row *storage.Session) error {
 		row.Metadata = `{"unknown":9007199254740993,"workspace_dir":"/initial"}`
 		return nil
 	}); err != nil {
@@ -42,7 +42,7 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 		}
 	})
 	workers.Wait()
-	stored, err := f.store.Sessions().Get(ctx, row.ID)
+	stored, err := f.store.GetSession(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx := context.Background()
 	row := f.create(t, privateScope(), "one")
-	if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+	if _, err := f.store.MutateSession(ctx, row.ID, func(row *storage.Session) error {
 		row.Metadata = `{"workspace_agent_to_user":false}`
 		return nil
 	}); err != nil {

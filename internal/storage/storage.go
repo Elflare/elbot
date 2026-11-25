@@ -456,30 +456,16 @@ type SessionSummary struct {
 	Messages []Message
 }
 
-type Store interface {
-	NextIDSequence(context.Context) (int64, error) // Shared non-Session sequence; allocated before business transactions.
-	Sessions() SessionRepository
-	Messages() MessageRepository
-	Dialogues() DialogueRepository
-	Media() MediaRepository
-	MediaReferences() MediaReferenceRepository
-	ContextSummaries() ContextSummaryRepository
-	ToolCalls() ToolCallRepository
-	CronJobs() CronJobRepository
-	ElnisEvents() ElnisEventRepository
-	Close() error
-}
-
 type SessionRepository interface {
 	// NextSequence 原子领取全局 Session 序号；独立于会话事务，已领取的号码不回收。
-	NextSequence(context.Context) (int64, error)
-	Create(ctx context.Context, session *Session) error
+	NextSessionSequence(context.Context) (int64, error)
+	CreateSession(ctx context.Context, session *Session) error
 	CreateMaterial(context.Context, SessionMaterialCreate) error
-	Get(ctx context.Context, id string) (*Session, error)
-	Mutate(ctx context.Context, id string, update func(*Session) error) (*Session, error)
-	List(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)
-	Count(ctx context.Context, req ListSessionsRequest) (int, error)
-	Delete(ctx context.Context, id string) error
+	GetSession(ctx context.Context, id string) (*Session, error)
+	MutateSession(ctx context.Context, id string, update func(*Session) error) (*Session, error)
+	ListSessions(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)
+	CountSessions(ctx context.Context, req ListSessionsRequest) (int, error)
+	DeleteSession(ctx context.Context, id string) error
 	ListExpiredIDs(ctx context.Context, cutoff time.Time) ([]string, error)
 	DeleteIfExpired(ctx context.Context, id string, cutoff time.Time) (bool, error)
 }
@@ -492,13 +478,13 @@ type MessageStats struct {
 }
 
 type MessageRepository interface {
-	Stats(context.Context, string) (MessageStats, error)
+	MessageStats(context.Context, string) (MessageStats, error)
 	CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error)                         // 对指定分支范围的对话及工具记录计数。
 	ListInputHistory(ctx context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error)              // 最近的非空用户正文，先限量再按原文去重。
 	ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]Message, error) // 限量倒序读取原始对话及工具记录，不应用压缩摘要。
-	Append(ctx context.Context, message *Message) error
-	Get(ctx context.Context, id string) (*Message, error)
-	ListBySession(ctx context.Context, sessionID string) ([]Message, error)
+	AppendMessage(ctx context.Context, message *Message) error
+	GetMessage(ctx context.Context, id string) (*Message, error)
+	ListSessionMessages(ctx context.Context, sessionID string) ([]Message, error)
 	ListBySessionUpTo(ctx context.Context, sessionID, toMessageID string) ([]Message, error)
 	ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]Message, error)
 	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]Message, error)
@@ -523,8 +509,8 @@ type MediaRepository interface {
 	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error)
 	DeleteHistory(ctx context.Context, ownerID string) error
-	Get(ctx context.Context, id string) (*Media, error)
-	Upsert(ctx context.Context, media *Media) error
+	GetMedia(ctx context.Context, id string) (*Media, error)
+	UpsertMedia(ctx context.Context, media *Media) error
 	GetSignedURL(ctx context.Context, mediaID string) (*MediaSignedURL, error)
 	UpsertSignedURL(ctx context.Context, record *MediaSignedURL) error
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)
@@ -538,24 +524,17 @@ type MediaRepository interface {
 }
 
 type MediaReferenceRepository interface {
-	Add(ctx context.Context, reference *MediaReference) error
-	AddAll(ctx context.Context, references []MediaReference) error
-	Remove(ctx context.Context, reference MediaReference) error
+	AddMediaReference(ctx context.Context, reference *MediaReference) error
+	AddMediaReferences(ctx context.Context, references []MediaReference) error
+	RemoveMediaReference(ctx context.Context, reference MediaReference) error
 	ListByOwner(ctx context.Context, ownerType, ownerID string) ([]MediaReference, error)
 	ListMediaIDs(ctx context.Context, mediaID string) ([]MediaReference, error)
 }
 
-type ToolCallRepository interface {
-	Create(ctx context.Context, record *ToolCallRecord) error
-	ListBySession(ctx context.Context, sessionID string) ([]ToolCallRecord, error)
-	SuccessfulIDs(ctx context.Context, sessionID string, toolCallIDs []string) (map[string]bool, error)
-	UsageBySession(ctx context.Context, sessionID string) ([]ToolUsageSummary, error)
-}
-
 type CronJobRepository interface {
-	Upsert(ctx context.Context, req UpsertCronJobRequest) (*CronJob, error)
+	UpsertCronJob(ctx context.Context, req UpsertCronJobRequest) (*CronJob, error)
 	GetByName(ctx context.Context, name string) (*CronJob, error)
-	List(ctx context.Context, includeDisabled bool) ([]CronJob, error)
+	ListCronJobs(ctx context.Context, includeDisabled bool) ([]CronJob, error)
 	ListEnabled(ctx context.Context) ([]CronJob, error)
 	UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error
 	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
@@ -570,10 +549,10 @@ type CronJobRepository interface {
 type ElnisEventRepository interface {
 	// FailInterrupted applies the caller's recovery policy and releases event references atomically.
 	FailInterrupted(ctx context.Context, fromStatuses []string, failedStatus, reason string) error
-	Create(ctx context.Context, req CreateElnisEventRequest) (*ElnisEvent, error)
-	Get(ctx context.Context, id string) (*ElnisEvent, error)
+	CreateElnisEvent(ctx context.Context, req CreateElnisEventRequest) (*ElnisEvent, error)
+	GetElnisEvent(ctx context.Context, id string) (*ElnisEvent, error)
 	GetByKey(ctx context.Context, elwispName, source, sourceID string) (*ElnisEvent, error)
-	Update(ctx context.Context, req UpdateElnisEventRequest) error
+	UpdateElnisEvent(ctx context.Context, req UpdateElnisEventRequest) error
 	PrepareReport(ctx context.Context, req PrepareElnisReportRequest) error
 	ResetDeliveringReports(ctx context.Context, deliveringStatus, resultReadyStatus string) error
 	ListResultReadyReportIDs(ctx context.Context, resultReadyStatus string) ([]string, error)
@@ -590,18 +569,12 @@ type ElnisEventRepository interface {
 
 type ChatHistoryRepository interface {
 	GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*ChatMessage, error)
-	Append(ctx context.Context, message *ChatMessage) error
+	AppendChatMessage(ctx context.Context, message *ChatMessage) error
 	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
 	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (messageID, senderID string, err error)
 	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*ChatMessage, error)
 	GetByPlatformMessages(context.Context, string, contextinfo.ChatType, string, []string) ([]ChatMessage, error)
-	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
-	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
-	DeleteBefore(ctx context.Context, cutoff time.Time) (int, error)
-}
-
-type ContextSummaryRepository interface {
-	Create(ctx context.Context, summary *ContextSummary) error
-	LatestBySession(ctx context.Context, sessionID string) (*ContextSummary, error)
-	LatestBySessionUpTo(ctx context.Context, sessionID, toMessageID string) (*ContextSummary, error)
+	SearchChatHistory(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
+	ChatHistoryAround(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
+	DeleteHistoryBefore(ctx context.Context, cutoff time.Time) (int, error)
 }

@@ -20,11 +20,11 @@ type failingHistoryLogRepository struct {
 	err error
 }
 
-func (r failingHistoryLogRepository) Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
+func (r failingHistoryLogRepository) SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
 	return nil, r.err
 }
 
-func (r failingHistoryLogRepository) Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
+func (r failingHistoryLogRepository) ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
 	return nil, r.err
 }
 
@@ -43,7 +43,7 @@ func TestHistoryQueryFaultPreservesOriginalError(t *testing.T) {
 func TestHistoryQueryLogIncludesResult(t *testing.T) {
 	ctx, mediaTool, _ := newHistoryMediaToolTest(t)
 	for _, messageID := range []string{"long", "longer"} {
-		if err := mediaTool.history.Append(ctx, &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: messageID, SenderID: "u", Text: strings.Repeat("雪🔥", 700)}); err != nil {
+		if err := mediaTool.history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: messageID, SenderID: "u", Text: strings.Repeat("雪🔥", 700)}); err != nil {
 			t.Fatal(err)
 		}
 	}

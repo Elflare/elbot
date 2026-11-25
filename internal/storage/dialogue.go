@@ -129,7 +129,7 @@ func (c DialogueCommit) MessageRows() []*Message {
 
 type DialogueRepository interface {
 	// Commit distinguishes storage IO failures from internal validation errors.
-	Commit(context.Context, DialogueCommit) error
+	CommitDialogue(context.Context, DialogueCommit) error
 	CreateExchange(context.Context, *NativeExchange) error
 	FinishExchange(context.Context, string, string, string, string, string) error
 	CurrentCheckpoint(context.Context, string) (*NativeCheckpoint, error)

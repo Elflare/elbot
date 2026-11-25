@@ -28,12 +28,12 @@ type replyTestRepository struct {
 	appendErr, mapErr error
 }
 
-func (r *replyTestRepository) Append(ctx context.Context, msg *storage.Message) error {
+func (r *replyTestRepository) AppendMessage(ctx context.Context, msg *storage.Message) error {
 	*r.events = append(*r.events, "save")
 	if r.appendErr != nil && msg.Role == storage.RoleAssistant {
 		return r.appendErr
 	}
-	return r.MessageRepository.Append(ctx, msg)
+	return r.MessageRepository.AppendMessage(ctx, msg)
 }
 
 type replyTestPlatform struct {
@@ -78,10 +78,10 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f := &replyTestFixture{}
 	store := newTestStore(t)
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, ChatType: "private"}
-	if err := store.Sessions().Create(context.Background(), row); err != nil {
+	if err := store.CreateSession(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}
-	f.repo = &replyTestRepository{MessageRepository: store.Messages(), events: &f.events}
+	f.repo = &replyTestRepository{MessageRepository: store, events: &f.events}
 	f.platform = &replyTestPlatform{events: &f.events, receipt: delivery.Receipt{
 		PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "actual", PlatformMessageID: "sent"}},
 	}}
@@ -96,7 +96,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 		Dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
 		Hooks:      f.hooks,
 	})
-	messages := &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
+	messages := &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: replyTestDialogues{DialogueRepository: store, repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store}}}
 	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{ExecutionSender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
@@ -167,7 +167,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					t.Fatalf("handled send failure escaped: %v", err)
 				}
 				if failure == "map" {
-					rows, err := f.repo.ListBySession(f.ctx, f.in.Session.ID)
+					rows, err := f.repo.ListSessionMessages(f.ctx, f.in.Session.ID)
 					if err != nil || len(rows) != 0 {
 						t.Fatalf("failed transaction retained history: %+v %v", rows, err)
 					}
@@ -262,7 +262,7 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 			if err != nil || got.MessageID == "" || f.platform.text != "" {
 				t.Fatalf("result=%+v err=%v text=%q", got, err, f.platform.text)
 			}
-			message, err := f.repo.Get(f.ctx, got.MessageID)
+			message, err := f.repo.GetMessage(f.ctx, got.MessageID)
 			if err != nil || message.Content != "history" {
 				t.Fatalf("history=%+v err=%v", message, err)
 			}
@@ -285,7 +285,7 @@ type replyTestDialogues struct {
 	repo *replyTestRepository
 }
 
-func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r replyTestDialogues) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	for _, msg := range commit.Messages {
 		*r.repo.events = append(*r.repo.events, "save")
 		if msg.Role == storage.RoleAssistant && r.repo.appendErr != nil {
@@ -298,7 +298,7 @@ func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueC
 	if r.repo.mapErr != nil && len(commit.PlatformMessageMaps) > 0 {
 		commit.PlatformMessageMaps = append(commit.PlatformMessageMaps, commit.PlatformMessageMaps[0])
 	}
-	err := r.DialogueRepository.Commit(ctx, commit)
+	err := r.DialogueRepository.CommitDialogue(ctx, commit)
 	if err != nil && r.repo.mapErr != nil {
 		return r.repo.mapErr
 	}

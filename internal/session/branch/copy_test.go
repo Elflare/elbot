@@ -26,7 +26,7 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			source := f.source(t, storage.SessionModeBackground)
 			parent := f.message(t, source.ID, storage.RoleUser)
 			answer := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: parent.ID, ReplyToMessageID: parent.ID, ReplyToPlatformMessageID: "platform"}
-			if err := f.store.Messages().Append(t.Context(), answer); err != nil {
+			if err := f.store.AppendMessage(t.Context(), answer); err != nil {
 				t.Fatal(err)
 			}
 			batch := toolBatch(t, f, source.ID, "batch", false)
@@ -34,13 +34,13 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[0].ID, ToolName: "tool", Success: true},
 				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[1].ID, ToolName: "tool", Success: false, Error: "failed"},
 			} {
-				if err := f.store.ToolCalls().Create(t.Context(), &record); err != nil {
+				if err := f.store.CreateToolCallRecord(t.Context(), &record); err != nil {
 					t.Fatal(err)
 				}
 			}
 			mediaID := "media:" + strings.Repeat("a", 64)
 			if native {
-				if err := f.store.Media().Upsert(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
+				if err := f.store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
 					t.Fatal(err)
 				}
 				f.material = func(context.Context, *storage.Session, *storage.Message) (*branch.PreparedMaterial, error) {
@@ -68,7 +68,7 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			if string(metadata["title_source"]) != `"wrong"` || strings.Contains(row.Metadata, "source_only") {
 				t.Fatal("metadata ownership violated")
 			}
-			rows, err := f.store.Messages().ListBySession(t.Context(), row.ID)
+			rows, err := f.store.ListSessionMessages(t.Context(), row.ID)
 			if err != nil || len(rows) != 5 {
 				t.Fatalf("messages: %+v %v", rows, err)
 			}
@@ -82,11 +82,11 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			if len(ids) != 2 || ids[0] != rows[3].ID || ids[1] != rows[4].ID || ids[0] == batch.Results[0].ID || rows[3].ToolCallID != batch.Results[0].ToolCallID {
 				t.Fatal("tool result links not remapped")
 			}
-			records, err := f.store.ToolCalls().ListBySession(t.Context(), row.ID)
+			records, err := f.store.ListSessionToolCalls(t.Context(), row.ID)
 			if err != nil || len(records) != 2 || records[0].SessionID != row.ID || records[1].SessionID != row.ID || records[0].ToolCallID != batch.Call.ToolCalls[0].ID || records[0].Success != true || records[1].ToolCallID != batch.Call.ToolCalls[1].ID || records[1].Success || records[1].Error != "failed" {
 				t.Fatalf("copied tool call records: %+v %v", records, err)
 			}
-			originalRecords, err := f.store.ToolCalls().ListBySession(t.Context(), source.ID)
+			originalRecords, err := f.store.ListSessionToolCalls(t.Context(), source.ID)
 			if err != nil || len(originalRecords) != 2 || originalRecords[0].SessionID != source.ID || originalRecords[1].SessionID != source.ID {
 				t.Fatalf("source tool call records changed: %+v %v", originalRecords, err)
 			}
@@ -94,11 +94,11 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				t.Fatal("copy changed current")
 			}
 			if native {
-				records, err := f.store.Dialogues().LoadNativeWindow(t.Context(), row, nil)
+				records, err := f.store.LoadNativeWindow(t.Context(), row, nil)
 				if err != nil || records.Seed == nil {
 					t.Fatalf("seed: %+v %v", records, err)
 				}
-				refs, err := f.store.MediaReferences().ListByOwner(t.Context(), "native_seed", records.Seed.ID)
+				refs, err := f.store.ListByOwner(t.Context(), "native_seed", records.Seed.ID)
 				if err != nil || len(refs) != 1 {
 					t.Fatalf("seed media refs: %+v %v", refs, err)
 				}
@@ -112,7 +112,7 @@ func TestCopyForegroundAcrossPlatformsPreservesSourceAndHistory(t *testing.T) {
 	source := f.source(t, storage.SessionModeWork)
 	first := f.message(t, source.ID, storage.RoleUser)
 	second := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: first.ID}
-	if err := f.store.Messages().Append(t.Context(), second); err != nil {
+	if err := f.store.AppendMessage(t.Context(), second); err != nil {
 		t.Fatal(err)
 	}
 	target := scope()
@@ -126,14 +126,14 @@ func TestCopyForegroundAcrossPlatformsPreservesSourceAndHistory(t *testing.T) {
 	if copy.ID == source.ID || copy.ParentSessionID != source.ID || copy.Owner != target.Owner || copy.Platform != target.Platform || copy.ChatID != target.ChatID {
 		t.Fatalf("copy identity: %+v", copy)
 	}
-	copiedMessages, err := f.store.Messages().ListBySession(t.Context(), copy.ID)
+	copiedMessages, err := f.store.ListSessionMessages(t.Context(), copy.ID)
 	if err != nil || len(copiedMessages) != 2 {
 		t.Fatalf("copied messages: %+v %v", copiedMessages, err)
 	}
 	if copiedMessages[0].ID == first.ID || copiedMessages[1].ID == second.ID || copiedMessages[1].ParentMessageID != "" {
 		t.Fatalf("message references were not copied independently: %+v", copiedMessages)
 	}
-	storedSource, err := f.store.Sessions().Get(t.Context(), source.ID)
+	storedSource, err := f.store.GetSession(t.Context(), source.ID)
 	if err != nil || storedSource.Platform != "test" {
 		t.Fatalf("source changed: %+v %v", storedSource, err)
 	}
@@ -170,10 +170,10 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 			f.message(t, source.ID, storage.RoleAssistant)
 			input := storage.NativeInput{ID: "input", SessionID: source.ID, ExchangeID: "exchange", CallID: "call", ItemJSON: `{"output":"pending"}`, MediaJSON: `[]`}
 			if change == "pending-content" {
-				if err := f.store.Dialogues().CreateExchange(t.Context(), &storage.NativeExchange{ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
+				if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
 					t.Fatal(err)
 				}
-				err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{{ExchangeID: "exchange", CallID: "call", Name: "tool", Arguments: `{}`, Status: "pending", ResultInputID: input.ID}}}})
+				err := f.store.CommitDialogue(t.Context(), storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{{ExchangeID: "exchange", CallID: "call", Name: "tool", Arguments: `{}`, Status: "pending", ResultInputID: input.ID}}}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -195,9 +195,9 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 				case "busy":
 					f.setBusy(source.ID)
 				case "delete":
-					err = f.store.Sessions().Delete(locked, source.ID)
+					err = f.store.DeleteSession(locked, source.ID)
 				case "origin", "checkpoint":
-					_, err = f.store.Sessions().Mutate(locked, source.ID, func(row *storage.Session) error {
+					_, err = f.store.MutateSession(locked, source.ID, func(row *storage.Session) error {
 						if change == "origin" {
 							row.Metadata = `{"llm_origin":{"protocol":"response","provider":"changed"}}`
 						} else {
@@ -207,7 +207,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 					})
 				case "pending-add", "pending-content":
 					input.ItemJSON = `{"output":"completed"}`
-					err = f.store.Dialogues().Commit(locked, storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}})
+					err = f.store.CommitDialogue(locked, storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}})
 				case "cancel":
 					cancel()
 				}
@@ -267,7 +267,7 @@ func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
 					resultID = f.message(t, source.ID, storage.RoleAssistant).ID
 				}
 				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["` + resultID + `"]}`}
-				if err := f.store.Messages().Append(t.Context(), message); err != nil {
+				if err := f.store.AppendMessage(t.Context(), message); err != nil {
 					t.Fatal(err)
 				}
 				wantError = true

@@ -147,7 +147,7 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	defer unlock()
-	if existing, err := m.media.Get(ctx, id); err == nil {
+	if existing, err := m.media.GetMedia(ctx, id); err == nil {
 		if err := m.media.Touch(ctx, id, m.options.Now()); err != nil {
 			return operationresult.Result[share.MediaInfo]{}, err
 		}
@@ -171,7 +171,7 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	} else {
 		item.LocalPath = location
 	}
-	if err := m.media.Upsert(ctx, item); err != nil {
+	if err := m.media.UpsertMedia(ctx, item); err != nil {
 		removeUnrecordedObject(backend, location)
 		return operationresult.Result[share.MediaInfo]{}, err
 	}

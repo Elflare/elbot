@@ -2,13 +2,13 @@ package input
 
 import (
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"testing"
 )
 
-func newTestStore(t *testing.T) storage.Store {
+func newTestStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
-	s, err := sqlite.New(t.Context(), ":memory:")
+	s, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -177,7 +177,7 @@ func (c *ExecutionCoordinator) enterCompact(ctx context.Context, row *storage.Se
 		if err != nil {
 			return operationresult.Result[context.Context]{}, scope, nil, err
 		}
-		latest, err := c.deps.SessionRows.Get(locked, row.ID)
+		latest, err := c.deps.SessionRows.GetSession(locked, row.ID)
 		if err != nil {
 			release()
 			return operationresult.Result[context.Context]{}, scope, nil, err

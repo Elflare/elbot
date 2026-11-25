@@ -16,7 +16,7 @@ import (
 	"elbot/internal/workspace"
 )
 
-func newWorkspaceTestSession(t *testing.T, ctx context.Context, store storage.Store, metadata string) *storage.Session {
+func newWorkspaceTestSession(t *testing.T, ctx context.Context, store *storage.Supervisor, metadata string) *storage.Session {
 	t.Helper()
 	session := &storage.Session{ID: storage.NewID(),
 		Owner:    contextinfo.ActorIdentity{Platform: "cli", ID: "local"},
@@ -27,7 +27,7 @@ func newWorkspaceTestSession(t *testing.T, ctx context.Context, store storage.St
 		Title:    "test",
 		Metadata: metadata, ChatType: "private",
 	}
-	if err := store.Sessions().Create(ctx, session); err != nil {
+	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
 	return session
@@ -41,7 +41,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	if err := workspaceStore.SetWorkspaceDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
 	}
-	latest, err := store.Sessions().Get(ctx, session.ID)
+	latest, err := store.GetSession(ctx, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	if err := workspaceStore.ClearWorkspaceDir(ctx); err != nil {
 		t.Fatal(err)
 	}
-	latest, err := store.Sessions().Get(ctx, session.ID)
+	latest, err := store.GetSession(ctx, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	if err := workspaceStore.MarkWorkspaceAgentNoticeDir(ctx, "C:/work/project"); err != nil {
 		t.Fatal(err)
 	}
-	latest, err := store.Sessions().Get(ctx, session.ID)
+	latest, err := store.GetSession(ctx, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

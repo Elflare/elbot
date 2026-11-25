@@ -3,6 +3,7 @@ package contextmgr
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"errors"
 	"strings"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestCompactionResetsElyphRulesForNewSession(t *testing.T) {
@@ -25,13 +25,13 @@ func TestCompactionResetsElyphRulesForNewSession(t *testing.T) {
 
 func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/usage.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/usage.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"tool_tags":["keep"],"last_usage":{"TotalTokens":3}}`, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, row); err != nil {
+	if err := store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	service := New(Options{Store: store})
@@ -46,7 +46,7 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	*usage.TotalTokens = 999
-	latest, _ := store.Sessions().Get(ctx, row.ID)
+	latest, _ := store.GetSession(ctx, row.ID)
 	state, _ = DecodeState(latest.Metadata)
 	snapshot := state.LastUsage
 	if snapshot.TotalTokens == nil || *snapshot.TotalTokens != 12 {
@@ -69,27 +69,27 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 	if err := service.RecordTurn(canceled, row.ID, &llm.Usage{TotalTokens: &total}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("save error=%v", err)
 	}
-	persisted, _ := store.Sessions().Get(ctx, row.ID)
+	persisted, _ := store.GetSession(ctx, row.ID)
 	if persisted.Metadata != latest.Metadata || !persisted.UpdatedAt.Equal(latest.UpdatedAt) {
 		t.Fatalf("failed save changed persisted metadata=%s", persisted.Metadata)
 	}
 }
 
 func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"unknown":9007199254740993,"last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour), ChatType: "private"}
-	if err := store.Sessions().Create(t.Context(), row); err != nil {
+	if err := store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
 	service := New(Options{Store: store})
 	if err := service.RecordTurn(t.Context(), row.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	latest, err := store.Sessions().Get(t.Context(), row.ID)
+	latest, err := store.GetSession(t.Context(), row.ID)
 	if err != nil || !latest.UpdatedAt.After(row.UpdatedAt) || latest.Metadata != row.Metadata {
 		t.Fatalf("activity update changed metadata: %+v error=%v", latest, err)
 	}
@@ -105,7 +105,7 @@ func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
 	if err := service.RecordTurn(t.Context(), row.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	latest, err = store.Sessions().Get(t.Context(), row.ID)
+	latest, err = store.GetSession(t.Context(), row.ID)
 	if err != nil || !strings.Contains(latest.Metadata, "9007199254740993") {
 		t.Fatalf("unknown metadata lost: %+v error=%v", latest, err)
 	}
@@ -119,13 +119,13 @@ func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
 }
 
 func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"context_compact":"invalid","last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour), ChatType: "private"}
-	if err := store.Sessions().Create(t.Context(), row); err != nil {
+	if err := store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
 	service := New(Options{Store: store})
@@ -133,7 +133,7 @@ func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
 	if err := service.RecordTurn(t.Context(), row.ID, &llm.Usage{TotalTokens: &tokens}); err == nil {
 		t.Fatal("invalid context was accepted")
 	}
-	latest, err := store.Sessions().Get(t.Context(), row.ID)
+	latest, err := store.GetSession(t.Context(), row.ID)
 	if err != nil || latest.Metadata != row.Metadata || !latest.UpdatedAt.Equal(row.UpdatedAt) {
 		t.Fatalf("failed transaction changed session: %+v error=%v", latest, err)
 	}

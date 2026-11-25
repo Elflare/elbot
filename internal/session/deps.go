@@ -16,7 +16,7 @@ import (
 type SupervisorDeps struct {
 	AdoptForeground  func(context.Context, *storage.Session, *Binding)                                 // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
 	SessionIDCode    func(string, contextinfo.ChatType) (string, error)                                // Platform 根部按平台与会话类型查询已登记的短码。
-	Store            storage.Store                                                                     // 根部提取仓库能力，不向子包交付整个 Store。
+	Store            Store                                                                             // 根部提取仓库能力，不向子包交付整个 Store。
 	Models           ModelCapabilities                                                                 // 仅提供命名选择，不交付模型管理操作。
 	ActiveSessionIDs func() []string                                                                   // 查询活跃会话事实，状态仍归 Agent 的执行组件。
 	CheckForeground  func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) // 接管准入内的兼容性检查，不得执行 I/O 或再次获取准入。
@@ -41,4 +41,15 @@ type MaterialResolver interface {
 type MaterialPreparer interface {
 	PrepareFork(context.Context, *storage.Session, *storage.Message) (operationresult.Result[*PreparedMaterial], error)
 	PrepareCopy(context.Context, *storage.Session) (operationresult.Result[*PreparedMaterial], error)
+}
+
+// Store 是本业务借用的持久化操作，不拥有连接或关闭权。
+type Store interface {
+	storage.SessionRepository
+	NextIDSequence(context.Context) (int64, error)
+	GetMessage(ctx context.Context, id string) (*storage.Message, error)
+	ListSessionMessages(ctx context.Context, sessionID string) ([]storage.Message, error)
+	MessageStats(context.Context, string) (storage.MessageStats, error)
+	ListSessionToolCalls(ctx context.Context, sessionID string) ([]storage.ToolCallRecord, error)
+	PendingInputs(context.Context, string) ([]storage.NativeInput, error)
 }

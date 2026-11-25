@@ -38,7 +38,7 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, id string) {
 		}
 	}()
 	event.PreparationOperation = "load session"
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if err == nil {
 		title := row.Title
 		event.Title = &title
@@ -61,7 +61,7 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, id string) {
 		return
 	}
 	event.PreparationOperation = "load messages"
-	messages, err := s.deps.Messages.ListBySession(ctx, id)
+	messages, err := s.deps.Messages.ListSessionMessages(ctx, id)
 	if err == nil {
 		err = ctx.Err()
 	}
@@ -166,7 +166,7 @@ func (s *Service) persistTitle(ctx context.Context, id string, state *namingStat
 // 最新保护标记与标题、完成事实在一个事务中处理，手动改名和后台标题优先。
 func (s *Service) saveGeneratedTitle(ctx context.Context, id, title, source string) (*storage.Session, bool, error) {
 	applied := false
-	row, err := s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+	row, err := s.deps.Sessions.MutateSession(ctx, id, func(row *storage.Session) error {
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err

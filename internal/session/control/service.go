@@ -24,18 +24,18 @@ type ServiceDeps struct {
 	AdoptForeground func(context.Context, *storage.Session, *share.Binding) // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
 	AllocateID      func(context.Context, share.IDOrigin) (string, error)   // 根部提供的唯一 Session 发号入口。
 	Sessions        interface {
-		Create(context.Context, *storage.Session) error
-		Get(context.Context, string) (*storage.Session, error)
-		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
-		List(context.Context, storage.ListSessionsRequest) ([]storage.SessionSummary, error)
-		Count(context.Context, storage.ListSessionsRequest) (int, error)
-		Delete(context.Context, string) error
+		CreateSession(context.Context, *storage.Session) error
+		GetSession(context.Context, string) (*storage.Session, error)
+		MutateSession(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+		ListSessions(context.Context, storage.ListSessionsRequest) ([]storage.SessionSummary, error)
+		CountSessions(context.Context, storage.ListSessionsRequest) (int, error)
+		DeleteSession(context.Context, string) error
 		ListExpiredIDs(context.Context, time.Time) ([]string, error)
 		DeleteIfExpired(context.Context, string, time.Time) (bool, error)
 	}
 	Messages interface {
-		Stats(context.Context, string) (storage.MessageStats, error)
-		ListBySession(context.Context, string) ([]storage.Message, error)
+		MessageStats(context.Context, string) (storage.MessageStats, error)
+		ListSessionMessages(context.Context, string) ([]storage.Message, error)
 	}
 	Bindings interface {
 		share.BindingCoordinator

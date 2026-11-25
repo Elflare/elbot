@@ -44,8 +44,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	skillManager := skill.NewManager(skillRoot, registry, mediaRuntime, environment)
 	fileRollback := fileops.NewService(nil)
 	cronChanged := signal.New[CronChangedEvent, signal.Empty]("tool.cron_changed")
-	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: cronChanged}
-	history := chat_history.Deps{Repository: deps.ChatHistory, Media: mediaRuntime}
+	cron := cronBridge{repo: deps.Store, models: deps.Models, changed: cronChanged}
+	history := chat_history.Deps{Repository: deps.Store, Media: mediaRuntime}
 	if deps.Platform != nil {
 		history.ResolveMedia = deps.Platform.ResolveMedia
 	}
@@ -74,7 +74,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		skillManager: skillManager, fileRollback: fileRollback, cronChanged: cronChanged,
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
 	}
-	m.engine = execution.NewManager(execution.ManagerDeps{RecordToolCall: deps.Store.ToolCalls().Create, Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundToolAllowed: toolregistry.BackgroundToolAllowed, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: resolver.DiscoveryStateUpdate})
+	m.engine = execution.NewManager(execution.ManagerDeps{RecordToolCall: deps.Store.CreateToolCallRecord, Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundToolAllowed: toolregistry.BackgroundToolAllowed, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: resolver.DiscoveryStateUpdate})
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
 		RegisterTools: registry.RegisterTools,
 		Resolver:      resolver, NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
@@ -82,6 +82,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		TagsPath: cfg.ToolTagsConfigPath,
 		Tags:     cfg.ToolTags,
 	})
-	m.state = toolstate.NewStateService(deps.Store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	m.state = toolstate.NewStateService(deps.Store, toolregistry.BackgroundDiscoveredTools)
 	return m, nil
 }

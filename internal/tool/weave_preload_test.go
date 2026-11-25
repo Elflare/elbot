@@ -41,7 +41,7 @@ func TestWeavePreloadReflectsFullCommittedState(t *testing.T) {
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}}
 	ctx := contextinfo.WithActor(t.Context(), actor)
 	row := storage.Session{ID: storage.NewID(), Owner: actor.ActorIdentity, Platform: "cli", ChatType: "private", ChatID: "local", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, &row); err != nil {
+	if err := store.CreateSession(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
 	for _, step := range []struct {

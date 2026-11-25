@@ -38,7 +38,7 @@ func TestImportURLAndFile(t *testing.T) {
 	if err != nil || item.Status != operationresult.Success || item.Data.Name != "name%2Fpart.txt" || item.Data.MIMEType != "text/plain" {
 		t.Fatalf("download = %#v %v", item, err)
 	}
-	record, _ := m.media.Get(t.Context(), item.Data.ID)
+	record, _ := m.media.GetMedia(t.Context(), item.Data.ID)
 	if record.SourceURL != "" {
 		t.Fatalf("sensitive URL stored: %q", record.SourceURL)
 	}

@@ -57,7 +57,7 @@ func TestServiceLifecycleOperations(t *testing.T) {
 	if result, err := svc.Delete(ctx, scope, session.ID); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("Delete: %+v %v", result, err)
 	}
-	if _, err := store.Sessions().Get(ctx, session.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.GetSession(ctx, session.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("Get deleted = %v", err)
 	}
 	newSession, err := svc.GetOrCreateCurrent(ctx, scope, "after delete")

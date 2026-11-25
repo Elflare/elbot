@@ -16,7 +16,7 @@ func (s *Service) workspaceState(ctx context.Context, id string) (workspace.Stat
 		return workspace.State{}, err
 	}
 	defer release()
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if err != nil {
 		return workspace.State{}, err
 	}
@@ -92,7 +92,7 @@ func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*wor
 		return err
 	}
 	defer release()
-	_, err = s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+	_, err = s.deps.Sessions.MutateSession(ctx, id, func(row *storage.Session) error {
 		encoded := workspace.UpdateState(row.Metadata, update)
 		if row.Metadata != encoded {
 			row.Metadata, row.UpdatedAt = encoded, storage.Now()

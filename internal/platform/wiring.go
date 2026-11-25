@@ -36,14 +36,14 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	parseCommand := func(text string) command.Parsed { return command.Parse(text, prefixes) }
 	referenceDeps := refcontext.Options{
 		ParseCommand:          parseCommand,
-		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage, PlatformMessageIDs: deps.Store.Messages().PlatformMessageIDs,
+		FindByPlatformMessage: deps.Store.FindByPlatformMessage, PlatformMessageIDs: deps.Store.PlatformMessageIDs,
 		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, error) {
 			return m.agent.ResolveReference(ctx, session.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
 		},
-		FindHistory: deps.Store.Media().FindHistory,
-		GetMedia:    deps.Store.Media().Get,
-		FindOutputs: deps.Store.Media().FindOutputs,
-		ChatHistory: deps.ChatHistory,
+		FindHistory: deps.Store.FindHistory,
+		GetMedia:    deps.Store.GetMedia,
+		FindOutputs: deps.Store.FindOutputs,
+		ChatHistory: deps.Store,
 	}
 	for _, entry := range m.registered {
 		common := share.CommonConfig{
@@ -55,7 +55,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 			return err
 		}
 	}
-	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, PublishUsageFinished: deps.Media.PublishUsageFinished, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
+	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.SaveOutput, Media: deps.Media, PublishUsageFinished: deps.Media.PublishUsageFinished, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
 	var err error
 	m.notifications, err = notification.New(m.primary.Name(), events.AsyncLog)
 	if err != nil {

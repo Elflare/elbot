@@ -58,7 +58,7 @@ func (g *CommitGate) Enter(ctx context.Context, sessionID string) (context.Conte
 // commitInput records the rule card in history and advances the live session only after persistence succeeds.
 func commitInput(ctx context.Context, session *storage.Session, commit storage.DialogueCommit, persistence agentshare.MessageCommitter) error {
 	if !commit.ElyphRulesShown {
-		return persistence.Commit(ctx, commit)
+		return persistence.CommitDialogue(ctx, commit)
 	}
 	i := slices.IndexFunc(commit.Messages, func(m *storage.Message) bool { return m.Role == storage.RoleUser })
 	message := commit.Messages[i]
@@ -80,7 +80,7 @@ func commitInput(ctx context.Context, session *storage.Session, commit storage.D
 	if err != nil {
 		return err
 	}
-	if err := persistence.Commit(ctx, commit); err != nil {
+	if err := persistence.CommitDialogue(ctx, commit); err != nil {
 		return err
 	}
 	session.Metadata = metadata
@@ -96,7 +96,7 @@ func (s *MessageStore) Committer(operation string) agentshare.MessageCommitter {
 	return messageCommitter{store: s, operation: operation}
 }
 
-func (c messageCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (c messageCommitter) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	if len(commit.Messages) == 0 {
 		return nil
 	}

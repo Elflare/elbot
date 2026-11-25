@@ -17,7 +17,7 @@ import (
 // ExecutionView reads the existing execution identity; it owns no adoption state.
 type ExecutionView struct {
 	Sessions interface {
-		Get(context.Context, string) (*storage.Session, error)
+		GetSession(context.Context, string) (*storage.Session, error)
 	}
 }
 
@@ -106,7 +106,7 @@ func (v ExecutionView) RefreshExecution(ctx context.Context, row *storage.Sessio
 
 func (v ExecutionView) RefreshSession(ctx context.Context, row *storage.Session) (context.Context, error) {
 	ctx = v.Context(ctx)
-	latest, err := v.Sessions.Get(ctx, row.ID)
+	latest, err := v.Sessions.GetSession(ctx, row.ID)
 	if err != nil {
 		return ctx, err
 	}

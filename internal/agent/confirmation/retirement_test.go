@@ -7,13 +7,12 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/signal"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
 	"testing"
 )
 
 func TestRetiredSessionDoesNotRestoreAutomaticConfirmation(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

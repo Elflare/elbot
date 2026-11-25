@@ -20,8 +20,8 @@ type StateService struct {
 }
 
 type sessionStore interface {
-	Get(context.Context, string) (*storage.Session, error)
-	Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+	GetSession(context.Context, string) (*storage.Session, error)
+	MutateSession(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
 }
 
 func NewStateService(store sessionStore, backgroundDiscoveredTools func([]toolshare.DiscoveredTool) []toolshare.DiscoveredTool) *StateService {
@@ -109,7 +109,7 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 			return toolshare.StateCommit{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
 		}
 	}
-	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) error {
+	row, err := s.store.MutateSession(ctx, id, func(row *storage.Session) error {
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err
@@ -172,7 +172,7 @@ func uniqueNames(values []string) []string {
 }
 
 func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]toolshare.DiscoveredTool, error) {
-	row, err := s.store.Get(ctx, id)
+	row, err := s.store.GetSession(ctx, id)
 	if err != nil {
 		return nil, err
 	}

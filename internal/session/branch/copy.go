@@ -29,7 +29,7 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	if !target.IsSuperadmin {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Forbidden, Message: "无权访问该会话"}, false, nil
 	}
-	source, err := s.deps.Sessions.Get(ctx, sourceID)
+	source, err := s.deps.Sessions.GetSession(ctx, sourceID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "来源会话不存在"}, false, nil
 	}
@@ -74,7 +74,7 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	if s.sessionBusy(sourceID) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, false, nil
 	}
-	latest, err := s.deps.Sessions.Get(locked, sourceID)
+	latest, err := s.deps.Sessions.GetSession(locked, sourceID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "来源会话不存在"}, false, nil
 	}
@@ -98,11 +98,11 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	if !slices.Equal(pending, latestPending) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "source pending inputs changed"}, false, nil
 	}
-	messages, err := s.deps.Messages.ListBySession(locked, sourceID)
+	messages, err := s.deps.Messages.ListSessionMessages(locked, sourceID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, false, err
 	}
-	toolCalls, err := s.deps.ToolCalls.ListBySession(locked, sourceID)
+	toolCalls, err := s.deps.ToolCalls.ListSessionToolCalls(locked, sourceID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, false, err
 	}
@@ -152,7 +152,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 			return operationresult.Result[struct{}]{}, err
 		}
 		defer release()
-		source, err = s.deps.Sessions.Get(locked, req.SourceSessionID)
+		source, err = s.deps.Sessions.GetSession(locked, req.SourceSessionID)
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "来源会话不存在"}, nil
 		}
@@ -198,7 +198,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	latest, err := s.deps.Sessions.Get(locked, source.ID)
+	latest, err := s.deps.Sessions.GetSession(locked, source.ID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "来源会话不存在"}, nil
 	}
@@ -226,11 +226,11 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	if !slices.Equal(pending, latestPending) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "source pending inputs changed"}, nil
 	}
-	messages, err := s.deps.Messages.ListBySession(locked, source.ID)
+	messages, err := s.deps.Messages.ListSessionMessages(locked, source.ID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	toolCalls, err := s.deps.ToolCalls.ListBySession(locked, source.ID)
+	toolCalls, err := s.deps.ToolCalls.ListSessionToolCalls(locked, source.ID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}

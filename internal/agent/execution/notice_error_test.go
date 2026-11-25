@@ -65,10 +65,10 @@ func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 				ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: row.ID, RunID: "run", Attempt: "attempt", RequestID: "request"})
 				turns.StartAttempt(row.ID, turn.Input{}, execution, "attempt")
 				defer turns.FinishAttempt(row.ID, "attempt")
-				view := dialogue.ExecutionView{Sessions: store.Sessions()}
+				view := dialogue.ExecutionView{Sessions: store}
 				out := failingWorkflowNotice{text: tc.text, err: failure}
 				c := NewExecutionCoordinator(ctx, ExecutionCoordinatorDeps{
-					Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: request.NewManager(testutil.IDSequence()),
+					Sessions: sessions, SessionRows: store, Turns: turns, Requests: request.NewManager(testutil.IDSequence()),
 					View: view, Identity: identity, Output: out, Contexts: noticeTestContexts{},
 					Status:           NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns}),
 					SelectionForTurn: func(context.Context, *storage.Session) modelmgr.Selection { return modelmgr.Selection{} },

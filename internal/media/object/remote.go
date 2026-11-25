@@ -24,7 +24,7 @@ func (h *heldMedia) SignedURL(ctx context.Context) (string, error) {
 	}
 	defer unlock()
 	// 每次读取当前副本事实，持有快照不随签名更新，允许多个读取同时使用。
-	metadata, err := m.media.Get(ctx, id)
+	metadata, err := m.media.GetMedia(ctx, id)
 	if err != nil {
 		return "", err
 	}
@@ -48,7 +48,7 @@ func (h *heldMedia) SignedURL(ctx context.Context) (string, error) {
 			return "", err
 		}
 		metadata.ObjectKey = location
-		if err := m.media.Upsert(ctx, metadata); err != nil {
+		if err := m.media.UpsertMedia(ctx, metadata); err != nil {
 			removeUnrecordedObject(m.remote, location)
 			return "", err
 		}

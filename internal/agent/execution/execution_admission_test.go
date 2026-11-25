@@ -29,7 +29,7 @@ func TestEnterTurnAfterForegroundActivation(t *testing.T) {
 		}
 	})
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
-	coordinator := NewExecutionCoordinator(t.Context(), ExecutionCoordinatorDeps{View: dialogue.ExecutionView{}, Sessions: sessions, SessionRows: store.Sessions(), Identity: identity})
+	coordinator := NewExecutionCoordinator(t.Context(), ExecutionCoordinatorDeps{View: dialogue.ExecutionView{}, Sessions: sessions, SessionRows: store, Identity: identity})
 	ctx := testutil.WithCLIConversation(t.Context())
 	scope := identity.Scope(ctx)
 	background, err := sessions.PrepareBackground(ctx, scope, session.BackgroundRequest{TaskType: "cron", TaskID: "job"})
@@ -89,11 +89,11 @@ func TestAsyncReportRejectionPreservesFirstError(t *testing.T) {
 	}
 	turns := usageTestTurns{turn.NewSupervisor(testutil.IDSequence())}
 	d := &rejectedReportDialogue{turns: turns.Supervisor, failure: errors.New("original failure")}
-	view := dialogue.ExecutionView{Sessions: store.Sessions()}
+	view := dialogue.ExecutionView{Sessions: store}
 	changed := signal.New[StatusChangedEvent, signal.Empty]("report rejection")
 	defer changed.Close(context.Background())
 	c := NewExecutionCoordinator(ctx, ExecutionCoordinatorDeps{
-		Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: request.NewManager(testutil.IDSequence()), Identity: identity, View: view,
+		Sessions: sessions, SessionRows: store, Turns: turns, Requests: request.NewManager(testutil.IDSequence()), Identity: identity, View: view,
 		Status: NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: changed}), Dialogue: d,
 		SelectionForTurn: func(context.Context, *storage.Session) modelmgr.Selection {
 			return modelmgr.Selection{Client: &fakeLLM{}, Origin: llm.Origin{Provider: "test", APIType: llm.APITypeChat}}

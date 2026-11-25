@@ -106,7 +106,7 @@ type ExecutionCoordinatorDeps struct {
 	AppendWait         agentshare.ConfirmationWaitPolicy
 	Sessions           ExecutionSessions
 	SessionRows        interface {
-		Get(context.Context, string) (*storage.Session, error)
+		GetSession(context.Context, string) (*storage.Session, error)
 	}
 	Turns            ExecutionTurns
 	Requests         ExecutionRequests

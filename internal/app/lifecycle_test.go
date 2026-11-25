@@ -56,11 +56,11 @@ type testWaitingLine struct {
 func (l *testWaitingLine) Wait(ctx context.Context) error { return l.wait(ctx) }
 
 func testBusinessLines() businessLines {
-	lines := businessLines{}
+	lines := businessLines{active: make(map[componentKind]businessLine)}
 	for _, kind := range []componentKind{componentTool, componentAgent, componentHook, componentPlatform, componentBackground} {
-		lines[kind] = businessLine{supervisor: &testLifecycle{}}
+		lines.active[kind] = businessLine{supervisor: &testLifecycle{}}
 	}
-	lines[componentPlatform] = businessLine{supervisor: &testLifecycle{}, waitIngress: func(context.Context) error { return nil }}
+	lines.active[componentPlatform] = businessLine{supervisor: &testLifecycle{}, waitIngress: func(context.Context) error { return nil }}
 	return lines
 }
 
@@ -70,7 +70,7 @@ func TestStartBusinessLinesUsesDependencyOrderAndStopsOnFailure(t *testing.T) {
 		t.Run(fmt.Sprint(fail), func(t *testing.T) {
 			var order []componentKind
 			lines := testBusinessLines()
-			for kind, line := range lines {
+			for kind, line := range lines.active {
 				line.supervisor.(*testLifecycle).start = func() error {
 					order = append(order, kind)
 					if fail && kind == componentAgent {
@@ -99,8 +99,8 @@ func TestStartBusinessLinesUsesDependencyOrderAndStopsOnFailure(t *testing.T) {
 func TestWaitBusinessLinesJoinsPlatformAndBackground(t *testing.T) {
 	joined := make(chan struct{})
 	lines := testBusinessLines()
-	lines[componentPlatform] = businessLine{supervisor: &testWaitingLine{wait: func(context.Context) error { return nil }}}
-	lines[componentBackground] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
+	lines.active[componentPlatform] = businessLine{supervisor: &testWaitingLine{wait: func(context.Context) error { return nil }}}
+	lines.active[componentBackground] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
 		<-ctx.Done()
 		close(joined)
 		return fmt.Errorf("wait canceled: %w", ctx.Err())
@@ -124,8 +124,8 @@ func TestWaitBusinessLinesPreservesConcurrentIndependentFailures(t *testing.T) {
 	}
 	defer connection.Close(context.Background())
 	lines := testBusinessLines()
-	lines[componentPlatform] = businessLine{supervisor: &testWaitingLine{wait: func(context.Context) error { return first }}}
-	lines[componentBackground] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
+	lines.active[componentPlatform] = businessLine{supervisor: &testWaitingLine{wait: func(context.Context) error { return first }}}
+	lines.active[componentBackground] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
 		<-ctx.Done()
 		return second
 	}}}
@@ -142,7 +142,7 @@ func TestWaitBusinessLinesExternalCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		lines := testBusinessLines()
 		for _, kind := range []componentKind{componentPlatform, componentBackground} {
-			lines[kind] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
+			lines.active[kind] = businessLine{supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
 				<-ctx.Done()
 				return ctx.Err()
 			}}}

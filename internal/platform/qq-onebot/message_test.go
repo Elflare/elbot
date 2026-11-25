@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -22,7 +23,6 @@ import (
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestNewFromPlatformConfig(t *testing.T) {
@@ -488,13 +488,13 @@ func TestOutputSegments(t *testing.T) {
 
 func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	repo := history.Repository()
-	if err := repo.Append(ctx, &storage.ChatMessage{
+	repo := history
+	if err := repo.AppendChatMessage(ctx, &storage.ChatMessage{
 		Platform: "qqonebot", ChatID: "9", ChatType: "group", PlatformMessageID: "42",
 		SenderID: "1001", SenderName: "被引用者", Text: "被引用内容",
 	}); err != nil {
@@ -652,10 +652,10 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 	return transport
 }
 
-func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
+func newTestAdapter(t *testing.T, cfg Config, store *storage.Supervisor, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
 	t.Helper()
 	if store == nil {
-		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
+		db, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "store.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -663,15 +663,15 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		store = db
 	}
 	if history == nil {
-		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
+		db, err := testutil.OpenChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db.Close() })
-		history = db.Repository()
+		history = db
 	}
 	parseCommand := func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }
-	refs := refcontext.Options{ParseCommand: parseCommand, ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage, PlatformMessageIDs: store.Messages().PlatformMessageIDs, FindOutputs: store.Media().FindOutputs, FindHistory: store.Media().FindHistory, GetMedia: store.Media().Get}
+	refs := refcontext.Options{ParseCommand: parseCommand, ChatHistory: history, FindByPlatformMessage: store.FindByPlatformMessage, PlatformMessageIDs: store.PlatformMessageIDs, FindOutputs: store.FindOutputs, FindHistory: store.FindHistory, GetMedia: store.GetMedia}
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled": cfg.Enabled, "ws_url": cfg.URL, "access_token": cfg.AccessToken, "access_token_env": cfg.AccessTokenEnv,
 		"reconnect_interval_seconds": cfg.ReconnectIntervalSeconds, "api_timeout_seconds": cfg.APITimeoutSeconds,

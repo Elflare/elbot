@@ -23,11 +23,11 @@ type historyResultRepository struct {
 	rows []storage.ChatMessage
 }
 
-func (r historyResultRepository) Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
+func (r historyResultRepository) SearchChatHistory(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
 	return r.rows, nil
 }
 
-func (r historyResultRepository) Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
+func (r historyResultRepository) ChatHistoryAround(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error) {
 	return r.rows, nil
 }
 
@@ -114,7 +114,7 @@ func TestFullHistoryIgnoresWindow(t *testing.T) {
 	full := strings.Repeat("完整正文\n", 1900)
 	for i, text := range []string{"不应展示前文", full, "不应展示后文"} {
 		row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: fmt.Sprint("native", i), SenderID: "sender", Text: text, SenderAvatarURL: "https://example.test/avatar"}
-		if err := repo.Append(ctx, &row); err != nil {
+		if err := repo.AppendChatMessage(ctx, &row); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -143,7 +143,7 @@ func TestChatHistoryIncludeAvatar(t *testing.T) {
 	now := old.Add(24 * time.Hour)
 	add := func(id, chat, user, text, url string, at time.Time) {
 		t.Helper()
-		err := fixture.history.Append(ctx, &storage.ChatMessage{Platform: "qqofficial", ChatType: "group", ChatID: chat, PlatformMessageID: id, SenderID: user, Text: text, SenderAvatarURL: url, CreatedAt: at})
+		err := fixture.history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: "qqofficial", ChatType: "group", ChatID: chat, PlatformMessageID: id, SenderID: user, Text: text, SenderAvatarURL: url, CreatedAt: at})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +193,7 @@ func TestHistoryShortIDRoundTrip(t *testing.T) {
 			ctx := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: source})
 			const nativeID = "876543210"
 			row := storage.ChatMessage{Platform: platform, ChatType: source.ChatType, ChatID: source.ChatID, PlatformMessageID: nativeID, SenderID: "sender", Text: "目标正文"}
-			if err := fixture.history.Append(ctx, &row); err != nil {
+			if err := fixture.history.AppendChatMessage(ctx, &row); err != nil {
 				t.Fatal(err)
 			}
 			stored, err := fixture.history.GetByPlatformMessage(ctx, platform, source.ChatType, source.ChatID, nativeID)

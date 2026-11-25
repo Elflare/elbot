@@ -50,7 +50,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		Backend: objectBackend, MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
 		DownloadTimeout: time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second, Media: cfg.Media, Now: storage.Now,
 	}, object.Deps{
-		Media: deps.Store.Media(), References: deps.Store.MediaReferences(), Local: local, Remote: remote,
+		Media: deps.Store, References: deps.Store, Local: local, Remote: remote,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("media objects: %w", err)

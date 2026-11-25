@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/media"
-	"elbot/internal/storage/sqlite"
 )
 
 func appConfigFixture(t *testing.T) string {
@@ -47,9 +47,6 @@ func cleanupAppResources(t *testing.T, r *sharedResources) {
 		if err := r.media.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
-		if err := r.historyStore.Close(); err != nil {
-			t.Error(err)
-		}
 		if err := r.store.Close(); err != nil {
 			t.Error(err)
 		}
@@ -74,7 +71,7 @@ func TestPrepareResourcesConstructsConfiguredModels(t *testing.T) {
 
 func TestPrepareResourcesReconcilesMediaBeforeBusinessWiring(t *testing.T) {
 	path := appConfigFixture(t)
-	store, err := sqlite.New(t.Context(), filepath.Join(filepath.Dir(path), "sessions.db"))
+	store, err := testutil.OpenStore(t.Context(), filepath.Join(filepath.Dir(path), "sessions.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +104,7 @@ func TestPrepareResourcesReconcilesMediaBeforeBusinessWiring(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	items, err := r.store.Media().ListHistory(t.Context(), "", 10)
+	items, err := r.store.ListHistory(t.Context(), "", 10)
 	if err != nil || len(items) != 0 {
 		t.Fatalf("startup retained stale history associations: %v, %v", items, err)
 	}
@@ -127,11 +124,11 @@ func TestBuildBusinessLinesConnectsProductionSupervisors(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if len(lines) != 5 {
+	if len(lines.active) != 5 || lines.storage != r.store {
 		t.Fatalf("business lines=%v", lines)
 	}
-	lines[componentPlatform].supervisor.BeginClose()
-	if err := lines[componentPlatform].waitIngress(t.Context()); err != nil {
+	lines.active[componentPlatform].supervisor.BeginClose()
+	if err := lines.active[componentPlatform].waitIngress(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }

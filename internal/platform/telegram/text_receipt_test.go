@@ -19,7 +19,7 @@ import (
 
 type capturedHistory []storage.ChatMessage
 
-func (h *capturedHistory) Append(_ context.Context, row *storage.ChatMessage) error {
+func (h *capturedHistory) AppendChatMessage(_ context.Context, row *storage.ChatMessage) error {
 	*h = append(*h, *row)
 	return nil
 }

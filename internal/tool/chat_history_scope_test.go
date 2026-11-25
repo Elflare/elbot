@@ -21,7 +21,7 @@ type historyScopeBackend struct {
 	query storage.ChatHistorySearchRequest
 }
 
-func (b *historyScopeBackend) Search(_ context.Context, query storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
+func (b *historyScopeBackend) SearchChatHistory(_ context.Context, query storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
 	b.calls++
 	b.query = query
 	return []storage.ChatMessage{{Seq: 1, Platform: query.Platform, ChatType: query.ChatType, ChatID: query.ChatID, SenderID: "AB12_OPENID", Text: "found"}}, nil

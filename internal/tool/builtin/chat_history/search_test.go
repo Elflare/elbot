@@ -30,7 +30,7 @@ type queryRepo struct {
 	search storage.ChatHistorySearchRequest
 }
 
-func (r *queryRepo) Search(_ context.Context, q storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
+func (r *queryRepo) SearchChatHistory(_ context.Context, q storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error) {
 	r.search = q
 	return []storage.ChatMessage{{Text: "search result"}}, nil
 }

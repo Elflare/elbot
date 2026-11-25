@@ -23,7 +23,6 @@ import (
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
 )
@@ -85,16 +84,11 @@ func isolatedModuleResources(t *testing.T) (SupervisorDeps, *modelmgr.ModelManag
 }
 func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps, *modelmgr.ModelManager) {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	history, err := sqlite.NewChatHistory(t.Context(), ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = history.Close() })
 	models, err := newConfiguredTestModels(t, testModelOptions{Clients: map[string]llm.Client{"p": isolatedClient{}}, Providers: map[string]config.ProviderConfig{"p": {Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, DefaultMode: "work"})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +101,7 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 	}
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
-	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{CreateQuestions: controller.CreateQuestions, Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
+	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{CreateQuestions: controller.CreateQuestions, Store: store, Models: models, Media: center, Permission: permission})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +114,7 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 		t.Fatal(err)
 	}
 	return SupervisorDeps{
-		Control: controller, Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
+		Control: controller, Media: center, Store: store, Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
 		Tools:    tools,
 	}, models
@@ -141,11 +135,11 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+	rows, err := deps.Store.ListSessions(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
 	if err != nil || len(rows) != 1 {
 		t.Fatal(rows, err)
 	}
-	messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
+	messages, err := deps.Store.ListSessionMessages(t.Context(), rows[0].ID)
 	if err != nil || len(messages) != 2 || messages[1].Content != "isolated answer" {
 		t.Fatal(messages, err)
 	}
@@ -163,7 +157,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 		t.Fatal("naming owner did not stop")
 	}
 	assertAgentSignalsClosed(t, m)
-	if _, err := deps.Store.Messages().ListBySession(ctx, rows[0].ID); err != nil {
+	if _, err := deps.Store.ListSessionMessages(ctx, rows[0].ID); err != nil {
 		t.Fatal("borrowed Store closed", err)
 	}
 	if deps.Models.ResolveMode("work").Client == nil {
@@ -194,7 +188,7 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 		t.Fatal("Agent state remained alive")
 	}
 	assertAgentSignalsClosed(t, m)
-	if err := deps.Store.Media().RecoverInterrupted(ctx); err != nil {
+	if _, err := deps.Store.ListSessions(ctx, storage.ListSessionsRequest{Limit: 1}); err != nil {
 		t.Fatal("borrowed storage closed", err)
 	}
 }

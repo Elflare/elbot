@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/builtin/chat_history"
@@ -54,18 +54,18 @@ type historyMediaToolFixture struct {
 func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (context.Context, historyMediaToolFixture, *getMediaResolver) {
 	t.Helper()
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "main.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "main.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { history.Close() })
 	root := t.TempDir()
-	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history.Repository()}, root, configure...)
+	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history}, root, configure...)
 	var segments []media.PlatformMedia
 	for i := 1; i <= 7; i++ {
 		segments = append(segments, media.PlatformMedia{Type: "image", PlatformFileID: fmt.Sprint(i)})
@@ -79,15 +79,15 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 		t.Fatal(err)
 	}
 	for _, id := range []string{"1", "2"} {
-		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: string(encoded)}); err != nil {
+		if err := history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: string(encoded)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	resolver := &getMediaResolver{}
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root, center.PublishUsageFinished)
-	deps := chat_history.Deps{Repository: history.Repository(), ResolveMedia: resolver.ResolveMedia, Media: mediaRuntime}
-	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: deps}), deps: deps, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
+	deps := chat_history.Deps{Repository: history, ResolveMedia: resolver.ResolveMedia, Media: mediaRuntime}
+	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: deps}), deps: deps, history: history, center: mediaRuntime, mediaCenter: center}, resolver
 }
 
 func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {

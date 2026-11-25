@@ -8,7 +8,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"github.com/pelletier/go-toml/v2"
 	"path/filepath"
 	"testing"
@@ -39,12 +39,12 @@ func newTestStream(t *testing.T, a *Adapter, kind contextinfo.ChatType, id strin
 func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter, adminIDs ...string) *Adapter {
 	t.Helper()
 	if history == nil {
-		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
+		db, err := testutil.OpenChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db.Close() })
-		history = db.Repository()
+		history = db
 	}
 	cfg.Enabled = true
 	if cfg.BotToken == "" && cfg.BotTokenEnv == "" {

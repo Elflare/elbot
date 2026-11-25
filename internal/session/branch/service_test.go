@@ -18,14 +18,13 @@ import (
 	"elbot/internal/session/control"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type fixture struct {
 	s        *branch.Service
 	c        *control.Service
 	b        *binding.Manager
-	store    *sqlite.Store
+	store    *storage.Supervisor
 	deps     branch.ServiceDeps
 	material func(context.Context, *storage.Session, *storage.Message) (*branch.PreparedMaterial, error)
 	mu       sync.Mutex
@@ -53,7 +52,7 @@ func (p preparer) PrepareCopy(ctx context.Context, source *storage.Session) (ope
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "branch.db"))
+	store, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "branch.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +63,7 @@ func newFixture(t *testing.T) *fixture {
 	active := func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) }
 	f.c = control.NewService(control.Config{DefaultMode: storage.SessionModeWork, IdleExpiration: control.IdleExpirationConfig{PrivateUserTTLMinutes: 1}}, control.ServiceDeps{
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
-		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.b, ActiveSessionIDs: active,
+		Sessions:   store, Messages: store, Bindings: f.b, ActiveSessionIDs: active,
 		CheckForeground: func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) {
 			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}, IsSuperadmin: func(share.Scope) bool { return false },
@@ -72,7 +71,7 @@ func newFixture(t *testing.T) *fixture {
 		ReleaseSession:  func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
 		ReleaseBinding:  func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
 	})
-	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store.Sessions(), Messages: store.Messages(), ToolCalls: store.ToolCalls(), Dialogues: store.Dialogues(),
+	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store, Messages: store, ToolCalls: store, Dialogues: store,
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Bindings:   f.c, ActiveSessionIDs: active, MaterialFor: func(llm.Origin) (branch.MaterialPreparer, error) { return preparer{f}, nil }}
 	f.s = branch.NewService(f.deps)
@@ -109,7 +108,7 @@ func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 		t.Fatalf("create source: %+v %v", result, err)
 	}
 	row := result.Data
-	row, err = f.store.Sessions().Mutate(t.Context(), row.ID, func(row *storage.Session) error {
+	row, err = f.store.MutateSession(t.Context(), row.ID, func(row *storage.Session) error {
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err
@@ -132,7 +131,7 @@ func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 func (f *fixture) message(t *testing.T, id, role string) *storage.Message {
 	t.Helper()
 	row := &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: "message"}
-	if err := f.store.Messages().Append(t.Context(), row); err != nil {
+	if err := f.store.AppendMessage(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
 	return row
@@ -146,7 +145,7 @@ func (f *fixture) releaseCounts() (int, int) {
 }
 func (f *fixture) count(t *testing.T) int {
 	t.Helper()
-	rows, err := f.store.Sessions().List(context.Background(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
+	rows, err := f.store.ListSessions(context.Background(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,13 +160,13 @@ var errSave = errors.New("save failed")
 
 type failingSessions struct{ storage.SessionRepository }
 
-func (f failingSessions) Create(context.Context, *storage.Session) error { return errSave }
+func (f failingSessions) CreateSession(context.Context, *storage.Session) error { return errSave }
 func (f failingSessions) CreateMaterial(context.Context, storage.SessionMaterialCreate) error {
 	return errSave
 }
 
 func (f *fixture) failSave() {
-	f.deps.Sessions = failingSessions{f.store.Sessions()}
+	f.deps.Sessions = failingSessions{f.store}
 	f.s = branch.NewService(f.deps)
 }
 
@@ -189,7 +188,7 @@ func toolBatch(t *testing.T, f *fixture, sessionID, suffix string, pending bool)
 		{ID: suffix + "-r1", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-one", Content: "one", ToolResultStatus: "completed"},
 		{ID: suffix + "-r2", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-two", Content: "two", ToolResultStatus: "completed"},
 	}}
-	if err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
+	if err := f.store.CommitDialogue(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
 		t.Fatal(err)
 	}
 	return batch
@@ -218,7 +217,7 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				message := f.message(t, source.ID, storage.RoleAssistant)
 				before := f.c.CurrentBinding(scope())
 				mediaID := "media:" + strings.Repeat("b", 64)
-				if err := f.store.Media().Upsert(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
+				if err := f.store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
 					t.Fatal(err)
 				}
 				material := seed()
@@ -229,7 +228,7 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				f.material = func(context.Context, *storage.Session, *storage.Message) (*branch.PreparedMaterial, error) {
 					return &branch.PreparedMaterial{Seed: material}, nil
 				}
-				repo := &recordingSessions{SessionRepository: f.store.Sessions()}
+				repo := &recordingSessions{SessionRepository: f.store}
 				f.deps.Sessions = repo
 				f.s = branch.NewService(f.deps)
 				var result operationresult.Result[*storage.Session]
@@ -248,12 +247,12 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				if repo.req.Session == nil {
 					t.Fatal("did not use atomic material create")
 				}
-				persisted, getErr := f.store.Sessions().Get(t.Context(), repo.req.Session.ID)
-				messages, listErr := f.store.Messages().ListBySession(t.Context(), repo.req.Session.ID)
+				persisted, getErr := f.store.GetSession(t.Context(), repo.req.Session.ID)
+				messages, listErr := f.store.ListSessionMessages(t.Context(), repo.req.Session.ID)
 				if listErr != nil {
 					t.Fatal(listErr)
 				}
-				refs, refErr := f.store.MediaReferences().ListByOwner(t.Context(), "native_seed", material.ID)
+				refs, refErr := f.store.ListByOwner(t.Context(), "native_seed", material.ID)
 				if refErr != nil {
 					t.Fatal(refErr)
 				}
@@ -266,7 +265,7 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				if getErr != nil || len(refs) != 1 {
 					t.Fatalf("missing commit: %+v %v refs=%d", persisted, getErr, len(refs))
 				}
-				records, err := f.store.Dialogues().LoadNativeWindow(t.Context(), persisted, nil)
+				records, err := f.store.LoadNativeWindow(t.Context(), persisted, nil)
 				if err != nil || records.Seed == nil || records.Seed.ID != material.ID {
 					t.Fatalf("native seed: %+v %v", records, err)
 				}
@@ -301,7 +300,7 @@ func TestMaterialSelectionAndStaleContext(t *testing.T) {
 	if f.count(t) != 1 {
 		t.Fatal("route error fell back to display")
 	}
-	if _, err := f.store.Sessions().Mutate(t.Context(), source.ID, func(row *storage.Session) error { row.Metadata = `{}`; return nil }); err != nil {
+	if _, err := f.store.MutateSession(t.Context(), source.ID, func(row *storage.Session) error { row.Metadata = `{}`; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	result, err := f.s.Fork(t.Context(), scope(), message.ID)

@@ -75,7 +75,7 @@ func registrations(frontendDir string) []registration {
 			}
 			adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
 				CommonConfig:      common,
-				ChatHistory:       deps.ChatHistory,
+				ChatHistory:       deps.Store,
 				ReferenceResolver: references.Apply,
 			})
 			if err != nil {
@@ -91,7 +91,7 @@ func registrations(frontendDir string) []registration {
 			adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
 				ParseCommand:      references.ParseCommand,
 				CommonConfig:      common,
-				ChatHistory:       deps.ChatHistory,
+				ChatHistory:       deps.Store,
 				ReferenceResolver: references.Apply,
 			})
 			if err != nil {
@@ -106,7 +106,7 @@ func registrations(frontendDir string) []registration {
 			}
 			adapter, err := telegram.NewFromPlatformConfig(raw, telegram.Deps{
 				CommonConfig:      common,
-				ChatHistory:       deps.ChatHistory,
+				ChatHistory:       deps.Store,
 				ReferenceResolver: references.Apply,
 			})
 			if err != nil {

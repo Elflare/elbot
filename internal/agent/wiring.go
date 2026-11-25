@@ -43,7 +43,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.commands = command.NewRouter(cfg.Commands.Prefixes)
 	prefix := cfg.Commands.Prefixes[0]
 	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
-	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
+	view := dialogue.ExecutionView{Sessions: deps.Store}
 	m.restoreMessageContext = deps.Platform.RestoreMessageContext
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: config.PlatformCLI, Permission: deps.Permission})
 	m.identity = identity
@@ -106,7 +106,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		NewMessageID:         newMessageID,
 		Status:               status,
 		Routes:               m.routes,
-		Dialogues:            deps.Store.Dialogues(),
+		Dialogues:            deps.Store,
 		Sessions:             m.sessions,
 		Turns:                m.turns,
 		Contexts:             m.contexts,
@@ -143,7 +143,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 		PromptBuilder: chatroute.PromptBuilder{System: runner.System},
 	}, &chatroute.Compactor{
-		ToolCalls: deps.Store.ToolCalls(),
+		ToolCalls: deps.Store,
 		Models:    deps.Models,
 		Loader:    contextmgr.Loader{Store: deps.Store},
 	})
@@ -151,9 +151,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Shared:      shared,
 		Identity:    identity,
 		Gate:        runner.Messages.Gate,
-		SessionRows: deps.Store.Sessions(),
+		SessionRows: deps.Store,
 		Status:      status,
-		Repository:  deps.Store.Dialogues(),
+		Repository:  deps.Store,
 		Preparer:    runner.Preparer,
 		Messages:    runner.Messages,
 		Calls:       runner.Calls,
@@ -164,7 +164,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		AppendConfirmation: delivery.Confirmation{Actions: agentconfirmation.AppendConfirmationActions(commandText)},
 		AppendWait:         policy,
 		Sessions:           m.sessions,
-		SessionRows:        deps.Store.Sessions(),
+		SessionRows:        deps.Store,
 		Turns:              m.turns,
 		Requests:           m.requests,
 		Contexts:           m.contexts,
@@ -229,14 +229,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return nil, err
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{
-		History:   deps.ChatHistory,
+		History:   deps.Store,
 		Hooks:     bridge,
 		Output:    output,
 		Commands:  commands,
 		Input:     input,
 		Media:     deps.Media,
-		Messages:  deps.Store.Messages(),
-		MediaRows: deps.Store.Media(),
+		Messages:  deps.Store,
+		MediaRows: deps.Store,
 	})
 	m.completion = completion.NewService(
 		completion.WorkspaceFilesSource{Root: input.CompletionWorkspaceRoot},

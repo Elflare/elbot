@@ -23,7 +23,7 @@ func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Orig
 	defer release()
 	var rejected operationresult.Status
 	var message string
-	row, err := s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+	row, err := s.deps.Sessions.MutateSession(ctx, id, func(row *storage.Session) error {
 		current, known, err := share.Origin(row)
 		if err != nil {
 			return err

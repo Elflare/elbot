@@ -31,7 +31,7 @@ func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	if row.Mode != storage.SessionModeBackground || row.Title != "Cron: task" || !IsBackground(row) {
 		t.Fatalf("background=%+v", row)
 	}
-	if _, err := store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+	if _, err := store.MutateSession(ctx, row.ID, func(row *storage.Session) error {
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
 			return err
@@ -61,7 +61,7 @@ func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	if err != nil || promotedResult.Status != operationresult.Success {
 		t.Fatalf("promote: %+v %v", promotedResult, err)
 	}
-	promoted, err := store.Sessions().Get(ctx, row.ID)
+	promoted, err := store.GetSession(ctx, row.ID)
 	if err != nil || promoted.Mode != storage.SessionModeWork || IsBackground(promoted) {
 		t.Fatalf("promotion did not switch mode: %+v err=%v", promoted, err)
 	}

@@ -5,6 +5,8 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -19,14 +21,13 @@ import (
 	"elbot/internal/hook/share"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
 
-func testMediaRuntime(t *testing.T, configure ...func(*config.Config)) (*Manager, *media.MediaCenter, string, *sqlite.Store) {
+func testMediaRuntime(t *testing.T, configure ...func(*config.Config)) (*Manager, *media.MediaCenter, string, *storage.Supervisor) {
 	t.Helper()
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if read.Base64 != base64.StdEncoding.EncodeToString(small) || read.Path != "" {
 		t.Fatalf("read=%#v", read)
 	}
-	refs, err := store.MediaReferences().ListByOwner(ctx, "hook", m.media.owner)
+	refs, err := store.ListByOwner(ctx, "hook", m.media.owner)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("refs=%#v %v", refs, err)
 	}
@@ -97,11 +98,11 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if _, err := os.Stat(exported.Path); !os.IsNotExist(err) {
 		t.Fatalf("export survived expiry: %v", err)
 	}
-	refs, err = store.MediaReferences().ListByOwner(ctx, "hook", m.media.owner)
+	refs, err = store.ListByOwner(ctx, "hook", m.media.owner)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("expired refs=%#v %v", refs, err)
 	}
-	refs, err = store.MediaReferences().ListByOwner(ctx, "tool_result", "transcript")
+	refs, err = store.ListByOwner(ctx, "tool_result", "transcript")
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("transcript refs=%#v %v", refs, err)
 	}
@@ -126,7 +127,7 @@ func TestMediaProtocolURLAndInvalidInputs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("url media")) }))
 	defer server.Close()
 	imported := mediaCall(t, m, dir, "media.import", map[string]string{"url": server.URL + "/image?X-Amz-Signature=secret"})
-	metadata, err := store.Media().Get(context.Background(), imported.MediaID)
+	metadata, err := store.GetMedia(context.Background(), imported.MediaID)
 	if err != nil || metadata.SourceURL != "" {
 		t.Fatalf("persisted signed URL: %#v %v", metadata, err)
 	}

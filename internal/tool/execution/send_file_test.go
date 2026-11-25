@@ -2,6 +2,7 @@ package execution
 
 import (
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"elbot/internal/residentmemory"
 	"elbot/internal/security"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool/builtin"
 	toolmedia "elbot/internal/tool/media"
@@ -33,7 +33,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	fileURI := (&url.URL{Scheme: "file", Path: "/" + strings.TrimPrefix(filepath.ToSlash(path), "/")}).String()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

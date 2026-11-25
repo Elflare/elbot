@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	toolregistry "elbot/internal/tool/registry"
 	"errors"
 	"fmt"
@@ -15,18 +16,17 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
-func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Session) {
+func stateTestStore(t *testing.T, metadata string) (*storage.Supervisor, *storage.Session) {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), t.TempDir()+"/state.db")
+	store, err := testutil.OpenStore(context.Background(), t.TempDir()+"/state.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Metadata: metadata, ChatType: "private"}
-	if err := store.Sessions().Create(context.Background(), row); err != nil {
+	if err := store.CreateSession(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}
 	return store, row
@@ -36,8 +36,8 @@ func stateTestTool(name string) toolshare.DiscoveredTool {
 	return toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}
 }
 
-func stateTestSnapshot(ctx context.Context, store storage.Store, id string) (toolshare.State, error) {
-	row, err := store.Sessions().Get(ctx, id)
+func stateTestSnapshot(ctx context.Context, store *storage.Supervisor, id string) (toolshare.State, error) {
+	row, err := store.GetSession(ctx, id)
 	if err != nil {
 		return toolshare.State{}, err
 	}
@@ -47,7 +47,7 @@ func stateTestSnapshot(ctx context.Context, store storage.Store, id string) (too
 func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	ctx := context.Background()
 	store, row := stateTestStore(t, `{"workspace":"keep","unknown":9007199254740993,"title_source":"manual","last_usage":{"TotalTokens":12}}`)
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	item := stateTestTool("external")
 	item.Source = toolshare.SourceKindELwisp
 	item.CanonicalName = "wisp/external"
@@ -83,7 +83,7 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if _, ok := restored.DiscoveredTools[0].Schema.Parameters["bad"]; ok {
 		t.Fatal("discovery view aliases state")
 	}
-	latest, _ := store.Sessions().Get(ctx, row.ID)
+	latest, _ := store.GetSession(ctx, row.ID)
 	for _, want := range []string{`"unknown":9007199254740993`, `"workspace":"keep"`, `"title_source":"manual"`, `"TotalTokens":12`} {
 		if !strings.Contains(latest.Metadata, want) {
 			t.Fatalf("missing %s in %s", want, latest.Metadata)
@@ -106,12 +106,12 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
 			invalid.Schema.Parameters["invalid"] = make(chan int)
-			result, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
+			result, err := NewStateService(store, toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
 			}
 
-			latest, _ := store.Sessions().Get(ctx, row.ID)
+			latest, _ := store.GetSession(ctx, row.ID)
 			if latest.Metadata != metadata {
 				t.Fatalf("failed transaction changed metadata: %s", latest.Metadata)
 			}
@@ -120,11 +120,11 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	store, row := stateTestStore(t, "")
-	_, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
+	_, err := NewStateService(store, toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error=%v", err)
 	}
-	latest, _ := store.Sessions().Get(context.Background(), row.ID)
+	latest, _ := store.GetSession(context.Background(), row.ID)
 	if latest.Metadata != "" {
 		t.Fatal("canceled commit published state")
 	}
@@ -133,7 +133,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	ctx := context.Background()
 	store, row := stateTestStore(t, `{"unknown":9007199254740993,"context_compact":{"generation":1,"base_title":"seed"}}`)
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	contexts := contextmgr.New(contextmgr.Options{Store: store})
 	const count = 24
 	start := make(chan struct{})
@@ -177,7 +177,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	if err != nil || len(state.DiscoveredTools) != count || len(state.ToolTags) != count {
 		t.Fatalf("state=%+v err=%v", state, err)
 	}
-	latest, _ := store.Sessions().Get(ctx, row.ID)
+	latest, _ := store.GetSession(ctx, row.ID)
 	contextsState, err := contextmgr.DecodeState(latest.Metadata)
 	if err != nil || contextsState.LastUsage == nil || contextsState.Compact == nil || contextsState.Compact.BaseTitle != "seed" || contextsState.Compact.Generation != 1 {
 		t.Fatalf("context=%+v err=%v", contextsState, err)

@@ -86,13 +86,13 @@ func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 	}
 	first, second := f.s.CurrentBinding(scope), f.s.CurrentBinding(secondScope)
 	for _, id := range []string{"a-delete", "b-busy", "c-failure", "d-pinned", "e-archived"} {
-		if _, err := f.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error { row.UpdatedAt = cutoff.Add(-time.Hour); return nil }); err != nil {
+		if _, err := f.store.MutateSession(ctx, id, func(row *storage.Session) error { row.UpdatedAt = cutoff.Add(-time.Hour); return nil }); err != nil {
 			t.Fatal(err)
 		}
 	}
 	f.setBusy("b-busy")
 	failure := errors.New("delete failed")
-	f.s.deps.Sessions = cleanupSessions{SessionRepository: f.store.Sessions(), failID: "c-failure", err: failure}
+	f.s.deps.Sessions = cleanupSessions{SessionRepository: f.store, failID: "c-failure", err: failure}
 	beforeSessions, beforeBindings := f.releaseCounts()
 	count, err := f.s.CleanupExpired(ctx, cutoff)
 	if count != 1 || !errors.Is(err, failure) {
@@ -111,11 +111,11 @@ func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(f.s.cfg.DraftRoot, id, "notes.md")); err != nil {
 			t.Errorf("retained session %s lost draft: %v", id, err)
 		}
-		if _, err := f.store.Sessions().Get(ctx, id); err != nil {
+		if _, err := f.store.GetSession(ctx, id); err != nil {
 			t.Fatalf("unexpected deletion %s: %v", id, err)
 		}
 	}
-	f.s.deps.Sessions = f.store.Sessions()
+	f.s.deps.Sessions = f.store
 	if count, err := f.s.CleanupExpired(ctx, cutoff); err != nil || count != 1 {
 		t.Fatalf("continued cleanup: %d %v", count, err)
 	}

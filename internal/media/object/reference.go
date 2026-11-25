@@ -43,7 +43,7 @@ func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[s
 		return operationresult.Result[share.HeldMedia]{}, err
 	}
 	defer unlock()
-	item, err := m.media.Get(ctx, id)
+	item, err := m.media.GetMedia(ctx, id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[share.HeldMedia]{Status: operationresult.NotFound, Message: "media unavailable"}, nil
@@ -52,7 +52,7 @@ func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[s
 	}
 	ref := storage.MediaReference{MediaID: id, OwnerType: "request", OwnerID: storage.NewID(), Purpose: "temporary", CreatedAt: m.options.Now()}
 	// 存储原子拒绝对删除中对象添加引用，无需重复查询删除状态。
-	if err := m.references.Add(ctx, &ref); err != nil {
+	if err := m.references.AddMediaReference(ctx, &ref); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[share.HeldMedia]{Status: operationresult.NotFound, Message: "media unavailable"}, nil
 		}
@@ -99,7 +99,7 @@ func (h *heldMedia) Close(ctx context.Context) error {
 	if h.released.Load() {
 		return nil
 	}
-	if err := h.manager.references.Remove(ctx, h.reference); err != nil {
+	if err := h.manager.references.RemoveMediaReference(ctx, h.reference); err != nil {
 		return err
 	}
 	h.released.Store(true)
@@ -163,7 +163,7 @@ func (m *Manager) AddReference(ctx context.Context, reference Reference) error {
 	if !share.ValidID(reference.MediaID) {
 		return fmt.Errorf("invalid media ID")
 	}
-	return m.references.Add(ctx, &storage.MediaReference{MediaID: reference.MediaID, OwnerType: reference.OwnerType, OwnerID: reference.OwnerID, Purpose: reference.Purpose, CreatedAt: m.options.Now()})
+	return m.references.AddMediaReference(ctx, &storage.MediaReference{MediaID: reference.MediaID, OwnerType: reference.OwnerType, OwnerID: reference.OwnerID, Purpose: reference.Purpose, CreatedAt: m.options.Now()})
 }
 
 // RemoveReference 移除指定业务身份的引用。
@@ -171,5 +171,5 @@ func (m *Manager) RemoveReference(ctx context.Context, reference Reference) erro
 	if !share.ValidID(reference.MediaID) {
 		return fmt.Errorf("invalid media ID")
 	}
-	return m.references.Remove(ctx, storage.MediaReference{MediaID: reference.MediaID, OwnerType: reference.OwnerType, OwnerID: reference.OwnerID, Purpose: reference.Purpose})
+	return m.references.RemoveMediaReference(ctx, storage.MediaReference{MediaID: reference.MediaID, OwnerType: reference.OwnerType, OwnerID: reference.OwnerID, Purpose: reference.Purpose})
 }

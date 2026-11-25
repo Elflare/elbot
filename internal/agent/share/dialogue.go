@@ -179,7 +179,7 @@ type ToolDepsFactory interface {
 // MessageCommitter commits a prepared business message, or a cursor-only reply.
 // Protocol-private implementations can atomically attach their native state.
 type MessageCommitter interface {
-	Commit(context.Context, storage.DialogueCommit) error
+	CommitDialogue(context.Context, storage.DialogueCommit) error
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.

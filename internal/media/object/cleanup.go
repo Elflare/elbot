@@ -112,7 +112,7 @@ func (m *Manager) deleteObject(ctx context.Context, id string) (deleted bool, er
 		return false, err
 	}
 	defer unlock()
-	item, err := m.media.Get(ctx, id)
+	item, err := m.media.GetMedia(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}

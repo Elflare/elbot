@@ -49,7 +49,7 @@ func (s *Service) FindLast(ctx context.Context, scope share.Scope, allPlatforms 
 	if binding := s.CurrentBinding(scope); binding != nil {
 		query.ExcludeSessionID = binding.SessionID()
 	}
-	rows, err := s.deps.Sessions.List(ctx, query)
+	rows, err := s.deps.Sessions.ListSessions(ctx, query)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
@@ -74,7 +74,7 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 	}
 	rejected := operationresult.Result[struct{}]{Status: operationresult.Success}
 	promoted := false
-	row, err := s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+	row, err := s.deps.Sessions.MutateSession(ctx, id, func(row *storage.Session) error {
 		if (!share.IsBackground(row) || !s.deps.IsSuperadmin(scope)) && !share.CanAccess(scope, row) {
 			rejected = operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "无权访问该会话"}
 			return nil

@@ -46,7 +46,7 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 	if result, err := svc.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: llm.APITypeResponse, Provider: "other"}); err != nil || result.Status != operationresult.Conflict {
 		t.Fatal("existing material was silently reinterpreted")
 	}
-	persisted, err := store.Sessions().Get(ctx, row.ID)
+	persisted, err := store.GetSession(ctx, row.ID)
 	if err != nil || persisted.Metadata != before {
 		t.Fatalf("failed registration changed metadata: %+v, %v", persisted, err)
 	}
@@ -80,7 +80,7 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 	if _, err := svc.RegisterOrigin(old, row.ID, target); err == nil {
 		t.Fatal("public associations authorized an expired binding")
 	}
-	persisted, err := store.Sessions().Get(ctx, row.ID)
+	persisted, err := store.GetSession(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

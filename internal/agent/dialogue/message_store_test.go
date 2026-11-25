@@ -14,7 +14,7 @@ type commitResultRepository struct {
 	err error
 }
 
-func (r commitResultRepository) Commit(context.Context, storage.DialogueCommit) error {
+func (r commitResultRepository) CommitDialogue(context.Context, storage.DialogueCommit) error {
 	return r.err
 }
 

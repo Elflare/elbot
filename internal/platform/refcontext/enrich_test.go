@@ -3,25 +3,25 @@ package refcontext
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
 	original := []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}, {Type: share.SegmentImage, PlatformFileID: "outside-image"}}
 	row := &storage.ChatMessage{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "123", SenderID: "1", SenderName: "小明", Text: "[forward]", Segments: encodeReferenceSegments(original), CreatedAt: storage.Now()}
-	if err := history.Repository().Append(ctx, row); err != nil {
+	if err := history.AppendChatMessage(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	display := []share.MessageSegment{
@@ -31,7 +31,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 		original[1],
 	}
 	calls := 0
-	result, err := newRefTestOptions(newRefTestStore(t), history.Repository()).Apply(ctx, share.ReferenceOptions{Platform: "qqonebot", ChatType: "group", ChatID: "9", ReplyID: "123", Text: "问题", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
+	result, err := newRefTestOptions(newRefTestStore(t), history).Apply(ctx, share.ReferenceOptions{Platform: "qqonebot", ChatType: "group", ChatID: "9", ReplyID: "123", Text: "问题", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		t.Fatal("history unexpectedly bypassed")
 		return share.ReferencedMessage{}, false, nil
 	}, Enrich: func(_ context.Context, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
@@ -64,7 +64,7 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	mapPlatformMessage(t, ctx, store, scope, "latest-forward", latest)
 	history := newRefTestHistory(t)
 	for _, id := range []string{"old-forward", "latest-forward"} {
-		if err := history.Append(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, PlatformMessageID: id, IsAssistant: true, Text: first.Content}); err != nil {
+		if err := history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, PlatformMessageID: id, IsAssistant: true, Text: first.Content}); err != nil {
 			t.Fatal(err)
 		}
 	}

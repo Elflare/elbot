@@ -19,7 +19,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			return operationresult.Result[*storage.Session]{}, err
 		}
 		defer release()
-		updated, err := s.deps.Sessions.Mutate(ctx, req.SessionID, func(row *storage.Session) error {
+		updated, err := s.deps.Sessions.MutateSession(ctx, req.SessionID, func(row *storage.Session) error {
 			if !share.IsBackground(row) {
 				return nil
 			}
@@ -61,7 +61,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 	}
 	row := &storage.Session{ID: id, Owner: scope.Owner, Platform: scope.Platform, TaskType: req.TaskType, TaskID: req.TaskID, TaskName: req.Name,
 		Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: title, Metadata: metadata}
-	if err := s.deps.Sessions.Create(ctx, row); err != nil {
+	if err := s.deps.Sessions.CreateSession(ctx, row); err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
@@ -71,7 +71,7 @@ func (s *Service) IsSessionForeground(ctx context.Context, id string) (bool, err
 	if id == "" {
 		return false, nil
 	}
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}

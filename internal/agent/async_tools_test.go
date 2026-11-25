@@ -383,7 +383,7 @@ func testAsyncMixedHandoff(t *testing.T, stop bool) {
 	}
 	// The answer and the synchronous worker can finish on either side of the next model call.
 	for {
-		history, err := deps.Store.Messages().ListBySession(ctx, sid)
+		history, err := deps.Store.ListSessionMessages(ctx, sid)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -515,7 +515,7 @@ func TestAsyncProcessTool(t *testing.T) {
 				if !strings.Contains(receipt, id) {
 					t.Fatalf("receipt %q does not name an active request", receipt)
 				}
-				records, err := deps.Store.ToolCalls().ListBySession(ctx, active.SessionID)
+				records, err := deps.Store.ListSessionToolCalls(ctx, active.SessionID)
 				if err != nil || len(records) != 0 {
 					t.Fatalf("receipt counted as execution: %+v %v", records, err)
 				}
@@ -567,7 +567,7 @@ func TestAsyncProcessTool(t *testing.T) {
 					t.Fatal("unexpected extra LLM call")
 				default:
 				}
-				records, err = deps.Store.ToolCalls().ListBySession(ctx, active.SessionID)
+				records, err = deps.Store.ListSessionToolCalls(ctx, active.SessionID)
 				if err != nil || len(records) != 1 || records[0].ToolCallID != "contract-call" || records[0].Success != (stop == "complete") {
 					t.Fatalf("wrong execution audit: %+v %v", records, err)
 				}

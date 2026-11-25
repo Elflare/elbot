@@ -69,7 +69,7 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	default:
 		t.Fatal("remote deletion failure missing")
 	}
-	record, err := store.Media().Get(t.Context(), item.ID)
+	record, err := store.GetMedia(t.Context(), item.ID)
 	if err != nil || !record.Deleting {
 		t.Fatalf("retry state = %#v %v", record, err)
 	}
@@ -84,10 +84,10 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(calls, []string{"remote", "remote", "local"}) {
 		t.Fatal("retry:   ", err, calls)
 	}
-	if _, err := store.Media().Get(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.GetMedia(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("record survived: %v", err)
 	}
-	if _, err := store.Media().GetSignedURL(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.GetSignedURL(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("signature survived: %v", err)
 	}
 }
@@ -137,7 +137,7 @@ func TestCleanupConcurrencyCancellationAndFailure(t *testing.T) {
 		t.Fatal(got.err)
 	}
 
-	pending, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(2*OrphanGrace))
+	pending, err := store.ClaimOrphans(t.Context(), time.Now().Add(2*OrphanGrace))
 	if err != nil || len(pending) != 8 {
 		t.Fatalf("pending = %d %v", len(pending), err)
 	}

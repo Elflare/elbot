@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -19,7 +20,6 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type testModels func(context.Context) modelmgr.NamingSelection
@@ -41,9 +41,9 @@ func (c testTextClient) GenerateText(ctx context.Context, req llm.TextRequest) (
 	return c.call(ctx, req)
 }
 
-func newTestStore(t *testing.T) storage.Store {
+func newTestStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "session.db"))
+	store, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "session.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,13 +54,13 @@ func newTestStore(t *testing.T) storage.Store {
 	})
 	return store
 }
-func newTestService(t *testing.T) (*Supervisor, storage.Store) {
+func newTestService(t *testing.T) (*Supervisor, *storage.Supervisor) {
 	t.Helper()
 	store := newTestStore(t)
 	return newTestSupervisor(t, store, nil), store
 }
 
-func newTestSupervisor(t *testing.T, store storage.Store, configure func(*config.Config, *SupervisorDeps)) *Supervisor {
+func newTestSupervisor(t *testing.T, store Store, configure func(*config.Config, *SupervisorDeps)) *Supervisor {
 	t.Helper()
 	cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 1}}}
 	deps := SupervisorDeps{AdoptForeground: func(context.Context, *storage.Session, *Binding) {}, Store: store, Models: testModels(func(context.Context) modelmgr.NamingSelection { return modelmgr.NamingSelection{} }), ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) {
@@ -124,7 +124,7 @@ func TestIdleExpiryCombinesNamingAndExternalRelease(t *testing.T) {
 			t.Fatalf("current: %+v %v", current, err)
 		}
 		binding := current.Data.Binding
-		if err := store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "fallback"}); err != nil {
+		if err := store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "fallback"}); err != nil {
 			t.Fatal(err)
 		}
 		s.MaybeScheduleNaming(t.Context(), row.ID)
@@ -141,13 +141,13 @@ func TestIdleExpiryCombinesNamingAndExternalRelease(t *testing.T) {
 			s.MaybeScheduleNaming(t.Context(), row.ID)
 			synctest.Wait()
 		}
-		stored, _ := store.Sessions().Get(t.Context(), row.ID)
+		stored, _ := store.GetSession(t.Context(), row.ID)
 		if stored.Title != "original" || calls.Load() != 3 {
 			t.Fatalf("Naming cache survived expiry: row=%+v calls=%d", stored, calls.Load())
 		}
 		s.MaybeScheduleNaming(t.Context(), row.ID)
 		synctest.Wait()
-		stored, _ = store.Sessions().Get(t.Context(), row.ID)
+		stored, _ = store.GetSession(t.Context(), row.ID)
 		if stored.Title != "fallback" || calls.Load() != 4 {
 			t.Fatalf("retry=%+v calls=%d", stored, calls.Load())
 		}
@@ -222,7 +222,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 				}
 			case "resume":
 				next := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatID: scope.ChatID, Mode: storage.SessionModeWork, ChatType: scope.ChatType}
-				err = store.Sessions().Create(t.Context(), next)
+				err = store.CreateSession(t.Context(), next)
 				if err == nil {
 					result, resumeErr := s.Resume(t.Context(), scope, next.ID)
 					err = resumeErr
@@ -232,7 +232,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 				}
 			case "fork":
 				message := &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}
-				err = store.Messages().Append(t.Context(), message)
+				err = store.AppendMessage(t.Context(), message)
 				if err == nil {
 					result, forkErr := s.Fork(t.Context(), scope, message.ID)
 					err = forkErr
@@ -247,12 +247,12 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 					err = fmt.Errorf("delete: %s", result.Message)
 				}
 			case "cleanup":
-				_, err = store.Sessions().Mutate(t.Context(), row.ID, func(row *storage.Session) error { row.UpdatedAt = storage.Now().Add(-2 * time.Hour); return nil })
+				_, err = store.MutateSession(t.Context(), row.ID, func(row *storage.Session) error { row.UpdatedAt = storage.Now().Add(-2 * time.Hour); return nil })
 				if err == nil {
 					_, err = s.CleanupExpired(t.Context(), storage.Now().Add(-time.Hour))
 				}
 			case "missing":
-				err = store.Sessions().Delete(t.Context(), row.ID)
+				err = store.DeleteSession(t.Context(), row.ID)
 				if err == nil {
 					missing, readErr := s.Current(t.Context(), scope)
 					if readErr != nil || missing.Status != operationresult.NoCurrentSession {
@@ -295,7 +295,7 @@ func TestPromotionCallbackPreservesResultAndBinding(t *testing.T) {
 	if err != nil || current.Status != operationresult.Success || current.Data.Binding != observed {
 		t.Fatal("promotion binding copied")
 	}
-	stored, err := store.Sessions().Get(t.Context(), row.ID)
+	stored, err := store.GetSession(t.Context(), row.ID)
 	if err != nil || IsBackground(stored) {
 		t.Fatalf("commit=%+v %v", stored, err)
 	}
@@ -351,7 +351,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 		t.Fatalf("create: %+v %v", created, err)
 	}
 	row := created.Data
-	if err := store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "user"}); err != nil {
+	if err := store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "user"}); err != nil {
 		t.Fatal(err)
 	}
 	s.MaybeScheduleNaming(t.Context(), row.ID)
@@ -382,7 +382,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 	if err := s.Start(); err == nil {
 		t.Fatal("closed supervisor restarted")
 	}
-	if _, err := store.Sessions().Get(t.Context(), row.ID); err != nil {
+	if _, err := store.GetSession(t.Context(), row.ID); err != nil {
 		t.Fatal("borrowed store was closed", err)
 	}
 }

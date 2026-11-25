@@ -66,7 +66,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			before, err := deps.Store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
+			before, err := deps.Store.ListSessions(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 					if current.Status != operationresult.NoCurrentSession {
 						t.Fatal("created a conversation")
 					}
-					after, err := deps.Store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
+					after, err := deps.Store.ListSessions(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
 					if err != nil || !reflect.DeepEqual(before, after) {
 						t.Fatalf("sessions changed: before=%+v after=%+v err=%v", before, after, err)
 					}
@@ -148,11 +148,11 @@ func TestAddressedCommandUsesRequestedSession(t *testing.T) {
 	if err := m.HandleMessage(ctx, MessageRequest{Text: "/rename selected"}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := deps.Store.Sessions().Get(ctx, target.Data.ID)
+	row, err := deps.Store.GetSession(ctx, target.Data.ID)
 	if err != nil || row.Title != "selected" {
 		t.Fatal(row, err, platform.replies)
 	}
-	row, err = deps.Store.Sessions().Get(ctx, other.Data.ID)
+	row, err = deps.Store.GetSession(ctx, other.Data.ID)
 	if err != nil || row.Title != "other" {
 		t.Fatal(row, err)
 	}

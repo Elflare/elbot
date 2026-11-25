@@ -39,7 +39,7 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 	}
 	held := holdTestMedia(t, m, item.ID)
 	defer held.Close(t.Context())
-	cached, _ := store.Media().GetSignedURL(t.Context(), item.ID)
+	cached, _ := store.GetSignedURL(t.Context(), item.ID)
 	now = cached.ExpiresAt.Add(-signedURLRefreshMargin - time.Nanosecond)
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
@@ -54,14 +54,14 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 	if remote.puts != 1 || remote.signs != 2 {
 		t.Fatal("refresh failed or uploaded again")
 	}
-	cached, _ = store.Media().GetSignedURL(t.Context(), item.ID)
+	cached, _ = store.GetSignedURL(t.Context(), item.ID)
 	failure := errors.New("sign failed")
 	remote.sign = func(context.Context, string, time.Duration) (string, error) { return "", failure }
 	now = cached.ExpiresAt
 	if _, err := held.SignedURL(t.Context()); !errors.Is(err, failure) {
 		t.Fatalf("sign failure = %v", err)
 	}
-	unchanged, _ := store.Media().GetSignedURL(t.Context(), item.ID)
+	unchanged, _ := store.GetSignedURL(t.Context(), item.ID)
 	if *unchanged != *cached {
 		t.Fatal("failed refresh overwrote cache")
 	}
@@ -117,7 +117,7 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 	}
 	requireMediaLog(t, logs, closeErr.Error())
 	requireMediaLog(t, logs, removeErr.Error())
-	record, _ := m.media.Get(t.Context(), item.ID)
+	record, _ := m.media.GetMedia(t.Context(), item.ID)
 	if record.ObjectKey != "" {
 		t.Fatal("failed persistence changed record")
 	}
@@ -146,7 +146,7 @@ func TestSigningHoldsReferenceUntilUploadFinishes(t *testing.T) {
 	go func() { _, err := held.SignedURL(ctx); done <- err }()
 	awaitTest(t, entered)
 	// 配置不在并发调用中改写；直接用仓储检查未来认领仍受持有保护。
-	items, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(2*OrphanGrace))
+	items, err := store.ClaimOrphans(t.Context(), time.Now().Add(2*OrphanGrace))
 	if err != nil || len(items) != 0 {
 		t.Fatalf("held upload claimed: %#v %v", items, err)
 	}
@@ -157,7 +157,7 @@ func TestSigningHoldsReferenceUntilUploadFinishes(t *testing.T) {
 	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if refs, _ := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); len(refs) != 0 {
+	if refs, _ := store.ListMediaIDs(t.Context(), item.ID); len(refs) != 0 {
 		t.Fatal("upload reference leaked")
 	}
 }

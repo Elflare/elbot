@@ -47,7 +47,7 @@ func TestConcurrentCloseReleasesOnce(t *testing.T) {
 	var calls atomic.Int32
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(ctx context.Context, ref storage.MediaReference) error {
 		calls.Add(1)
-		return store.MediaReferences().Remove(ctx, ref)
+		return store.RemoveMediaReference(ctx, ref)
 	}}
 	var workers sync.WaitGroup
 	for range 24 {
@@ -80,7 +80,7 @@ func TestReaderCloseFailureDoesNotQueueReleasedHold(t *testing.T) {
 	if len(m.pendingReleases) != 0 {
 		t.Fatal("successfully released hold queued")
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	refs, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("references = %#v %v", refs, err)
 	}
@@ -92,7 +92,7 @@ func TestHeldCloseWaitCancellation(t *testing.T) {
 	held := holdTestMedia(t, m, item.ID)
 	entered := make(chan struct{})
 	ctx, cancel := context.WithCancel(t.Context())
-	m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
+	m.references = testReferences{ReferenceRepository: store, remove: func(ctx context.Context, ref storage.MediaReference) error {
 		close(entered)
 		<-ctx.Done()
 		return ctx.Err()
@@ -109,7 +109,7 @@ func TestHeldCloseWaitCancellation(t *testing.T) {
 	if err := awaitTest(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	m.references = store.MediaReferences()
+	m.references = store
 	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -123,12 +123,12 @@ func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
 	if err := held.Close(t.Context()); !errors.Is(err, failure) {
 		t.Fatalf("Close = %v", err)
 	}
-	m.references = store.MediaReferences()
+	m.references = store
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	refs, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("caller hold was taken over: %#v %v", refs, err)
 	}
@@ -146,12 +146,12 @@ func TestManagerCloseStopsOnFirstReleaseError(t *testing.T) {
 	m.pendingReleases = holds
 	failure := errors.New("cannot release second hold")
 	calls := 0
-	m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
+	m.references = testReferences{ReferenceRepository: store, remove: func(ctx context.Context, ref storage.MediaReference) error {
 		calls++
 		if ref.MediaID == holds[1].Info().ID {
 			return failure
 		}
-		return store.MediaReferences().Remove(ctx, ref)
+		return store.RemoveMediaReference(ctx, ref)
 	}}
 	if err := m.Close(t.Context()); !errors.Is(err, failure) {
 		t.Fatalf("Close error = %v, want %v", err, failure)
@@ -173,14 +173,14 @@ func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 		if err != nil {
 			t.Fatal("cleanup =  ", err)
 		}
-		if _, err := store.Media().Get(t.Context(), orphan.ID); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := store.GetMedia(t.Context(), orphan.ID); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("unrelated orphan was not removed: %v", err)
 		}
 		if len(m.pendingReleases) != 1 {
 			t.Fatalf("retry lost/duplicated item: %d", len(m.pendingReleases))
 		}
 	}
-	m.references = store.MediaReferences()
+	m.references = store
 	// 释放完成后的正常时间内仍保留宽限期。
 	m.options.Now = storage.Now
 	if err := m.Cleanup(t.Context(), nil); err != nil {
@@ -212,7 +212,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			}
 			entered, release := make(chan struct{}), make(chan struct{})
 			var secondCalls atomic.Int32
-			m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
+			m.references = testReferences{ReferenceRepository: store, remove: func(ctx context.Context, ref storage.MediaReference) error {
 				switch ref.MediaID {
 				case first.ID:
 					close(entered)
@@ -224,7 +224,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 					if failCurrent {
 						return failure
 					}
-					return store.MediaReferences().Remove(ctx, ref)
+					return store.RemoveMediaReference(ctx, ref)
 				case second.ID:
 					secondCalls.Add(1)
 				}
@@ -255,12 +255,12 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			if secondCalls.Load() != 0 || len(m.pendingReleases) != wantPending {
 				t.Fatalf("remaining=%d unstarted calls=%d", len(m.pendingReleases), secondCalls.Load())
 			}
-			m.references = store.MediaReferences()
+			m.references = store
 			if err := m.Cleanup(t.Context(), nil); err != nil {
 				t.Fatal(err)
 			}
 			for _, id := range []string{first.ID, second.ID, third.ID} {
-				refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+				refs, err := store.ListMediaIDs(t.Context(), id)
 				if err != nil || len(refs) != 0 {
 					t.Fatalf("lost pending release: %#v %v", refs, err)
 				}
@@ -289,11 +289,11 @@ func TestOwnedReleaseFailureRecoveredByCleanup(t *testing.T) {
 			if len(m.pendingReleases) != 1 {
 				t.Fatal("release failure was not retained for retry")
 			}
-			m.references = store.MediaReferences()
+			m.references = store
 			if err := m.Cleanup(t.Context(), nil); err != nil {
 				t.Fatal(err)
 			}
-			refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+			refs, err := store.ListMediaIDs(t.Context(), item.ID)
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("owned release lost: references=%d error=%v", len(refs), err)
 			}

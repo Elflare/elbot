@@ -84,7 +84,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if binding.Valid() || len(tools.forgot) != 1 || tools.forgot[0] != binding {
 			t.Fatal("expiry did not synchronously release original binding")
 		}
-		if _, err := deps.Store.Sessions().Get(t.Context(), row.ID); err != nil {
+		if _, err := deps.Store.GetSession(t.Context(), row.ID); err != nil {
 			t.Fatal("expiry deleted history", err)
 		}
 		if resumed, err := m.sessions.Resume(t.Context(), scope, row.ID); err != nil || resumed.Status != operationresult.Success {

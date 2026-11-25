@@ -3,6 +3,7 @@ package maintenance
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,7 +15,6 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestCleanupSandboxDeletesOldFilesAndEmptyDirs(t *testing.T) {
@@ -65,7 +65,7 @@ func TestCleanupSandboxDeletesOldFilesAndEmptyDirs(t *testing.T) {
 
 func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		t.Fatal(err)
 	}
 	binding := current.Data.Binding
-	_, err = store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error { row.UpdatedAt = time.Now().AddDate(0, 0, -10); return nil })
+	_, err = store.MutateSession(ctx, row.ID, func(row *storage.Session) error { row.UpdatedAt = time.Now().AddDate(0, 0, -10); return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

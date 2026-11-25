@@ -67,7 +67,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			req.Before = clampChatHistoryWindow(args.Before)
 			req.After = clampChatHistoryWindow(args.After)
 		}
-		raw, err := t.Repository.Around(ctx, req)
+		raw, err := t.Repository.ChatHistoryAround(ctx, req)
 		rows, err := t.historyRows(ctx, raw, err)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err

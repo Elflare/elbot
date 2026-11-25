@@ -23,7 +23,6 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/turn"
 )
@@ -113,7 +112,7 @@ func (o *testOutput) Send(ctx context.Context, event delivery.StreamEvent) (deli
 	if event.Type != delivery.StreamSend {
 		return delivery.Receipt{}, nil
 	}
-	rows, err := o.messages.ListBySession(ctx, "session")
+	rows, err := o.messages.ListSessionMessages(ctx, "session")
 	if err != nil || len(rows) != 1 || rows[0].Content != "canonical input" {
 		o.t.Fatalf("route bypassed common input persistence: rows=%+v err=%v", rows, err)
 	}
@@ -132,19 +131,19 @@ func (testStatus) Record(context.Context, runtimestatus.Snapshot) {}
 
 func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	ctx := t.Context()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	row := &storage.Session{ID: "session", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
-	if err := store.Sessions().Create(ctx, row); err != nil {
+	if err := store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	registry := routes.New()
 	sessions := newSessionSupervisor(t, store)
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
+	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store, Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store}}}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
 	registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor})
@@ -155,11 +154,11 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	row = registered.Data
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
-	out := &testOutput{t: t, messages: store.Messages()}
+	out := &testOutput{t: t, messages: store}
 	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{NewMessageID: testutil.IDSequence().MessageID, Contexts: contexts, Media: mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())},
 		Messages: loop.messages,
 		Replies:  &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
-		Turns:    turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
+		Turns:    turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store}}
 	in := agentshare.TurnInput{
 		Session:   row,
 		Text:      "incoming",
@@ -187,7 +186,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if loop.prepared != 1 || loop.ran != 1 || len(out.sent) != 1 || out.sent[0] != "visible reply" {
 		t.Fatalf("wrong route or delivery: prepared=%d ran=%d sent=%v", loop.prepared, loop.ran, out.sent)
 	}
-	rows, err := store.Messages().ListBySession(ctx, row.ID)
+	rows, err := store.ListSessionMessages(ctx, row.ID)
 	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" {
 		t.Fatalf("common commit lost canonical reply: %+v / %v", rows, err)
 	}

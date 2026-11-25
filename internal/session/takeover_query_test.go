@@ -16,7 +16,7 @@ func TestIsSessionForegroundFactsAndMissing(t *testing.T) {
 		{ID: "ordinary", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, ChatType: "private"},
 		{ID: "promoted", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: `{"foreground_origin":{"kind":"cron"}}`, ChatType: "private"},
 	} {
-		if err := store.Sessions().Create(t.Context(), row); err != nil {
+		if err := store.CreateSession(t.Context(), row); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -34,22 +34,17 @@ func TestIsSessionForegroundFactsAndMissing(t *testing.T) {
 }
 
 type takeoverQueryStore struct {
-	storage.Store
-	repo storage.SessionRepository
-}
-
-func (s takeoverQueryStore) Sessions() storage.SessionRepository { return s.repo }
-
-type takeoverQueryRepo struct {
-	storage.SessionRepository
+	Store
 	err error
 }
 
-func (r takeoverQueryRepo) Get(context.Context, string) (*storage.Session, error) { return nil, r.err }
+func (r takeoverQueryStore) GetSession(context.Context, string) (*storage.Session, error) {
+	return nil, r.err
+}
 
 func TestIsSessionForegroundPropagatesStorageFailure(t *testing.T) {
 	want := errors.New("read failed")
-	s := newTestSupervisor(t, takeoverQueryStore{Store: newTestStore(t), repo: takeoverQueryRepo{err: want}}, nil)
+	s := newTestSupervisor(t, takeoverQueryStore{Store: newTestStore(t), err: want}, nil)
 	t.Cleanup(func() { _ = s.Close(context.Background()) })
 	if taken, err := s.IsSessionForeground(t.Context(), "session"); taken || !errors.Is(err, want) {
 		t.Fatalf("lookup=%v,%v", taken, err)

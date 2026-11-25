@@ -36,7 +36,7 @@ func TestForgetDuringPreparationGenerationAndCompletion(t *testing.T) {
 				f.s.deps.Messages = messageFunc(func(ctx context.Context, id string) ([]storage.Message, error) {
 					close(started)
 					<-release
-					return f.store.Messages().ListBySession(ctx, id)
+					return f.store.ListSessionMessages(ctx, id)
 				})
 			}
 			if phase == "completion" {
@@ -91,7 +91,7 @@ func TestPreparationReservationReleasedBelowThresholdAndAfterCancellation(t *tes
 			f.s.deps.Messages = messageFunc(func(ctx context.Context, id string) ([]storage.Message, error) {
 				close(started)
 				<-release
-				return f.store.Messages().ListBySession(ctx, id)
+				return f.store.ListSessionMessages(ctx, id)
 			})
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -109,8 +109,8 @@ func TestPreparationReservationReleasedBelowThresholdAndAfterCancellation(t *tes
 					t.Fatalf("event=%+v", e)
 				}
 			}
-			f.s.deps.Messages = f.store.Messages()
-			if err := f.store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleAssistant, Content: "answer"}); err != nil {
+			f.s.deps.Messages = f.store
+			if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleAssistant, Content: "answer"}); err != nil {
 				t.Fatal(err)
 			}
 			if e := f.attempt(t, id); e.ResultStatus != events.ResultSucceeded {
@@ -176,7 +176,7 @@ func TestTurnCancellationAndCloseWaitForIgnoringClient(t *testing.T) {
 			if e.ResultStatus != events.ResultCanceled || e.FailureCount != 0 || e.PersistenceResultStatus != events.ResultUnspecified || e.FallbackResultStatus != events.ResultUnspecified {
 				t.Fatalf("event=%+v", e)
 			}
-			row, _ := f.store.Sessions().Get(t.Context(), id)
+			row, _ := f.store.GetSession(t.Context(), id)
 			if row.Title != "original" {
 				t.Fatalf("late write: %+v", row)
 			}
@@ -202,7 +202,7 @@ func TestCloseWaitsForPreparationAndRealTerminalCallback(t *testing.T) {
 				f.s.deps.Messages = messageFunc(func(ctx context.Context, id string) ([]storage.Message, error) {
 					close(started)
 					<-release
-					return f.store.Messages().ListBySession(ctx, id)
+					return f.store.ListSessionMessages(ctx, id)
 				})
 			} else {
 				publish := f.s.deps.Log

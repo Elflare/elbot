@@ -68,7 +68,7 @@ func TestForkModesAndOwnership(t *testing.T) {
 				if got := f.c.CurrentBinding(target); got == nil || got.SessionID() != row.ID {
 					t.Fatal("fork not activated")
 				}
-				latest, err := f.store.Sessions().Get(t.Context(), source.ID)
+				latest, err := f.store.GetSession(t.Context(), source.ID)
 				if err != nil || latest.Mode != mode || latest.Metadata != source.Metadata {
 					t.Fatalf("source changed: %+v %v", latest, err)
 				}
@@ -104,7 +104,7 @@ func TestForkMessageAndToolBoundaries(t *testing.T) {
 	if row.ForkFromMessageID != sealed.Results[1].ID {
 		t.Fatalf("boundary: %+v", row)
 	}
-	rows, err := f.store.Messages().ListBySessionUpTo(t.Context(), source.ID, row.ForkFromMessageID)
+	rows, err := f.store.ListBySessionUpTo(t.Context(), source.ID, row.ForkFromMessageID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestForkRechecksAfterUnlockedPreparation(t *testing.T) {
 					f.c.SetCurrent(locked, scope(), "")
 					f.c.SetCurrent(locked, scope(), source.ID)
 				case "owner", "origin", "checkpoint":
-					_, err = f.store.Sessions().Mutate(locked, source.ID, func(row *storage.Session) error {
+					_, err = f.store.MutateSession(locked, source.ID, func(row *storage.Session) error {
 						switch change {
 						case "owner":
 							row.Owner.ID = "other"
@@ -153,7 +153,7 @@ func TestForkRechecksAfterUnlockedPreparation(t *testing.T) {
 						return nil
 					})
 				case "delete":
-					err = f.store.Sessions().Delete(locked, source.ID)
+					err = f.store.DeleteSession(locked, source.ID)
 				case "busy":
 					f.setBusy(source.ID)
 				case "cancel":
@@ -222,7 +222,7 @@ func TestForkControlTimerAndRelease(t *testing.T) {
 		if f.c.CurrentBinding(scope()) != nil {
 			t.Fatal("fork bypassed idle tracking")
 		}
-		if _, err := f.store.Sessions().Get(context.Background(), row.ID); err != nil {
+		if _, err := f.store.GetSession(context.Background(), row.ID); err != nil {
 			t.Fatal("expiry deleted history", err)
 		}
 	})

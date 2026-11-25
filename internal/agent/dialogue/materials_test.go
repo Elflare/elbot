@@ -20,13 +20,12 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/turn"
 )
 
 func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
-	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "db"))
+	store, err := testutil.OpenStore(t.Context(), filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +62,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	if prepared.Data[0].Segments[0].URL != "data:image/png;base64,aW1hZ2U=" || !reflect.DeepEqual(canonical, original) {
 		t.Fatal("prepared content or canonical copy changed")
 	}
-	metadata, err := store.Media().Get(t.Context(), segment.MediaID)
+	metadata, err := store.GetMedia(t.Context(), segment.MediaID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +78,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 		t.Fatalf("missing file must remain an IO error and release usage: %q %v", usageID, err)
 	}
 	// A retired media record is a business absence, unlike an unreadable entity.
-	if _, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(time.Hour)); err != nil {
+	if _, err := store.ClaimOrphans(t.Context(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	logs := 0
@@ -131,16 +130,16 @@ func TestArchiveMaterialsRequiresUpstreamMediaID(t *testing.T) {
 }
 
 func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
-	store, err := sqlite.New(t.Context(), filepath.Join(t.TempDir(), "db"))
+	store, err := testutil.OpenStore(t.Context(), filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Platform: "cli", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(t.Context(), row); err != nil {
+	if err := store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: ExecutionView{Sessions: store.Sessions()}}}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: ExecutionView{Sessions: store}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
 	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls, "")
 	if err := committer.Begin(t.Context(), &head); err != nil {
@@ -157,7 +156,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	if err := committer.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := store.Messages().ListBySession(t.Context(), row.ID)
+	rows, err := store.ListSessionMessages(t.Context(), row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,24 +201,24 @@ type countedDialogueRepository struct {
 	mediaReferences [][]storage.MediaReference
 }
 
-func (r *countedDialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (r *countedDialogueRepository) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	r.commits++
 	r.mediaReferences = append(r.mediaReferences, append([]storage.MediaReference(nil), commit.MediaReferences...))
-	return r.DialogueRepository.Commit(ctx, commit)
+	return r.DialogueRepository.CommitDialogue(ctx, commit)
 }
 
 func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	ctx := t.Context()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Platform: "cli", Mode: storage.SessionModeWork}
-	if err := store.Sessions().Create(ctx, row); err != nil {
+	if err := store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	repository := &countedDialogueRepository{DialogueRepository: store.Dialogues()}
+	repository := &countedDialogueRepository{DialogueRepository: store}
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: repository, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence())}}}
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
@@ -235,11 +234,11 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	if err := committer.Begin(ctx, &head); err != nil {
 		t.Fatal(err)
 	}
-	initial, err := store.Messages().ListBySession(ctx, row.ID)
+	initial, err := store.ListSessionMessages(ctx, row.ID)
 	if err != nil || len(initial) != 4 {
 		t.Fatalf("initial=%+v error=%v", initial, err)
 	}
-	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", row.ID)
+	refs, err := store.ListByOwner(ctx, "session_tool", row.ID)
 	if err != nil || len(refs) != 1 || refs[0].MediaID != item.Data.ID {
 		t.Fatalf("initial media references=%+v error=%v", refs, err)
 	}
@@ -261,7 +260,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 			t.Fatal(err)
 		}
 		completed[index] = true
-		rows, err := store.Messages().ListBySession(ctx, row.ID)
+		rows, err := store.ListSessionMessages(ctx, row.ID)
 		if err != nil || len(rows) != 4 {
 			t.Fatalf("rows=%+v error=%v", rows, err)
 		}
@@ -274,7 +273,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 				t.Fatalf("partial result visibility: %+v", rows)
 			}
 		}
-		usage, err := store.ToolCalls().UsageBySession(ctx, row.ID)
+		usage, err := store.UsageBySession(ctx, row.ID)
 		if err != nil || len(usage) != len(completed) {
 			t.Fatalf("statistics not atomic: %+v %v", usage, err)
 		}
@@ -290,7 +289,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 			t.Fatalf("commit %d references=%+v, want %d", i, repository.mediaReferences[i], want)
 		}
 	}
-	refs, err = store.MediaReferences().ListByOwner(ctx, "session_tool", row.ID)
+	refs, err = store.ListByOwner(ctx, "session_tool", row.ID)
 	if err != nil || len(refs) != 2 {
 		t.Fatalf("prepared media reference not committed with result: %+v %v", refs, err)
 	}

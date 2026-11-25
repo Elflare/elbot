@@ -3,33 +3,33 @@ package contextmgr
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"testing"
 
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestLoaderUsesLatestSummary(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/elbot.db")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	defer store.Close()
 
 	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
+	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
 	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
 	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
-		if err := store.Messages().Append(ctx, message); err != nil {
+		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
-	if err := store.ContextSummaries().Create(ctx, &storage.ContextSummary{SessionID: session.ID, ToMessageID: second.ID, Summary: "summary", Provider: "p", Model: "m", TriggerReason: "manual"}); err != nil {
+	if err := store.CreateContextSummary(ctx, &storage.ContextSummary{SessionID: session.ID, ToMessageID: second.ID, Summary: "summary", Provider: "p", Model: "m", TriggerReason: "manual"}); err != nil {
 		t.Fatalf("create summary: %v", err)
 	}
 
@@ -47,25 +47,25 @@ func TestLoaderUsesLatestSummary(t *testing.T) {
 
 func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/elbot.db")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	defer store.Close()
 
 	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
+	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
 	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
 	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
-		if err := store.Messages().Append(ctx, message); err != nil {
+		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
-	if err := store.ContextSummaries().Create(ctx, &storage.ContextSummary{SessionID: session.ID, ToMessageID: second.ID, Summary: "summary"}); err != nil {
+	if err := store.CreateContextSummary(ctx, &storage.ContextSummary{SessionID: session.ID, ToMessageID: second.ID, Summary: "summary"}); err != nil {
 		t.Fatalf("create summary: %v", err)
 	}
 
@@ -80,30 +80,30 @@ func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
 
 func TestLoaderIncludesForkParentContext(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/elbot.db")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	defer store.Close()
 
 	parent := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, parent); err != nil {
+	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
 	forkPoint := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "fork point"}
 	ignored := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "after fork"}
 	for _, message := range []*storage.Message{first, forkPoint, ignored} {
-		if err := store.Messages().Append(ctx, message); err != nil {
+		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append parent: %v", err)
 		}
 	}
 	fork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ParentSessionID: parent.ID, ForkFromMessageID: forkPoint.ID, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, fork); err != nil {
+	if err := store.CreateSession(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}
 	branch := &storage.Message{ID: storage.NewID(), SessionID: fork.ID, Role: storage.RoleUser, Content: "branch"}
-	if err := store.Messages().Append(ctx, branch); err != nil {
+	if err := store.AppendMessage(ctx, branch); err != nil {
 		t.Fatalf("append branch: %v", err)
 	}
 
@@ -120,29 +120,29 @@ func TestLoaderIncludesForkParentContext(t *testing.T) {
 
 func TestLoaderUsesForkParentSummary(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/elbot.db")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	defer store.Close()
 
 	parent := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, parent); err != nil {
+	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
 	second := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "second"}
 	third := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
-		if err := store.Messages().Append(ctx, message); err != nil {
+		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append parent: %v", err)
 		}
 	}
-	if err := store.ContextSummaries().Create(ctx, &storage.ContextSummary{SessionID: parent.ID, ToMessageID: second.ID, Summary: "summary", Provider: "p", Model: "m", TriggerReason: "manual"}); err != nil {
+	if err := store.CreateContextSummary(ctx, &storage.ContextSummary{SessionID: parent.ID, ToMessageID: second.ID, Summary: "summary", Provider: "p", Model: "m", TriggerReason: "manual"}); err != nil {
 		t.Fatalf("create summary: %v", err)
 	}
 	fork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ParentSessionID: parent.ID, ForkFromMessageID: third.ID, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, fork); err != nil {
+	if err := store.CreateSession(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}
 
@@ -170,34 +170,34 @@ func TestLoaderUsesForkParentSummary(t *testing.T) {
 
 func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/elbot.db")
+	store, err := testutil.OpenStore(ctx, t.TempDir()+"/elbot.db")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	defer store.Close()
 
 	root := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, root); err != nil {
+	if err := store.CreateSession(ctx, root); err != nil {
 		t.Fatalf("create root: %v", err)
 	}
 	rootAssistant := &storage.Message{ID: storage.NewID(), SessionID: root.ID, Role: storage.RoleAssistant, Content: "root"}
-	if err := store.Messages().Append(ctx, rootAssistant); err != nil {
+	if err := store.AppendMessage(ctx, rootAssistant); err != nil {
 		t.Fatalf("append root: %v", err)
 	}
 	firstFork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ParentSessionID: root.ID, ForkFromMessageID: rootAssistant.ID, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, firstFork); err != nil {
+	if err := store.CreateSession(ctx, firstFork); err != nil {
 		t.Fatalf("create first fork: %v", err)
 	}
 	firstAssistant := &storage.Message{ID: storage.NewID(), SessionID: firstFork.ID, Role: storage.RoleAssistant, Content: "first fork"}
-	if err := store.Messages().Append(ctx, firstAssistant); err != nil {
+	if err := store.AppendMessage(ctx, firstAssistant); err != nil {
 		t.Fatalf("append first fork: %v", err)
 	}
 	secondFork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ParentSessionID: firstFork.ID, ForkFromMessageID: firstAssistant.ID, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, secondFork); err != nil {
+	if err := store.CreateSession(ctx, secondFork); err != nil {
 		t.Fatalf("create second fork: %v", err)
 	}
 	branch := &storage.Message{ID: storage.NewID(), SessionID: secondFork.ID, Role: storage.RoleUser, Content: "second fork"}
-	if err := store.Messages().Append(ctx, branch); err != nil {
+	if err := store.AppendMessage(ctx, branch); err != nil {
 		t.Fatalf("append second fork: %v", err)
 	}
 

@@ -43,10 +43,10 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 	defer cancel()
 
 	begin := func(kind componentKind) shutdownStep {
-		return shutdownStep{kind, phaseBeginClose, func(context.Context) error { lines[kind].supervisor.BeginClose(); return nil }}
+		return shutdownStep{kind, phaseBeginClose, func(context.Context) error { lines.active[kind].supervisor.BeginClose(); return nil }}
 	}
 	closeLine := func(kind componentKind) shutdownStep {
-		line := lines[kind].supervisor
+		line := lines.active[kind].supervisor
 		return shutdownStep{kind, phaseClose, func(ctx context.Context) error {
 			err := line.Close(ctx)
 			if err != nil {
@@ -62,12 +62,11 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 	}
 	steps := []shutdownStep{
 		begin(componentPlatform), begin(componentBackground), begin(componentAgent), begin(componentHook), begin(componentTool),
-		{componentPlatform, phaseWaitIngress, lines[componentPlatform].waitIngress},
+		{componentPlatform, phaseWaitIngress, lines.active[componentPlatform].waitIngress},
 		closeLine(componentBackground), closeLine(componentAgent), closeLine(componentHook), closeLine(componentTool), closeLine(componentPlatform),
 		{componentModels, phaseClose, resources.models.Close},
 		{componentMedia, phaseClose, resources.media.Close},
-		{componentChatHistory, phaseClose, func(context.Context) error { return resources.historyStore.Close() }},
-		{componentStorage, phaseClose, func(context.Context) error { return resources.store.Close() }},
+		{componentStorage, phaseClose, func(context.Context) error { return lines.storage.Close() }},
 		{componentLogs, phaseClose, resources.logs.Close},
 		{componentConfigLock, phaseClose, func(context.Context) error { return configLock.Close() }},
 	}

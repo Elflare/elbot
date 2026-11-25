@@ -27,9 +27,9 @@ import (
 
 func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	store := testutil.NewSQLiteStore(t)
-	b := cronBridge{repo: store.CronJobs()}
+	b := cronBridge{repo: store}
 	ctx := t.Context()
-	row, err := store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: "{invalid metadata"})
+	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: "{invalid metadata"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +48,10 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if _, err := b.GetByName(canceled, row.Name); !errors.Is(err, context.Canceled) {
 		t.Fatalf("read error=%v", err)
 	}
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "", "current", `{"delivery_complete":true}`, nil); err != nil || !ok {
@@ -61,7 +61,7 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "stale", "obsolete", `{}`, mappings); err != nil || ok {
 		t.Fatalf("stale commit=%v,%v", ok, err)
 	}
-	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "sent")
+	mapped, err := store.FindByPlatformMessage(ctx, "telegram", "private", "1", "sent")
 	if err != nil || mapped.ID != "message" {
 		t.Fatalf("actual send mapping=%#v,%v", mapped, err)
 	}
@@ -94,19 +94,19 @@ func (cronBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (
 
 func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	store := testutil.NewSQLiteStore(t)
-	b := cronBridge{repo: store.CronJobs()}
+	b := cronBridge{repo: store}
 	ctx := t.Context()
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 	metadata, err := json.Marshal(storage.CronMetadata{Kind: storage.CronMetadataKind, Version: 2, Title: "report", Schedule: storage.CronSchedule{Mode: "once", RunAt: time.Now().Add(time.Hour).Format("2006-01-02 15:04:05")}, Trigger: storage.CronTrigger{Mode: "llm", Message: "#task report - test"}, Target: storage.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, err := store.CronJobs().Upsert(ctx, storage.UpsertCronJobRequest{Name: "user.cron.report", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: string(metadata)})
+	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "user.cron.report", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: string(metadata)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,11 +132,11 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	if _, _, err := s.Handler(ctx, *cronJob(row)); err != nil {
 		t.Fatal(err)
 	}
-	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
+	message, err := store.FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
 	if err != nil || message.ID != "message" || message.SessionID != "session" {
 		t.Fatalf("report mapping=%#v,%v", message, err)
 	}
-	stored, err := store.CronJobs().GetByName(ctx, row.Name)
+	stored, err := store.GetByName(ctx, row.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	if err := tools.Start(); err != nil {
 		t.Fatal(err)
 	}
-	b := cronBridge{repo: store.CronJobs()}
+	b := cronBridge{repo: store}
 	m := elcron.NewManager(b)
 	m.RegisterHandler(elcron.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, operationresult.Result[struct{}], error) {
 		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
@@ -221,12 +221,12 @@ drained:
 	case <-time.After(time.Second):
 		t.Fatal("Tool update did not reach scheduler")
 	}
-	job, err := store.CronJobs().GetByName(ctx, "user.cron.chain")
+	job, err := store.GetByName(ctx, "user.cron.chain")
 	if err != nil || job.NextRunAt == nil || job.NextRunAt.Hour() != 4 {
 		t.Fatalf("updated schedule=%#v,%v", job, err)
 	}
 	write(`{"operation":"disable","name":"chain"}`)
-	job, err = store.CronJobs().GetByName(ctx, "user.cron.chain")
+	job, err = store.GetByName(ctx, "user.cron.chain")
 	if err != nil || job.Enabled || job.NextRunAt != nil {
 		t.Fatalf("disabled=%#v,%v", job, err)
 	}

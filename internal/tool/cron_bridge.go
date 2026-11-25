@@ -58,7 +58,7 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (op
 	if err != nil {
 		return operationresult.Result[builtin.CronInfo]{}, err
 	}
-	job, err := b.repo.Upsert(ctx, storage.UpsertCronJobRequest{
+	job, err := b.repo.UpsertCronJob(ctx, storage.UpsertCronJobRequest{
 		Name: name, Handler: storage.CronHandlerName, Schedule: req.Schedule,
 		Enabled: definition.Enabled, Metadata: string(data), NextRunAt: req.NextRunAt,
 		ResetDelivery: req.ResetDelivery,
@@ -84,7 +84,7 @@ func (b cronBridge) GetByName(ctx context.Context, name string) (operationresult
 }
 
 func (b cronBridge) List(ctx context.Context, includeDisabled bool) (operationresult.Result[[]builtin.CronInfo], error) {
-	jobs, err := b.repo.List(ctx, includeDisabled)
+	jobs, err := b.repo.ListCronJobs(ctx, includeDisabled)
 	if err != nil {
 		return operationresult.Result[[]builtin.CronInfo]{}, err
 	}

@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/testutil"
 	"fmt"
 	"os"
 	"strings"
@@ -16,7 +17,6 @@ import (
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func newTestModels(t *testing.T, opts testModelOptions) *modelmgr.ModelManager {
@@ -232,14 +232,14 @@ func (f *fakeLLM) notifyRequestLocked() {
 	}
 }
 
-var sharedTestStore *sqlite.Store
+var sharedTestStore *storage.Supervisor
 
 var sharedTestDB *sql.DB
 
 func TestMain(m *testing.M) {
 	const dsn = "file:elbot-agent-tests?mode=memory&cache=shared"
 	var err error
-	sharedTestStore, err = sqlite.New(context.Background(), dsn)
+	sharedTestStore, err = testutil.OpenStore(context.Background(), dsn)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -268,7 +268,7 @@ func TestMain(m *testing.M) {
 
 // Agent tests run serially. Register this before constructing services so their
 // cleanup stops background work before the shared database is cleared.
-func newTestStore(t *testing.T) storage.Store {
+func newTestStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
 	t.Cleanup(func() {
 		ctx := context.Background()

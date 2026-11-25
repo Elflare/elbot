@@ -98,11 +98,11 @@ data: [DONE]
 				result <- err
 			case "naming":
 				row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Title: "New session", Status: storage.SessionStatusActive, ChatType: "private"}
-				if err := deps.Store.Sessions().Create(ctx, row); err != nil {
+				if err := deps.Store.CreateSession(ctx, row); err != nil {
 					result <- err
 					return
 				}
-				if err := deps.Store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+				if err := deps.Store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: row.ID, Messages: []*storage.Message{{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}}}); err != nil {
 					result <- err
 					return
 				}

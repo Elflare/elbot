@@ -124,7 +124,7 @@ func TestQuestionPresentation(t *testing.T) {
 					t.Fatal(r, err)
 				}
 				for {
-					rows, err := deps.Store.Messages().ListBySession(ctx, first.SessionID)
+					rows, err := deps.Store.ListSessionMessages(ctx, first.SessionID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -143,7 +143,7 @@ func TestQuestionPresentation(t *testing.T) {
 					case <-time.After(time.Millisecond):
 					}
 				}
-				audits, err := deps.Store.ToolCalls().ListBySession(ctx, first.SessionID)
+				audits, err := deps.Store.ListSessionToolCalls(ctx, first.SessionID)
 				calls := len(chat.requests) - before
 				if err != nil || len(audits) != 2 || calls < 1 || calls > 2 {
 					t.Fatal(calls, audits, err)
@@ -226,7 +226,7 @@ func TestSynchronousQuestionResult(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	rows, err := deps.Store.Messages().ListBySession(ctx, sid)
+	rows, err := deps.Store.ListSessionMessages(ctx, sid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestQuestionSubmission(t *testing.T) {
 			if !strings.Contains(text, "选：2. 全量\n补：跑竞态") || !strings.Contains(text, "答：我来审阅") || strings.Count(text, "未回答") != 2 || strings.Contains(text, "\n\n#") {
 				t.Fatal(text)
 			}
-			history, err := deps.Store.Messages().ListBySession(ctx, sid)
+			history, err := deps.Store.ListSessionMessages(ctx, sid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -415,7 +415,7 @@ func TestQuestionSubmission(t *testing.T) {
 					count++
 				}
 			}
-			audits, err := deps.Store.ToolCalls().ListBySession(ctx, sid)
+			audits, err := deps.Store.ListSessionToolCalls(ctx, sid)
 			if err != nil || len(audits) != 1 || count != 1 {
 				t.Fatalf("reports=%d audits=%+v err=%v", count, audits, err)
 			}
@@ -499,7 +499,7 @@ func TestQuestionSubmissionDuringLLM(t *testing.T) {
 			}
 			messages := func() []string {
 				t.Helper()
-				history, err := deps.Store.Messages().ListBySession(ctx, sid)
+				history, err := deps.Store.ListSessionMessages(ctx, sid)
 				if err != nil {
 					t.Fatal(err)
 				}

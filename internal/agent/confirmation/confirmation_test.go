@@ -10,7 +10,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"elbot/internal/security"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
@@ -48,7 +47,7 @@ func TestRiskReasonsText(t *testing.T) {
 func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 	for _, command := range []string{"/confirm extra", "/confirmtool extra", "/confirmall extra", "/reject reason"} {
 		t.Run(command, func(t *testing.T) {
-			store, err := sqlite.New(t.Context(), ":memory:")
+			store, err := testutil.OpenStore(t.Context(), ":memory:")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,7 +288,7 @@ func TestAppendConfirmationActionsUseProvidedCommandPrefix(t *testing.T) {
 }
 
 func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +324,7 @@ func testCommandText(name string, args ...string) string {
 }
 
 func TestMissingRiskConfirmationReturnsRejection(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

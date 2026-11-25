@@ -95,11 +95,11 @@ func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	if !slices.ContainsFunc(client.requests[0].Tools, func(v llm.ToolSchema) bool { return v.Name == "read_file" }) {
 		t.Fatal("preloaded schema missing")
 	}
-	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+	rows, err := deps.Store.ListSessions(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
 	if err != nil || len(rows) != 1 {
 		t.Fatal(rows, err)
 	}
-	messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
+	messages, err := deps.Store.ListSessionMessages(t.Context(), rows[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}

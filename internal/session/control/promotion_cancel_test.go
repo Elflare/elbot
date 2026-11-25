@@ -13,8 +13,8 @@ type cancelAfterPromotionCommit struct {
 	cancel context.CancelFunc
 }
 
-func (s cancelAfterPromotionCommit) Mutate(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
-	row, err := s.SessionRepository.Mutate(ctx, id, update)
+func (s cancelAfterPromotionCommit) MutateSession(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error) {
+	row, err := s.SessionRepository.MutateSession(ctx, id, update)
 	if err == nil {
 		s.cancel()
 	}
@@ -31,7 +31,7 @@ func TestPromotionAdoptsAfterCommitDespiteCancellationAndBeginClose(t *testing.T
 	row := prepared.Data
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	f.s.deps.Sessions = cancelAfterPromotionCommit{SessionRepository: f.store.Sessions(), cancel: func() { cancel(); f.s.BeginClose() }}
+	f.s.deps.Sessions = cancelAfterPromotionCommit{SessionRepository: f.store, cancel: func() { cancel(); f.s.BeginClose() }}
 	adopted := false
 	f.s.deps.AdoptForeground = func(ctx context.Context, row *storage.Session, b *share.Binding) {
 		if ctx.Err() != nil || b != f.s.CurrentBinding(scope) || row.Mode != storage.SessionModeWork {

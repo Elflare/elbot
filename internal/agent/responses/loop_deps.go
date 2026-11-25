@@ -25,7 +25,7 @@ type LoopDeps struct {
 		Enter(context.Context, string) (context.Context, func(), error)
 	}
 	SessionRows interface {
-		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+		MutateSession(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
 	}
 
 	Status interface {

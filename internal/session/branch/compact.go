@@ -23,7 +23,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	if req.ID == "" || req.ID == sourceID {
 		return operationresult.Result[*storage.Session]{Status: operationresult.InvalidArguments, Message: "a distinct preallocated session ID is required"}, nil
 	}
-	source, err := s.deps.Sessions.Get(ctx, sourceID)
+	source, err := s.deps.Sessions.GetSession(ctx, sourceID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -38,7 +38,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	source, err = s.deps.Sessions.Get(ctx, sourceID)
+	source, err = s.deps.Sessions.GetSession(ctx, sourceID)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -107,7 +107,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 		messages = append(messages, message)
 	}
 	if req.Seed == nil && len(messages) == 0 {
-		err = s.deps.Sessions.Create(ctx, row)
+		err = s.deps.Sessions.CreateSession(ctx, row)
 	} else {
 		err = s.deps.Sessions.CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Messages: messages, Seed: req.Seed,
 			SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})

@@ -17,12 +17,11 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
-func newLifecycleTool(t *testing.T, root string, tags ...config.ToolTagsConfig) (*Supervisor, storage.Store) {
+func newLifecycleTool(t *testing.T, root string, tags ...config.ToolTagsConfig) (*Supervisor, *storage.Supervisor) {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +167,7 @@ func TestSupervisorCloseWaitsForCronNotificationAndBorrowsStore(t *testing.T) {
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	connection, err := m.ObserveCronChanged(func(event CronChangedEvent) error {
-		_, err := store.CronJobs().GetByName(context.Background(), event.Name)
+		_, err := store.GetByName(context.Background(), event.Name)
 		close(entered)
 		<-release
 		return err
@@ -206,7 +205,7 @@ func TestSupervisorCloseWaitsForCronNotificationAndBorrowsStore(t *testing.T) {
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CronJobs().GetByName(t.Context(), "user.cron.startup"); err != nil {
+	if _, err := store.GetByName(t.Context(), "user.cron.startup"); err != nil {
 		t.Fatalf("borrowed store was closed: %v", err)
 	}
 }

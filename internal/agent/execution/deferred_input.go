@@ -57,7 +57,7 @@ func (c *ExecutionCoordinator) deliverAsyncTool(ctx context.Context, sid, id str
 		outcome.Segments = llm.TextSegments("异步任务 " + id + " 被用户取消；不是新的执行。")
 	}
 	retire()
-	row, err := c.deps.SessionRows.Get(locked, sid)
+	row, err := c.deps.SessionRows.GetSession(locked, sid)
 	if err != nil {
 		release()
 		return err

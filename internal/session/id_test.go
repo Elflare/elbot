@@ -90,7 +90,7 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	if _, err := svc.CreateCompacted(ctx, scope, row.ID, CompactedRequest{ID: reserved}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled compact: %v", err)
 	}
-	if _, err := store.Sessions().Get(t.Context(), reserved); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.GetSession(t.Context(), reserved); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("unused reservation was saved: %v", err)
 	}
 	nextID, err := svc.AllocateID(t.Context(), row)
@@ -161,14 +161,14 @@ func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	}
 	source := created.Data
 	message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer"}
-	if err := store.Messages().Append(t.Context(), message); err != nil {
+	if err := store.AppendMessage(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}
 	forked, err := svc.Fork(t.Context(), scope, message.ID)
 	if err != nil || forked.Status != operationresult.Success || forked.Data.ID != "ob2" {
 		t.Fatalf("fork=%+v err=%v", forked, err)
 	}
-	if _, err := store.Sessions().Get(t.Context(), source.ID); err != nil {
+	if _, err := store.GetSession(t.Context(), source.ID); err != nil {
 		t.Fatal(err)
 	}
 	backgroundResult, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron", TaskID: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})

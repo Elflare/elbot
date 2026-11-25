@@ -56,7 +56,7 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7, SaveMediaOutput: store.Media().SaveOutput})
+			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7, SaveMediaOutput: store.SaveOutput})
 			got, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}})
 			if err != nil || got.Status != operationresult.Success || calls != 1 || !reflect.DeepEqual(got.Data, want) {
 				t.Fatal("send changed: receipt= result= err= calls=", got, err, calls)
@@ -199,7 +199,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	defer server.Close()
 
 	sender := &orderedMediaSender{t: t}
-	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
+	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	messageCtx := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ChatType: "group", ChatID: "9"}})
 	outputs := []delivery.Output{
 		{Kind: delivery.KindImage, Name: "https://example.com/private/remote.png?rkey=name-secret", Source: delivery.Source{URL: server.URL}},
@@ -218,7 +218,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	if got := strings.Join(sender.names, ","); got != "remote.png,local.txt,voice.ogg" || strings.Contains(got, "name-secret") {
 		t.Fatalf("sent names = %q", got)
 	}
-	cached, err := store.Media().FindOutputs(ctx, "qqonebot", "group", "9", "sent-1", time.Now())
+	cached, err := store.FindOutputs(ctx, "qqonebot", "group", "9", "sent-1", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,12 +253,12 @@ func TestMediaReceiptKeepsDuplicateOutputMappings(t *testing.T) {
 	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
 		return receipt, nil
 	})
-	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
+	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	got, sendErr := dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if sendErr != nil || got.Status != operationresult.Success || len(got.Data.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}
-	cached, err := store.Media().FindOutputs(ctx, "qqonebot", "group", "1", "sent", time.Now())
+	cached, err := store.FindOutputs(ctx, "qqonebot", "group", "1", "sent", time.Now())
 	if err != nil || len(cached) != 2 || cached[0].MediaID != mediaID || cached[1].MediaID != mediaID || cached[0].SegmentIndex != 0 || cached[1].SegmentIndex != 1 {
 		t.Fatalf("cached duplicates = %#v %v", cached, err)
 	}
@@ -273,12 +273,12 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"fallback"}}, nil
 	})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
-	router := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
+	router := New(Options{Primary: sender, SaveMediaOutput: store.SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	result, err := router.SendTo(ctx, delivery.Target{}, outputs)
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("send result=%+v err=%v", result, err)
 	}
-	cached, err := store.Media().FindOutputs(ctx, "telegram", "group", "9", "fallback", time.Now())
+	cached, err := store.FindOutputs(ctx, "telegram", "group", "9", "fallback", time.Now())
 	if err != nil || len(cached) != 0 {
 		t.Fatalf("fallback cache = %#v / %v", cached, err)
 	}

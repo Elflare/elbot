@@ -15,7 +15,7 @@ import (
 
 // ChatHistoryWriter 只接收适配器归一化后的历史记录。
 type ChatHistoryWriter interface {
-	Append(context.Context, *storage.ChatMessage) error
+	AppendChatMessage(context.Context, *storage.ChatMessage) error
 }
 
 // RecordAssistantMessage 写入单条已提交的平台消息；记录失败不改变发送结果。
@@ -67,7 +67,7 @@ func RecordInboundMessage(ctx context.Context, w ChatHistoryWriter, m InboundMes
 }
 
 func appendHistory(ctx context.Context, w ChatHistoryWriter, m *storage.ChatMessage) {
-	if err := w.Append(ctx, m); err != nil {
+	if err := w.AppendChatMessage(ctx, m); err != nil {
 		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "record_chat_message_failed", Module: m.Platform, Content: fmt.Sprintf("record chat message %s: %v", m.PlatformMessageID, err), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 	}
 }

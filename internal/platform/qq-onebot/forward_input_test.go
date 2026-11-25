@@ -5,6 +5,7 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 // The live service returns message objects, with the body in message, not content.
@@ -49,12 +49,12 @@ func TestForwardReferenceReadsMessageNodeBodies(t *testing.T) {
 
 func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := newTestAdapter(t, Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history)
 	calls := 0
 	a.transport = newTestTransport(t, func(req request) response {
 		calls++
@@ -79,7 +79,7 @@ func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 	if got := forwardSegmentsForTest(msg.Segments); got != "[forward]" {
 		t.Fatalf("source segments=%q", got)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "private", "1", "123")
+	row, err := history.GetByPlatformMessage(ctx, "qqonebot", "private", "1", "123")
 	if err != nil || row.Text != "[forward]" || strings.Contains(row.Segments, "第一条") {
 		t.Fatalf("history=%#v err=%v", row, err)
 	}
@@ -174,23 +174,23 @@ func TestPrivateForwardMixedContentAndReferences(t *testing.T) {
 
 func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Platform: "qqonebot", ChatType: "private", ChatID: "1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
-	if err := store.Sessions().Create(ctx, session); err != nil {
+	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "旧回答", CreatedAt: storage.Now()}
 	latest := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "最新回答", CreatedAt: first.CreatedAt.Add(time.Second)}
 	for i, message := range []*storage.Message{first, latest} {
-		if err := store.Messages().Append(ctx, message); err != nil {
+		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatal(err)
 		}
 		id := []string{"41", "42"}[i]
-		if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}}}); err != nil {
+		if err := store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}}}); err != nil {
 			t.Fatal(err)
 		}
 	}

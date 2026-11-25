@@ -93,7 +93,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 			if tc.allocationFails {
 				requests.Manager = request.NewManager(func(context.Context) (int64, error) { return 0, errors.New("reserve failed") })
 			}
-			view := dialogue.ExecutionView{Sessions: store.Sessions()}
+			view := dialogue.ExecutionView{Sessions: store}
 			changed := signal.New[StatusChangedEvent, signal.Empty]("usage-initialization")
 			defer changed.Close(context.Background())
 			recorder := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: changed})
@@ -121,7 +121,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 			}
 			row := created.Data
 			c := NewExecutionCoordinator(t.Context(), ExecutionCoordinatorDeps{
-				Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: requests,
+				Sessions: sessions, SessionRows: store, Turns: turns, Requests: requests,
 				Identity: identity, View: view,
 				Status:   usageTestStatus{recorder, requests, stopping},
 				Dialogue: usageTestDialogue{t: t, stopping: stopping},

@@ -83,7 +83,7 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 
 	aged := time.Now().Add(-time.Hour)
 	first.UpdatedAt = aged
-	if _, err := store.Sessions().Mutate(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err != nil {
+	if _, err := store.MutateSession(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err != nil {
 		t.Fatalf("age first session: %v", err)
 	}
 	if result, err := svc.Resume(ctx, scope, first.ID); err != nil || result.Status != operationresult.Success {
@@ -100,10 +100,10 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 		t.Fatalf("resumed updated_at = %v, want after %v", current.Data.UpdatedAt, aged)
 	}
 
-	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleAssistant, Content: "hi"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleAssistant, Content: "hi"}); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
 
@@ -163,7 +163,7 @@ func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	older := olderResult.Data
 	older.UpdatedAt = now.Add(-2 * time.Hour)
 	older.PinnedAt = &now
-	if _, err := store.Sessions().Mutate(ctx, older.ID, func(latest *storage.Session) error { *latest = *older; return nil }); err != nil {
+	if _, err := store.MutateSession(ctx, older.ID, func(latest *storage.Session) error { *latest = *older; return nil }); err != nil {
 		t.Fatalf("update older: %v", err)
 	}
 	recentResult, err := svc.Create(ctx, scope, CreateRequest{Title: "recent"})
@@ -172,7 +172,7 @@ func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	}
 	recent := recentResult.Data
 	recent.UpdatedAt = now.Add(-time.Hour)
-	if _, err := store.Sessions().Mutate(ctx, recent.ID, func(latest *storage.Session) error { *latest = *recent; return nil }); err != nil {
+	if _, err := store.MutateSession(ctx, recent.ID, func(latest *storage.Session) error { *latest = *recent; return nil }); err != nil {
 		t.Fatalf("update recent: %v", err)
 	}
 	currentResult, err := svc.Create(ctx, scope, CreateRequest{Title: "current"})

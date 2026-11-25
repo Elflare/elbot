@@ -3,6 +3,7 @@ package refcontext
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,6 @@ import (
 	"elbot/internal/session/control"
 	sessionshare "elbot/internal/session/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type referenceTestScope struct {
@@ -48,7 +48,7 @@ func TestReferenceHistoryNumberAndAssistant(t *testing.T) {
 			chat = "other-chat"
 		}
 		row := &storage.ChatMessage{Platform: tc.platform, ChatType: "group", ChatID: chat, PlatformMessageID: "987", SenderID: tc.sender, SenderName: tc.name, Text: "正文"}
-		if err := history.Append(ctx, row); err != nil {
+		if err := history.AppendChatMessage(ctx, row); err != nil {
 			t.Fatal(err)
 		}
 		opts := share.ReferenceOptions{Bot: share.Identity{UserID: "self", Username: tc.username}, Platform: tc.platform, ChatType: "group", ChatID: "target", ReplyID: "987", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
@@ -107,7 +107,7 @@ func TestExplicitAssistantPagesUseOnlyDeliveredChatContent(t *testing.T) {
 		if p.assistant {
 			mapPlatformMessage(t, ctx, store, target, p.id, original)
 		}
-		if err := history.Append(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: p.chat, PlatformMessageID: p.id, Text: p.text, IsAssistant: p.assistant}); err != nil {
+		if err := history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: p.chat, PlatformMessageID: p.id, Text: p.text, IsAssistant: p.assistant}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -123,7 +123,7 @@ func TestExplicitAssistantPagesUseOnlyDeliveredChatContent(t *testing.T) {
 			t.Fatalf("%s: %+v, %v", id, got, err)
 		}
 	}
-	rows, err := history.Search(ctx, storage.ChatHistorySearchRequest{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, IncludeAssistant: true, QueryTerms: []string{"公开"}})
+	rows, err := history.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, IncludeAssistant: true, QueryTerms: []string{"公开"}})
 	if err != nil || len(rows) != 2 || rows[0].Text != "公开上页" || rows[1].Text != "公开下页" {
 		t.Fatalf("search=%+v, %v", rows, err)
 	}
@@ -172,11 +172,11 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	store := newRefTestStore(t)
 	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	bg := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatType: "elnis", ChatID: "event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
-	if err := store.Sessions().Create(ctx, bg); err != nil {
+	if err := store.CreateSession(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
 	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
-	if err := store.Messages().Append(ctx, msg); err != nil {
+	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg", msg)
@@ -198,11 +198,11 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	store := newRefTestStore(t)
 	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	bg := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatType: "cron", ChatID: "user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
-	if err := store.Sessions().Create(ctx, bg); err != nil {
+	if err := store.CreateSession(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
 	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
-	if err := store.Messages().Append(ctx, msg); err != nil {
+	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
@@ -292,48 +292,48 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	}
 }
 
-func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope) (*storage.Message, *storage.Message) {
+func createAssistantMessages(t *testing.T, ctx context.Context, store *storage.Supervisor, scope referenceTestScope) (*storage.Message, *storage.Message) {
 	t.Helper()
 	s := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatID: scope.ChatID, Mode: storage.SessionModeWork, Title: "source", ChatType: scope.ChatType}
-	if err := store.Sessions().Create(ctx, s); err != nil {
+	if err := store.CreateSession(ctx, s); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old"}
 	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "latest"}
-	if err := store.Messages().Append(ctx, first); err != nil {
+	if err := store.AppendMessage(ctx, first); err != nil {
 		t.Fatalf("append first: %v", err)
 	}
-	if err := store.Messages().Append(ctx, latest); err != nil {
+	if err := store.AppendMessage(ctx, latest); err != nil {
 		t.Fatalf("append latest: %v", err)
 	}
 	return first, latest
 }
 
-func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope, platformMessageID string, msg *storage.Message) {
+func mapPlatformMessage(t *testing.T, ctx context.Context, store *storage.Supervisor, scope referenceTestScope, platformMessageID string, msg *storage.Message) {
 	t.Helper()
-	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: msg.SessionID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: scope.Platform, ChatID: scope.ChatID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID, ChatType: scope.ChatType}}}); err != nil {
+	if err := store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: msg.SessionID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: scope.Platform, ChatID: scope.ChatID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID, ChatType: scope.ChatType}}}); err != nil {
 		t.Fatalf("map message: %v", err)
 	}
 }
 
-func newRefTestOptions(store storage.Store, history storage.ChatHistoryRepository) Options {
-	service := control.NewService(control.Config{}, control.ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), IsSuperadmin: func(scope sessionshare.Scope) bool { return scope.Owner.ID == "admin" }})
+func newRefTestOptions(store *storage.Supervisor, history storage.ChatHistoryRepository) Options {
+	service := control.NewService(control.Config{}, control.ServiceDeps{Sessions: store, Messages: store, IsSuperadmin: func(scope sessionshare.Scope) bool { return scope.Owner.ID == "admin" }})
 	return Options{
 		ParseCommand:          func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
-		FindByPlatformMessage: store.Messages().FindByPlatformMessage, PlatformMessageIDs: store.Messages().PlatformMessageIDs,
+		FindByPlatformMessage: store.FindByPlatformMessage, PlatformMessageIDs: store.PlatformMessageIDs,
 		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, error) {
 			return service.ResolveReference(ctx, sessionshare.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
 		},
-		FindHistory: store.Media().FindHistory,
-		GetMedia:    store.Media().Get,
-		FindOutputs: store.Media().FindOutputs,
+		FindHistory: store.FindHistory,
+		GetMedia:    store.GetMedia,
+		FindOutputs: store.FindOutputs,
 		ChatHistory: history,
 	}
 }
 
-func newRefTestStore(t *testing.T) storage.Store {
+func newRefTestStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
+	store, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -343,10 +343,10 @@ func newRefTestStore(t *testing.T) storage.Store {
 
 func newRefTestHistory(t *testing.T) storage.ChatHistoryRepository {
 	t.Helper()
-	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	return history.Repository()
+	return history
 }

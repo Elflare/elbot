@@ -93,7 +93,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				t.Fatal(err)
 			}
 			prepared := preparedResult.Data
-			refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+			refs, err := store.ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 1 {
 				t.Fatalf("holds=%d %v", len(refs), err)
 			}
@@ -118,7 +118,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				t.Fatal(err)
 			}
 			source := outputs.Data[0].Source
-			record, err := store.Media().Get(t.Context(), id)
+			record, err := store.GetMedia(t.Context(), id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +129,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			} else if source.Path == "" || source.Path != record.LocalPath || source.URL != "" {
 				t.Fatalf("expected archive path %q, got %+v", record.LocalPath, source)
 			}
-			refs, err = store.MediaReferences().ListMediaIDs(t.Context(), id)
+			refs, err = store.ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 1 {
 				t.Fatalf("output holds=%d %v", len(refs), err)
 			}
@@ -138,7 +138,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			refs, err = store.MediaReferences().ListMediaIDs(t.Context(), id)
+			refs, err = store.ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("leaked holds=%d %v", len(refs), err)
 			}

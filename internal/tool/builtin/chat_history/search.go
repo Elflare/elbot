@@ -239,7 +239,7 @@ func (m Deps) search(ctx context.Context, req searchChatHistoryArgs, scope searc
 	}
 
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, time.Now())
-	rows, err := m.Repository.Search(ctx, storage.ChatHistorySearchRequest{
+	rows, err := m.Repository.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{
 		IncludeAssistant: req.IncludeAssistant, IncludeAvatar: req.IncludeAvatar,
 		Platform: chat.Data.Platform, ChatID: chat.Data.ChatID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,

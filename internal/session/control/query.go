@@ -30,7 +30,7 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 		}
 	}
 	var err error
-	result.TotalCount, err = s.deps.Sessions.Count(ctx, query)
+	result.TotalCount, err = s.deps.Sessions.CountSessions(ctx, query)
 	if err != nil {
 		return operationresult.Result[ListResult]{}, err
 	}
@@ -51,7 +51,7 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 		return operationresult.Result[ListResult]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid session page: %d", result.Page)}, nil
 	}
 	query.Offset = (result.Page - 1) * req.PageSize
-	result.Items, err = s.deps.Sessions.List(ctx, query)
+	result.Items, err = s.deps.Sessions.ListSessions(ctx, query)
 	if err != nil {
 		return operationresult.Result[ListResult]{}, err
 	}
@@ -72,7 +72,7 @@ func (s *Service) Status(ctx context.Context, scope share.Scope) (operationresul
 		return operationresult.Result[*Status]{Status: current.Status, Message: current.Message}, nil
 	}
 	row := current.Data
-	stats, err := s.deps.Messages.Stats(ctx, row.ID)
+	stats, err := s.deps.Messages.MessageStats(ctx, row.ID)
 	if err != nil {
 		return operationresult.Result[*Status]{}, err
 	}
@@ -111,7 +111,7 @@ func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string)
 
 // ResolveReference 决定引用助手消息后的续接方式；准入时仍复核访问权限。
 func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, message storage.Message) (resumeID, forkID string, err error) {
-	row, err := s.deps.Sessions.Get(ctx, message.SessionID)
+	row, err := s.deps.Sessions.GetSession(ctx, message.SessionID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return "", "", nil
 	}
@@ -127,7 +127,7 @@ func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, messa
 	if row.Owner != scope.Owner || row.Platform != scope.Platform || row.ChatType != scope.ChatType || row.ChatID != scope.ChatID {
 		return "", "", nil
 	}
-	messages, err := s.deps.Messages.ListBySession(ctx, row.ID)
+	messages, err := s.deps.Messages.ListSessionMessages(ctx, row.ID)
 	if err != nil {
 		return "", "", err
 	}

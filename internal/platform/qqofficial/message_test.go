@@ -10,6 +10,7 @@ import (
 	"elbot/internal/config"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -26,7 +27,6 @@ import (
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type captureHandler struct {
@@ -143,12 +143,12 @@ func (quoteWakeupBoundary) PlatformMessageReceived(context.Context, agentshare.M
 
 func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 	ctx := t.Context()
-	db, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	db, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	history := db.Repository()
+	history := db
 	markdown := false
 	a := newTestAdapter(t, Config{AppID: "bot", MarkdownByDefault: &markdown}, history)
 	if err := a.handleDispatch(ctx, nil, payload{Type: eventReady, Data: []byte(`{"user":{"username":"芙蕾娅"}}`)}, &gatewayState{}); err != nil {
@@ -260,12 +260,12 @@ func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
 
 func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	ctx := context.Background()
-	historyStore, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "chat-history.db"))
+	historyStore, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "chat-history.db"))
 	if err != nil {
 		t.Fatalf("new chat history: %v", err)
 	}
 	defer historyStore.Close()
-	history := historyStore.Repository()
+	history := historyStore
 	adapter := newTestAdapter(t, Config{}, history)
 	mapTestReference(t, adapter, "group", "group-1", "REFIDX_reply-1", "reply-1")
 	adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
@@ -294,7 +294,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	if row.Raw != "普通消息" || row.ReplyToPlatformMessageID != "reply-1" {
 		t.Fatalf("chat history raw/reply = %q/%q", row.Raw, row.ReplyToPlatformMessageID)
 	}
-	rows, err := history.Around(ctx, storage.ChatHistoryAroundRequest{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1", Seq: row.Seq, IncludeAvatar: true})
+	rows, err := history.ChatHistoryAround(ctx, storage.ChatHistoryAroundRequest{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1", Seq: row.Seq, IncludeAvatar: true})
 	if err != nil || len(rows) != 1 || rows[0].SenderAvatarURL != "https://example.com/avatar" {
 		t.Fatalf("stored avatar: %v, %v", rows, err)
 	}
@@ -394,12 +394,12 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 func TestInboundAttachmentURLPreservedInHistory(t *testing.T) {
 	const imageURL = "https://multimedia.nt.qq.com.cn/download?appid=123&fileid=abc&rkey=a%2Bb%3D&spec=0"
 	ctx := t.Context()
-	db, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	db, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	history := db.Repository()
+	history := db
 	a := newTestAdapter(t, Config{}, history)
 	h := &captureHandler{}
 	msg := inboundMessage{
@@ -601,12 +601,12 @@ func parseTestCommand(text string) command.Parsed { return command.Parse(text, [
 func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
 	t.Helper()
 	if history == nil {
-		db, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+		db, err := testutil.OpenChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db.Close() })
-		history = db.Repository()
+		history = db
 	}
 	raw := map[string]any{"enabled": cfg.Enabled, "app_id": cfg.AppID, "client_secret": cfg.ClientSecret, "trigger_keywords": cfg.TriggerKeywords}
 	if cfg.MarkdownByDefault != nil {

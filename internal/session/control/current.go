@@ -83,7 +83,7 @@ func (s *Service) create(ctx context.Context, scope share.Scope, req CreateReque
 	row := &storage.Session{ID: id, Owner: scope.Owner, Platform: scope.Platform,
 		ChatType: scope.ChatType, ChatID: scope.ChatID, Mode: req.Mode, Status: storage.SessionStatusActive,
 		Title: req.Title, Metadata: metadata}
-	if err := s.deps.Sessions.Create(ctx, row); err != nil {
+	if err := s.deps.Sessions.CreateSession(ctx, row); err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	if activate {
@@ -127,7 +127,7 @@ func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (operatio
 		return operationresult.Result[CurrentBoundData]{}, err
 	}
 	defer leaveSession()
-	row, err := s.deps.Sessions.Get(ctx, id)
+	row, err := s.deps.Sessions.GetSession(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
 		if scope.TargetSessionID != "" {
 			return operationresult.Result[CurrentBoundData]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
@@ -203,7 +203,7 @@ func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req Activ
 		return operationresult.Result[ActivateModeResult]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	if req.Mode == storage.SessionModeChat {
-		messages, err := s.deps.Messages.ListBySession(locked, row.ID)
+		messages, err := s.deps.Messages.ListSessionMessages(locked, row.ID)
 		if err != nil {
 			return operationresult.Result[ActivateModeResult]{}, err
 		}
@@ -211,7 +211,7 @@ func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req Activ
 			return operationresult.Result[ActivateModeResult]{Status: operationresult.Conflict, Message: "切换到 chat 模式需要空会话"}, nil
 		}
 	}
-	row, err = s.deps.Sessions.Mutate(locked, row.ID, func(row *storage.Session) error {
+	row, err = s.deps.Sessions.MutateSession(locked, row.ID, func(row *storage.Session) error {
 		row.Mode, row.UpdatedAt = req.Mode, storage.Now()
 		return nil
 	})

@@ -21,16 +21,13 @@ import (
 // SupervisorDeps 只借用资源和公开能力，生命周期仍由提供方管理；完整配置单独传入构造入口。
 // 根部向子包注入实际需要的最小接口或函数，公开数据类型可以按需复用。
 type SupervisorDeps struct {
-	Store       storage.Store        // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
-	Models      ModelCapabilities    // 解析和校验后台任务使用的模型选择。
-	Media       *media.MediaCenter   // 提供媒体处理和维护能力。
-	Logs        *logging.Manager     // 提供日志清理及保留策略。
-	Agent       AgentCapabilities    // 执行后台任务、复制后台会话和清理过期会话。
-	Tools       ToolCapabilities     // 展开后台工具声明并订阅 Cron 定义变更。
-	Platform    PlatformCapabilities // 发送结果、调用平台 API。
-	ChatHistory interface {
-		DeleteBefore(context.Context, time.Time) (int, error)
-	} // 仅借用历史清理能力，数据库由 App 持有。
+	Store    Store                // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
+	Models   ModelCapabilities    // 解析和校验后台任务使用的模型选择。
+	Media    *media.MediaCenter   // 提供媒体处理和维护能力。
+	Logs     *logging.Manager     // 提供日志清理及保留策略。
+	Agent    AgentCapabilities    // 执行后台任务、复制后台会话和清理过期会话。
+	Tools    ToolCapabilities     // 展开后台工具声明并订阅 Cron 定义变更。
+	Platform PlatformCapabilities // 发送结果、调用平台 API。
 }
 
 // ModelCapabilities 只声明后台任务的模型选择与校验能力。
@@ -59,4 +56,12 @@ type ToolCapabilities interface {
 type PlatformCapabilities interface {
 	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	CallPlatformAPI(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error)
+}
+
+// Store 是本业务借用的持久化操作，不拥有连接或关闭权。
+type Store interface {
+	storage.CronJobRepository
+	storage.ElnisEventRepository
+	NextIDSequence(context.Context) (int64, error)
+	DeleteHistoryBefore(context.Context, time.Time) (int, error)
 }

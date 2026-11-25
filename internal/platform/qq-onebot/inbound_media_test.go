@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,22 +14,21 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
 
 func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := newTestAdapter(t, Config{}, nil, history.Repository())
+	a := newTestAdapter(t, Config{}, nil, history)
 	raw := `[{"type":"image","data":{"file":"image-id","url":"https://example.com/image?access_token=secret"}},{"type":"file","data":{"file_id":"file-id","name":"file.txt"}},{"type":"image","data":{"file":"image-id","url":"https://example.com/image?access_token=secret"}}]`
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", MessageID: 1, GroupID: 9, UserID: 1, Message: []byte(raw), RawMessage: raw})
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group", "9", "1")
+	row, err := history.GetByPlatformMessage(ctx, "qqonebot", "group", "9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 
 func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.New(ctx, filepath.Join(t.TempDir(), "store.db"))
+	store, err := testutil.OpenStore(ctx, filepath.Join(t.TempDir(), "store.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	if err != nil || item.Status != operationresult.Success {
 		t.Fatalf("import image: %+v %v", item, err)
 	}
-	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ChatType: "group", ChatID: "9", MessageID: "sent", Kind: "image", MediaID: item.Data.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := store.SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ChatType: "group", ChatID: "9", MessageID: "sent", Kind: "image", MediaID: item.Data.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	a := newTestAdapter(t, Config{}, store, nil)

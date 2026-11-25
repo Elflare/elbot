@@ -80,7 +80,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if returnedCtx.Err() != nil || facts.SessionID != data.SessionID || facts.RunID != data.RunID || facts.RequestID == "" {
 		t.Fatalf("returned task context lost facts or inherited completed request cancellation: %+v %v", facts, returnedCtx.Err())
 	}
-	row, err := deps.Store.Sessions().Get(ctx, data.SessionID)
+	row, err := deps.Store.GetSession(ctx, data.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if !found {
 		t.Fatalf("missing committed declaration: %+v", before)
 	}
-	messages, err := deps.Store.Messages().ListBySession(ctx, row.ID)
+	messages, err := deps.Store.ListSessionMessages(ctx, row.ID)
 	if err != nil || len(messages) != 2 || !strings.Contains(messages[0].Content, "KEEP_BACKGROUND_GUIDANCE") || messages[1].ID != result.Data.MessageID {
 		t.Fatalf("history=%+v err=%v", messages, err)
 	}
@@ -118,7 +118,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if err != nil || continued.Status != operationresult.Success || continued.Data.SessionID != row.ID {
 		t.Fatalf("continuation=%+v err=%v", continued, err)
 	}
-	latest, err := deps.Store.Sessions().Get(ctx, row.ID)
+	latest, err := deps.Store.GetSession(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if err != nil || copy.Status != operationresult.Success || copy.Data == row.ID {
 		t.Fatalf("copy=%+v err=%v", copy, err)
 	}
-	copied, err := deps.Store.Sessions().Get(ctx, copy.Data)
+	copied, err := deps.Store.GetSession(ctx, copy.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,11 +223,11 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("preparation ignored cancellation")
 			}
-			rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+			rows, err := deps.Store.ListSessions(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
 			if err != nil || len(rows) != 1 {
 				t.Fatalf("rows=%+v err=%v", rows, err)
 			}
-			messages, err := deps.Store.Messages().ListBySession(t.Context(), rows[0].ID)
+			messages, err := deps.Store.ListSessionMessages(t.Context(), rows[0].ID)
 			if err != nil || len(messages) != 0 {
 				t.Fatalf("executed after preload cancellation: %+v %v", messages, err)
 			}
@@ -264,10 +264,10 @@ func TestBackgroundCleanupSkipsBusySessions(t *testing.T) {
 	if err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
-	if _, err := deps.Store.Sessions().Get(ctx, idle.Data.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := deps.Store.GetSession(ctx, idle.Data.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
-	if _, err := deps.Store.Sessions().Get(ctx, busy.Data.ID); err != nil {
+	if _, err := deps.Store.GetSession(ctx, busy.Data.ID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -325,7 +325,7 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 				if !errors.Is(err, context.Canceled) {
 					t.Fatal(err)
 				}
-				rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+				rows, err := deps.Store.ListSessions(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
 				if err != nil || len(rows) != 1 {
 					t.Fatalf("rows=%+v err=%v", rows, err)
 				}

@@ -14,16 +14,16 @@ type ServiceDeps struct {
 	NewMessageID func(context.Context) (string, error)                 // 与 Agent 共用消息发号规则。
 	AllocateID   func(context.Context, share.IDOrigin) (string, error) // 根部统一发号，先于目标准入。
 	Sessions     interface {
-		Get(context.Context, string) (*storage.Session, error)
-		Create(context.Context, *storage.Session) error
+		GetSession(context.Context, string) (*storage.Session, error)
+		CreateSession(context.Context, *storage.Session) error
 		CreateMaterial(context.Context, storage.SessionMaterialCreate) error
 	}
 	Messages interface {
-		Get(context.Context, string) (*storage.Message, error)
-		ListBySession(context.Context, string) ([]storage.Message, error)
+		GetMessage(context.Context, string) (*storage.Message, error)
+		ListSessionMessages(context.Context, string) ([]storage.Message, error)
 	}
 	ToolCalls interface {
-		ListBySession(context.Context, string) ([]storage.ToolCallRecord, error)
+		ListSessionToolCalls(context.Context, string) ([]storage.ToolCallRecord, error)
 	}
 	Dialogues interface {
 		PendingInputs(context.Context, string) ([]storage.NativeInput, error)

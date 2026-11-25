@@ -72,7 +72,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			})
 		}
 	}
-	if err := persistence.Commit(ctx, commit); err != nil {
+	if err := persistence.CommitDialogue(ctx, commit); err != nil {
 		return result, err
 	}
 	if !empty {

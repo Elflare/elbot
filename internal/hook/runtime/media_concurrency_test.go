@@ -123,7 +123,7 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 		t.Fatal("same-lease wait ignored cancellation", err)
 	}
 	pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
-	refs, err := store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
+	refs, err := store.ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 1 {
 		t.Fatal("maintenance released active lease", refs, err)
 	}
@@ -144,7 +144,7 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
+	refs, err = store.ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 0 {
 		t.Fatal("late lease leaked", refs, err)
 	}

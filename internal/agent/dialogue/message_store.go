@@ -16,7 +16,7 @@ import (
 type MessageStore struct {
 	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
 	Dialogues    interface {
-		Commit(context.Context, storage.DialogueCommit) error
+		CommitDialogue(context.Context, storage.DialogueCommit) error
 	}
 	Gate     *CommitGate
 	Preparer *Preparer
@@ -62,7 +62,7 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		return err
 	}
 	defer release()
-	err = s.Dialogues.Commit(locked, commit)
+	err = s.Dialogues.CommitDialogue(locked, commit)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err

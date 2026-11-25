@@ -70,7 +70,7 @@ func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Sessi
 			release()
 			return ctx, operationresult.Result[struct{}]{}, nil, err
 		}
-		latest, err := c.deps.SessionRows.Get(locked, row.ID)
+		latest, err := c.deps.SessionRows.GetSession(locked, row.ID)
 		if err != nil {
 			release()
 			return ctx, operationresult.Result[struct{}]{}, nil, err

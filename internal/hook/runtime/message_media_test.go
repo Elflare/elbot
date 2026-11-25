@@ -49,7 +49,7 @@ func TestMessageMediaImportsOnceAndOwnsBatchLeases(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	refs, err := store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
+	refs, err := store.ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 1 {
 		t.Fatal(refs, err)
 	}
@@ -60,14 +60,14 @@ func TestMessageMediaImportsOnceAndOwnsBatchLeases(t *testing.T) {
 	if err == nil {
 		t.Fatal("missing file accepted")
 	}
-	refs, err = store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
+	refs, err = store.ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 1 {
 		t.Fatal("partial batch lost lease", refs, err)
 	}
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
+	refs, err = store.ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 0 {
 		t.Fatal("lease survived runtime close", refs, err)
 	}

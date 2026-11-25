@@ -7,7 +7,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
 	"elbot/internal/tool/share"
 	"path/filepath"
@@ -38,17 +38,17 @@ func (p *mediaProbe) GetHistoryMediaBatch(_ context.Context, req []media.History
 }
 func TestHistoryReadsByPurpose(t *testing.T) {
 	ctx := t.Context()
-	store, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	store, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	repo := store.Repository()
+	repo := store
 	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted", Display: "[引用 h42：名字（助手）：quoted]"}
 	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "text", Text: "before"}, {Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "first"}, {Type: "text", Text: "between"}, {Type: "image", PlatformFileID: "second"},
 	})}
-	if err := repo.Append(ctx, &row); err != nil {
+	if err := repo.AppendChatMessage(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
 	counter := &countedHistory{ChatHistoryRepository: repo}

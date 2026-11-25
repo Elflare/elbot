@@ -15,8 +15,8 @@ type MediaCenterDeps struct {
 
 // Store 是构造时借用的共享存储能力；根部将实际仓储裁剪给 object。
 type Store interface {
-	Media() storage.MediaRepository
-	MediaReferences() storage.MediaReferenceRepository
+	storage.MediaRepository
+	storage.MediaReferenceRepository
 }
 
 // History 只查询历史身份，不授予写入或关闭能力。

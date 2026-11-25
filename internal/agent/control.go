@@ -19,17 +19,17 @@ import (
 // controlAdapter 只向统一操作提供需要的能力；组件仍由 Agent 根部持有。
 type controlAdapter struct {
 	supervisor *Supervisor
-	store      storage.Store
+	store      Store
 	models     ModelCapabilities
 	scope      func(context.Context) session.Scope
 	status     *agentexecution.StatusRecorder
 }
 
 func (a controlAdapter) GetSession(ctx context.Context, id string) (*storage.Session, error) {
-	return a.store.Sessions().Get(ctx, id)
+	return a.store.GetSession(ctx, id)
 }
 func (a controlAdapter) ListInputHistory(ctx context.Context, account contextinfo.ActorIdentity, limit int) ([]string, error) {
-	return a.store.Messages().ListInputHistory(ctx, account, limit)
+	return a.store.ListInputHistory(ctx, account, limit)
 }
 func (a controlAdapter) LoadMessagePage(ctx context.Context, id string, page, size int) (contextmgr.MessagePage, error) {
 	return (contextmgr.Loader{Store: a.store}).LoadMessagePage(ctx, id, page, size)
@@ -74,7 +74,7 @@ func (a controlAdapter) Status(ctx context.Context) (operationresult.Result[cont
 		for _, request := range a.supervisor.requests.ListBySession(row.ID) {
 			result.Requests = append(result.Requests, control.RequestData{ID: request.ID, ParentID: request.ParentID, SessionID: request.SessionID, SessionTitle: row.Title, Kind: request.Kind, Label: request.Label, StartedAt: request.StartedAt, Stopping: request.Stopping})
 		}
-		usage, usageErr := a.store.ToolCalls().UsageBySession(locked, row.ID)
+		usage, usageErr := a.store.UsageBySession(locked, row.ID)
 		if usageErr != nil {
 			result.ToolUsage = nil
 			result.Errors = append(result.Errors, controlFailure("tool_usage", usageErr))

@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -13,13 +14,12 @@ import (
 	"elbot/internal/session/binding"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 type fixture struct {
 	s                *Service
 	bindings         *binding.Manager
-	store            *sqlite.Store
+	store            *storage.Supervisor
 	mu               sync.Mutex
 	busy             []string
 	releasedSessions []string
@@ -28,14 +28,14 @@ type fixture struct {
 
 func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "session.db"))
+	store, err := testutil.OpenStore(context.Background(), filepath.Join(t.TempDir(), "session.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{store: store, bindings: binding.NewManager()}
 	f.s = NewService(Config{DefaultMode: storage.SessionModeWork, IdleExpiration: ttl, DraftRoot: filepath.Join(t.TempDir(), "draft")}, ServiceDeps{
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
-		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
+		Sessions:   store, Messages: store, Bindings: f.bindings,
 		ActiveSessionIDs: func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) },
 		CheckForeground: func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) {
 			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
@@ -99,7 +99,7 @@ func TestCreateUnboundWhileCurrentBusy(t *testing.T) {
 	if err != nil || r.Status != operationresult.Success || r.Data.ID == old.ID {
 		t.Fatal(r, err)
 	}
-	row, err := f.store.Sessions().Get(t.Context(), r.Data.ID)
+	row, err := f.store.GetSession(t.Context(), r.Data.ID)
 	if err != nil || !share.CanAccess(scope, row) {
 		t.Fatal(row, err)
 	}
@@ -150,7 +150,7 @@ func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	f.create(t, otherScope, "foreign")
 	now := storage.Now()
 	for i, row := range []*storage.Session{pinned, recent} {
-		if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+		if _, err := f.store.MutateSession(ctx, row.ID, func(row *storage.Session) error {
 			row.UpdatedAt = now.Add(time.Duration(i-3) * time.Hour)
 			if row.ID == pinned.ID {
 				row.PinnedAt = &now
@@ -223,7 +223,7 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 		t.Fatalf("mode: %+v %v", result, err)
 	}
 	for _, message := range []storage.Message{{ID: "question", SessionID: row.ID, Role: storage.RoleUser, Content: "question"}, {ID: "answer", SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}} {
-		if err := f.store.Messages().Append(ctx, &message); err != nil {
+		if err := f.store.AppendMessage(ctx, &message); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -282,7 +282,7 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	if f.s.CurrentBinding(scope) != nil {
 		t.Fatal("deleted binding retained")
 	}
-	if _, err := f.store.Sessions().Get(ctx, other.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := f.store.GetSession(ctx, other.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("delete: %v", err)
 	}
 }
@@ -312,7 +312,7 @@ func TestAccessAndCreateUnderScopeAdmission(t *testing.T) {
 		t.Fatalf("create under scope admission: %+v %v", created, err)
 	}
 	// 当前记录被外部删除时，读操作移除悬挂绑定，下一次输入创建新记录。
-	if err := f.store.Sessions().Delete(ctx, created.Data.ID); err != nil {
+	if err := f.store.DeleteSession(ctx, created.Data.ID); err != nil {
 		t.Fatal(err)
 	}
 	if current, err := f.s.Current(ctx, scope); err != nil || current.Status != operationresult.NoCurrentSession {
@@ -349,7 +349,7 @@ func TestActivateModeCreatesAndReusesSession(t *testing.T) {
 			t.Fatalf("invalid mode %q accepted", mode)
 		}
 	}
-	if err := f.store.Sessions().Delete(ctx, created.Data.Session.ID); err != nil {
+	if err := f.store.DeleteSession(ctx, created.Data.Session.ID); err != nil {
 		t.Fatal(err)
 	}
 	if result, err := f.s.ActivateMode(ctx, scope, ActivateModeRequest{}); err != nil || result.Status != operationresult.InvalidArguments {
@@ -387,17 +387,17 @@ type failingSessions struct {
 	createErr, deleteErr error
 }
 
-func (s failingSessions) Create(ctx context.Context, row *storage.Session) error {
+func (s failingSessions) CreateSession(ctx context.Context, row *storage.Session) error {
 	if s.createErr != nil {
 		return s.createErr
 	}
-	return s.SessionRepository.Create(ctx, row)
+	return s.SessionRepository.CreateSession(ctx, row)
 }
-func (s failingSessions) Delete(ctx context.Context, id string) error {
+func (s failingSessions) DeleteSession(ctx context.Context, id string) error {
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}
-	return s.SessionRepository.Delete(ctx, id)
+	return s.SessionRepository.DeleteSession(ctx, id)
 }
 
 func TestStorageFailureDoesNotRetireBinding(t *testing.T) {
@@ -406,7 +406,7 @@ func TestStorageFailureDoesNotRetireBinding(t *testing.T) {
 	row := f.create(t, scope, "old")
 	b := f.s.CurrentBinding(scope)
 	failure := errors.New("storage failed")
-	f.s.deps.Sessions = failingSessions{SessionRepository: f.store.Sessions(), createErr: failure, deleteErr: failure}
+	f.s.deps.Sessions = failingSessions{SessionRepository: f.store, createErr: failure, deleteErr: failure}
 	if _, err := f.s.Create(ctx, scope, CreateRequest{}); !errors.Is(err, failure) {
 		t.Fatal(err)
 	}

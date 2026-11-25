@@ -14,7 +14,7 @@ type LoadedContext struct {
 }
 
 type Loader struct {
-	Store storage.Store
+	Store Store
 }
 
 const maxForkDepth = 32
@@ -31,7 +31,7 @@ func (l Loader) load(ctx context.Context, sessionID, upToMessageID string, depth
 	if depth > maxForkDepth {
 		return nil, fmt.Errorf("fork depth exceeds %d", maxForkDepth)
 	}
-	session, err := l.Store.Sessions().Get(ctx, sessionID)
+	session, err := l.Store.GetSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +68,9 @@ func (l Loader) loadOwnSummary(ctx context.Context, sessionID, upToMessageID str
 		err     error
 	)
 	if upToMessageID == "" {
-		summary, err = l.Store.ContextSummaries().LatestBySession(ctx, sessionID)
+		summary, err = l.Store.LatestBySession(ctx, sessionID)
 	} else {
-		summary, err = l.Store.ContextSummaries().LatestBySessionUpTo(ctx, sessionID, upToMessageID)
+		summary, err = l.Store.LatestBySessionUpTo(ctx, sessionID, upToMessageID)
 	}
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, nil
@@ -88,9 +88,9 @@ func (l Loader) loadOwnSummary(ctx context.Context, sessionID, upToMessageID str
 
 func (l Loader) listOwnMessages(ctx context.Context, sessionID, upToMessageID string) ([]storage.Message, error) {
 	if upToMessageID == "" {
-		return l.Store.Messages().ListBySession(ctx, sessionID)
+		return l.Store.ListSessionMessages(ctx, sessionID)
 	}
-	return l.Store.Messages().ListBySessionUpTo(ctx, sessionID, upToMessageID)
+	return l.Store.ListBySessionUpTo(ctx, sessionID, upToMessageID)
 }
 
 func (l Loader) listOwnMessagesAfter(ctx context.Context, sessionID, afterMessageID, upToMessageID string) ([]storage.Message, error) {
@@ -99,9 +99,9 @@ func (l Loader) listOwnMessagesAfter(ctx context.Context, sessionID, afterMessag
 		err      error
 	)
 	if upToMessageID == "" {
-		messages, err = l.Store.Messages().ListBySessionAfter(ctx, sessionID, afterMessageID)
+		messages, err = l.Store.ListBySessionAfter(ctx, sessionID, afterMessageID)
 	} else {
-		messages, err = l.Store.Messages().ListBySessionAfterUpTo(ctx, sessionID, afterMessageID, upToMessageID)
+		messages, err = l.Store.ListBySessionAfterUpTo(ctx, sessionID, afterMessageID, upToMessageID)
 	}
 	if errors.Is(err, storage.ErrNotFound) {
 		// A fork summary may cover an ancestor range, leaving only this branch's messages.
@@ -114,7 +114,7 @@ func (l Loader) loadRawMessages(ctx context.Context, sessionID, upToMessageID st
 	if depth > maxForkDepth {
 		return nil, fmt.Errorf("fork depth exceeds %d", maxForkDepth)
 	}
-	session, err := l.Store.Sessions().Get(ctx, sessionID)
+	session, err := l.Store.GetSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +154,11 @@ func (l Loader) LoadMessagePage(ctx context.Context, sessionID string, page, pag
 		if depth > maxForkDepth {
 			return MessagePage{}, fmt.Errorf("fork depth exceeds %d", maxForkDepth)
 		}
-		row, err := l.Store.Sessions().Get(ctx, sessionID)
+		row, err := l.Store.GetSession(ctx, sessionID)
 		if err != nil {
 			return MessagePage{}, err
 		}
-		count, err := l.Store.Messages().CountConversationMessages(ctx, sessionID, until)
+		count, err := l.Store.CountConversationMessages(ctx, sessionID, until)
 		if until != "" && errors.Is(err, storage.ErrNotFound) {
 			// 截止消息可能继承自更早祖先；跳过本分支自身消息，继续寻找该截止位置。
 			inheritedCutoff = true
@@ -190,7 +190,7 @@ func (l Loader) LoadMessagePage(ctx context.Context, sessionID string, page, pag
 			offset -= span.count
 			continue
 		}
-		rows, err := l.Store.Messages().ListConversationMessages(ctx, span.id, span.until, pageSize-len(out.Messages), offset)
+		rows, err := l.Store.ListConversationMessages(ctx, span.id, span.until, pageSize-len(out.Messages), offset)
 		if err != nil {
 			return MessagePage{}, err
 		}
@@ -204,4 +204,18 @@ func (l Loader) LoadMessagePage(ctx context.Context, sessionID string, page, pag
 		out.Messages[i], out.Messages[j] = out.Messages[j], out.Messages[i]
 	}
 	return out, nil
+}
+
+// Store 是本业务借用的持久化操作，不拥有连接或关闭权。
+type Store interface {
+	GetSession(ctx context.Context, id string) (*storage.Session, error)
+	LatestBySession(ctx context.Context, sessionID string) (*storage.ContextSummary, error)
+	LatestBySessionUpTo(ctx context.Context, sessionID, toMessageID string) (*storage.ContextSummary, error)
+	ListSessionMessages(ctx context.Context, sessionID string) ([]storage.Message, error)
+	ListBySessionUpTo(ctx context.Context, sessionID, toMessageID string) ([]storage.Message, error)
+	ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]storage.Message, error)
+	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]storage.Message, error)
+	CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error)
+	ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]storage.Message, error)
+	MutateSession(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error)
 }

@@ -2,19 +2,23 @@
 package testutil
 
 import (
+	"context"
+	"elbot/internal/storage"
 	"testing"
-
-	"elbot/internal/storage/sqlite"
 )
 
-// NewSQLiteStore creates an independent memory database with the current schema.
-// Tests of persistence across reopening should use sqlite.New with a file path.
-func NewSQLiteStore(t *testing.T) *sqlite.Store {
+func OpenStore(ctx context.Context, path string) (*storage.Supervisor, error) {
+	return storage.NewSupervisor(ctx, path, ":memory:")
+}
+func OpenChatHistory(ctx context.Context, path string) (*storage.Supervisor, error) {
+	return storage.NewSupervisor(ctx, ":memory:", path)
+}
+func NewSQLiteStore(t *testing.T) *storage.Supervisor {
 	t.Helper()
-	store, err := sqlite.New(t.Context(), ":memory:")
-	if err != nil {
-		t.Fatalf("create SQLite test database: %v", err)
+	s, e := OpenStore(t.Context(), ":memory:")
+	if e != nil {
+		t.Fatal(e)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
+	t.Cleanup(func() { _ = s.Close() })
+	return s
 }

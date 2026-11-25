@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -12,20 +13,19 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/share"
 )
 
 func TestCronBridgeStorageAndNotifications(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	changed := signal.New[CronChangedEvent, signal.Empty]("test.cron_changed")
 	defer changed.Close(context.Background())
-	bridge := cronBridge{repo: store.CronJobs(), changed: changed}
+	bridge := cronBridge{repo: store, changed: changed}
 	owner := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "123"}, Name: "Owner"}
 	ctx := contextinfo.WithActor(t.Context(), owner)
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
@@ -33,7 +33,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	var notifications []CronChangedEvent
 	var exists []bool
 	_, err = (&Supervisor{cronChanged: changed}).ObserveCronChanged(func(event CronChangedEvent) error {
-		_, err := store.CronJobs().GetByName(context.Background(), event.Name)
+		_, err := store.GetByName(context.Background(), event.Name)
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
@@ -51,7 +51,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 		}
 	}
 	write(`{"operation":"create","name":"reminder","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"llm","message":"#task reminder - test"}`)
-	job, err := store.CronJobs().GetByName(ctx, "user.cron.reminder")
+	job, err := store.GetByName(ctx, "user.cron.reminder")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	if job.Handler != storage.CronHandlerName || meta.CreatedBy.Platform != owner.Platform || meta.CreatedBy.ID != owner.ID || meta.Schedule.RunAt != "2026-10-25 12:10:00" || meta.Kind != storage.CronMetadataKind {
 		t.Fatalf("persisted = %+v %+v", job, meta)
 	}
-	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, "delivery", `{"delivery_complete":true}`, nil); err != nil || !ok {
+	if ok, err := store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, "delivery", `{"delivery_complete":true}`, nil); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	info, err := bridge.GetByName(ctx, "reminder")
@@ -78,12 +78,12 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 		t.Fatalf("query = %+v %v", result, err)
 	}
 	write(`{"operation":"update","name":"reminder","title":"renamed"}`)
-	job, _ = store.CronJobs().GetByName(ctx, job.Name)
+	job, _ = store.GetByName(ctx, job.Name)
 	if job.DeliveryToken != "delivery" {
 		t.Fatal("title edit reset delivery")
 	}
 	write(`{"operation":"update","name":"reminder","enabled":true}`)
-	job, _ = store.CronJobs().GetByName(ctx, job.Name)
+	job, _ = store.GetByName(ctx, job.Name)
 	if job.DeliveryState != "" || job.DeliveryToken == "delivery" {
 		t.Fatal("reenable kept stale delivery")
 	}
@@ -115,14 +115,14 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 }
 
 func TestCronBridgeFiltersStorageRecordsAndReportsCommittedNotifyFailure(t *testing.T) {
-	store, err := sqlite.New(t.Context(), ":memory:")
+	store, err := testutil.OpenStore(t.Context(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	changed := signal.New[CronChangedEvent, signal.Empty]("test.cron_changed")
-	bridge := cronBridge{repo: store.CronJobs(), changed: changed}
-	if _, err := store.CronJobs().Upsert(t.Context(), storage.UpsertCronJobRequest{Name: "maintenance", Handler: "maintenance", Schedule: "* * * * *", Enabled: true}); err != nil {
+	bridge := cronBridge{repo: store, changed: changed}
+	if _, err := store.UpsertCronJob(t.Context(), storage.UpsertCronJobRequest{Name: "maintenance", Handler: "maintenance", Schedule: "* * * * *", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	items, err := bridge.List(t.Context(), true)
@@ -136,7 +136,7 @@ func TestCronBridgeFiltersStorageRecordsAndReportsCommittedNotifyFailure(t *test
 	if err == nil || !strings.Contains(err.Error(), "已写入") {
 		t.Fatalf("notification error = %v", err)
 	}
-	if _, err := store.CronJobs().GetByName(t.Context(), "user.cron.saved"); err != nil {
+	if _, err := store.GetByName(t.Context(), "user.cron.saved"); err != nil {
 		t.Fatal("successful write was lost", err)
 	}
 }

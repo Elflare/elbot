@@ -57,7 +57,7 @@ func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 			if f.c.CurrentBinding(scope()) != current || !current.Valid() {
 				t.Fatal("background compact changed foreground binding")
 			}
-			latest, err := f.store.Sessions().Get(t.Context(), source.ID)
+			latest, err := f.store.GetSession(t.Context(), source.ID)
 			if err != nil || latest.Mode != source.Mode || latest.Metadata != source.Metadata {
 				t.Fatalf("source changed: %+v, %v", latest, err)
 			}
@@ -119,7 +119,7 @@ func TestCompactedInheritanceAndActivation(t *testing.T) {
 					}
 				}
 				if native {
-					records, err := f.store.Dialogues().LoadNativeWindow(t.Context(), row, nil)
+					records, err := f.store.LoadNativeWindow(t.Context(), row, nil)
 					if err != nil || records.Seed == nil || records.Seed.SessionID != row.ID {
 						t.Fatalf("seed: %+v %v", records, err)
 					}
@@ -141,7 +141,7 @@ func TestCompactedStoresInitialMessageInNewSession(t *testing.T) {
 		t.Fatalf("compaction: %+v, %v", result, err)
 	}
 	row := result.Data
-	messages, err := f.store.Messages().ListBySession(t.Context(), row.ID)
+	messages, err := f.store.ListSessionMessages(t.Context(), row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

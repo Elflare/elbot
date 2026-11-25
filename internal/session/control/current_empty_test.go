@@ -24,7 +24,7 @@ func TestNoCurrentSessionIsDistinctFromMissingRecord(t *testing.T) {
 						t.Fatalf("reset: %+v", result)
 					}
 				} else {
-					err = f.store.Sessions().Delete(ctx, row.ID)
+					err = f.store.DeleteSession(ctx, row.ID)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -56,7 +56,7 @@ type currentReadFailure struct {
 	err error
 }
 
-func (r currentReadFailure) Get(context.Context, string) (*storage.Session, error) {
+func (r currentReadFailure) GetSession(context.Context, string) (*storage.Session, error) {
 	return nil, r.err
 }
 
@@ -66,7 +66,7 @@ func TestCurrentReadFailureIsNotEmptyConversation(t *testing.T) {
 	f.create(t, scope, "current")
 	original := f.s.CurrentBinding(scope)
 	want := errors.New("database unavailable")
-	f.s.deps.Sessions = currentReadFailure{SessionRepository: f.store.Sessions(), err: want}
+	f.s.deps.Sessions = currentReadFailure{SessionRepository: f.store, err: want}
 	if result, err := f.s.CurrentBound(ctx, scope); !errors.Is(err, want) || result.Status != "" {
 		t.Fatalf("current read error = %+v / %v", result, err)
 	}
@@ -82,7 +82,7 @@ func TestActivateModeReplacesDeletedCurrent(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := t.Context(), privateScope()
 	row := f.create(t, scope, "deleted")
-	if err := f.store.Sessions().Delete(ctx, row.ID); err != nil {
+	if err := f.store.DeleteSession(ctx, row.ID); err != nil {
 		t.Fatal(err)
 	}
 	result, err := f.s.ActivateMode(ctx, scope, ActivateModeRequest{Mode: storage.SessionModeChat})

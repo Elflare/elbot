@@ -4,30 +4,30 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"testing"
 
 	"elbot/internal/config"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestPureMediaHistoryPreservesOrder(t *testing.T) {
 	ctx := context.Background()
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	a := newTestAdapter(t, Config{}, history.Repository())
+	a := newTestAdapter(t, Config{}, history)
 	handler := &captureHandler{}
 	image := messageAttachment{URL: "https://example.com/image.png", ContentType: "image/png", Filename: "image.png"}
 	a.handleGroupMessage(ctx, handler.HandleMessage, payload{Type: eventGroupMessageCreate}, inboundMessage{
 		ID: "1", GroupOpenID: "9", Author: inboundAuthor{MemberOpenID: "1"},
 		Attachments: []messageAttachment{image, {URL: "https://example.com/file", ContentType: "file", Filename: "file.txt", Size: 5}, image},
 	})
-	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group", "9", "1")
+	row, err := history.GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group", "9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}

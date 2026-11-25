@@ -3,6 +3,7 @@ package refcontext
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
 
@@ -25,24 +25,24 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		t.Fatalf("import image: %+v %v", item, err)
 	}
 	imageID := item.Data.ID
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer history.Close()
 	raw := []share.MessageSegment{{Type: share.SegmentImage, PlatformFileID: "raw-image"}, {Type: share.SegmentFile, PlatformFileID: "raw-file"}, {Type: share.SegmentImage, PlatformFileID: "raw-image"}}
 	for _, id := range []string{"output", "history"} {
-		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "telegram", ChatType: "group", ChatID: "9", PlatformMessageID: id, SenderID: "other", Segments: encodeReferenceSegments(raw)}); err != nil {
+		if err := history.AppendChatMessage(ctx, &storage.ChatMessage{Platform: "telegram", ChatType: "group", ChatID: "9", PlatformMessageID: id, SenderID: "other", Segments: encodeReferenceSegments(raw)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for i, kind := range []string{"image", "file", "image"} {
-		if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "telegram", ChatType: "group", ChatID: "9", MessageID: "output", SegmentIndex: i, Kind: kind, MediaID: imageID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		if err := store.SaveOutput(ctx, storage.MediaOutput{Platform: "telegram", ChatType: "group", ChatID: "9", MessageID: "output", SegmentIndex: i, Kind: kind, MediaID: imageID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	calls := 0
-	deps := newRefTestOptions(store, history.Repository())
+	deps := newRefTestOptions(store, history)
 	opts := share.ReferenceOptions{Platform: "telegram", ChatType: "group", ChatID: "9", Text: "看看", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		calls++
 		return share.ReferencedMessage{Segments: raw}, true, nil
@@ -126,7 +126,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		t.Fatalf("import file: %+v %v", file, err)
 	}
 	imageID, fileID := image.Data.ID, file.Data.ID
-	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	history, err := testutil.OpenChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		Text:              "caption",
 		Segments:          encodeReferenceSegments(raw),
 	}
-	if err := history.Repository().Append(ctx, row); err != nil {
+	if err := history.AppendChatMessage(ctx, row); err != nil {
 		t.Fatal(err)
 	}
 	for _, association := range []storage.HistoryMedia{
@@ -156,12 +156,12 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 3, Kind: "image", MediaID: imageID, ChatType: row.ChatType},
 		{HistoryID: "replaced-history-row", Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 4, Kind: "file", MediaID: fileID, ChatType: row.ChatType},
 	} {
-		if err := store.Media().SaveHistory(ctx, association); err != nil {
+		if err := store.SaveHistory(ctx, association); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// An association with the same message ID in another scope must not leak in.
-	if err := store.Media().SaveHistory(ctx, storage.HistoryMedia{
+	if err := store.SaveHistory(ctx, storage.HistoryMedia{
 		HistoryID: "other-row", Platform: row.Platform, ChatType: "group", ChatID: "other",
 		MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: fileID,
 	}); err != nil {
@@ -169,7 +169,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	}
 
 	fetchCalls := 0
-	got, err := newRefTestOptions(store, history.Repository()).Apply(ctx, share.ReferenceOptions{Platform: row.Platform, ChatID: row.ChatID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
+	got, err := newRefTestOptions(store, history).Apply(ctx, share.ReferenceOptions{Platform: row.Platform, ChatID: row.ChatID, ReplyID: row.PlatformMessageID, Text: "看看", Fetch: func(context.Context) (share.ReferencedMessage, bool, error) {
 		fetchCalls++
 		return share.ReferencedMessage{}, false, nil
 	}, ChatType: row.ChatType,

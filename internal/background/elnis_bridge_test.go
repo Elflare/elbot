@@ -27,11 +27,11 @@ import (
 	"elbot/internal/tool"
 )
 
-func newElnisBridgeFixture(t *testing.T) (elnisBridge, storage.Store) {
+func newElnisBridgeFixture(t *testing.T) (elnisBridge, *storage.Supervisor) {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
-	return elnisBridge{next: store.NextIDSequence, repo: store.ElnisEvents(), media: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}, store
+	return elnisBridge{next: store.NextIDSequence, repo: store, media: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}, store
 }
 func elnisBridgeRequest(mode string) elnis.Request {
 	return elnis.Request{Version: "elvena.v2", Elwisp: elnis.Elwisp{Name: "watcher"}, Source: "source", ID: "event", Mode: mode, Format: "text", Content: "hello", Targets: []elnis.Target{{Platform: "cli"}}}
@@ -65,13 +65,13 @@ type emptyElnisSelections struct{}
 func (emptyElnisSelections) BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error) {
 	return nil, nil
 }
-func seedElnisReportMessage(t *testing.T, store storage.Store) {
+func seedElnisReportMessage(t *testing.T, store *storage.Supervisor) {
 	t.Helper()
 	ctx := t.Context()
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "elnis", ChatID: "test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "elnis", ChatID: "test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -89,7 +89,7 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := store.ElnisEvents().Get(ctx, row.ID)
+	saved, err := store.GetElnisEvent(ctx, row.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	if _, err := b.Get(canceled, row.ID); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err := store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 1 {
 		t.Fatal(refs, err)
 	}
@@ -127,11 +127,11 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	if err != nil || got.SessionID != "session" || got.Result != "result" || got.ResolvedTargets != "[]" {
 		t.Fatal(got, err)
 	}
-	saved, err = store.ElnisEvents().Get(ctx, row.ID)
+	saved, err = store.GetElnisEvent(ctx, row.ID)
 	if err != nil || saved.Status != elnis.StatusFailed || saved.Error != "failure" {
 		t.Fatal(saved, err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err = store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 0 {
 		t.Fatal(refs, err)
 	}
@@ -186,21 +186,21 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	if err := broken.MarkReportDeliveriesDelivered(ctx, []string{items[0].ID}, "receipt", mappings); err == nil {
 		t.Fatal("expected transaction failure")
 	}
-	if _, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "77"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.FindByPlatformMessage(ctx, "telegram", "private", "1", "77"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("mapping survived rollback: %v", err)
 	}
-	pending, err := store.ElnisEvents().ListReportDeliveries(ctx, row.ID)
+	pending, err := store.ListReportDeliveries(ctx, row.ID)
 	if err != nil || pending[0].Status != storage.ElnisReportDeliveryPending || pending[0].Receipt != "" {
 		t.Fatal(pending, err)
 	}
 	if err := b.MarkReportDeliveryFailed(ctx, row.ID, items[0].ID, elnis.StatusResultReady, "partial failure", "partial receipt", mappings); err != nil {
 		t.Fatal(err)
 	}
-	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "77")
+	mapped, err := store.FindByPlatformMessage(ctx, "telegram", "private", "1", "77")
 	if err != nil || mapped.ID != "message" {
 		t.Fatal(mapped, err)
 	}
-	saved, err := store.ElnisEvents().Get(ctx, row.ID)
+	saved, err := store.GetElnisEvent(ctx, row.ID)
 	if err != nil || saved.Status != elnis.StatusResultReady || saved.Error != "partial failure" {
 		t.Fatal(saved, err)
 	}
@@ -230,7 +230,7 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, scope := range []string{"1", "2"} {
-		msg, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", scope, "78")
+		msg, err := store.FindByPlatformMessage(ctx, "telegram", "private", scope, "78")
 		if err != nil || msg.ID != "message" {
 			t.Fatal(msg, err)
 		}
@@ -238,7 +238,7 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	if err := b.CompleteReport(ctx, row.ID, elnis.StatusDelivering, elnis.StatusCompleted); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err := store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 0 {
 		t.Fatal(refs, err)
 	}
@@ -316,18 +316,18 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, out.Source.MediaID)
+	refs, err := store.ListMediaIDs(ctx, out.Source.MediaID)
 	if err != nil || len(refs) != 1 {
 		t.Fatal(refs, err)
 	}
 	if err := b.Update(ctx, elnis.UpdateEventRequest{ID: queued.EventID, Status: elnis.StatusCompleted}); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, out.Source.MediaID)
+	refs, err = store.ListMediaIDs(ctx, out.Source.MediaID)
 	if err != nil || len(refs) != 0 {
 		t.Fatal(refs, err)
 	}
-	if issues, err := store.Media().CheckReferences(ctx); err != nil || len(issues) != 0 {
+	if issues, err := store.CheckReferences(ctx); err != nil || len(issues) != 0 {
 		t.Fatal(issues, err)
 	}
 	data, _, err := mediatest.Read(ctx, b.media, out.Source.MediaID)
@@ -352,11 +352,11 @@ func TestElnisBridgeCancelledEnqueueReleasesInput(t *testing.T) {
 	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != operationresult.Success || response.Data.Status != elnis.StatusFailed || response.Data.Error != context.Canceled.Error() {
 		t.Fatal(response, err)
 	}
-	row, err := store.ElnisEvents().GetByKey(t.Context(), "watcher", "source", "event")
+	row, err := store.GetByKey(t.Context(), "watcher", "source", "event")
 	if err != nil || row.Status != elnis.StatusFailed {
 		t.Fatal(row, err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+	refs, err := store.ListMediaIDs(t.Context(), id)
 	if err != nil || len(refs) != 0 {
 		t.Fatal(refs, err)
 	}
@@ -374,7 +374,7 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	if err := b.AddEventReference(t.Context(), id, "event", "report"); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+	refs, err := store.ListMediaIDs(t.Context(), id)
 	if err != nil || len(refs) != 1 || refs[0].OwnerType != "elnis_event" || refs[0].OwnerID != "event" || refs[0].Purpose != "report" {
 		t.Fatal(refs, err)
 	}
@@ -408,7 +408,7 @@ func TestElnisBridgeDirectCancellationReleasesImportedMedia(t *testing.T) {
 	if !media.ValidID(id) {
 		t.Fatal(id)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+	refs, err := store.ListMediaIDs(t.Context(), id)
 	if err != nil || len(refs) != 0 {
 		t.Fatal(refs, err)
 	}
@@ -437,12 +437,12 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, scope := range []string{"1", "2"} {
-		row, err := store.Messages().FindByPlatformMessage(t.Context(), "telegram", "private", scope, "77")
+		row, err := store.FindByPlatformMessage(t.Context(), "telegram", "private", scope, "77")
 		if err != nil || row.ID != "message" {
 			t.Fatal(row, err)
 		}
 	}
-	row, err := store.ElnisEvents().Get(t.Context(), queued.EventID)
+	row, err := store.GetElnisEvent(t.Context(), queued.EventID)
 	if err != nil || row.Status != elnis.StatusCompleted || sends != 1 {
 		t.Fatal(row, err, sends)
 	}
@@ -451,9 +451,9 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T) {
 	ctx := t.Context()
 	b, store := newElnisBridgeFixture(t)
-	repo := store.ElnisEvents()
+	repo := store
 	const mediaID = "report-media"
-	if err := store.Media().Upsert(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+	if err := store.UpsertMedia(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
 		t.Fatal(err)
 	}
 	before := map[string]*storage.ElnisEvent{}
@@ -462,7 +462,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 		if status == elnis.StatusAccepted || status == elnis.StatusQueued || status == elnis.StatusRunning {
 			mediaIDs = []string{mediaID}
 		}
-		row, err := repo.Create(ctx, storage.CreateElnisEventRequest{ID: storage.NewID(),
+		row, err := repo.CreateElnisEvent(ctx, storage.CreateElnisEventRequest{ID: storage.NewID(),
 			EventKey: status, ElwispName: "recovery", Source: "test", SourceID: status,
 			Status: status, Error: "existing error", Result: "existing result", MediaIDs: mediaIDs,
 		})
@@ -477,7 +477,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 				t.Fatal(err)
 			}
 		}
-		before[status], err = repo.Get(ctx, row.ID)
+		before[status], err = repo.GetElnisEvent(ctx, row.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -487,7 +487,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 			t.Fatal(err)
 		}
 		for status, previous := range before {
-			row, err := repo.Get(ctx, previous.ID)
+			row, err := repo.GetElnisEvent(ctx, previous.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -510,7 +510,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 				}
 			}
 		}
-		refs, err := store.MediaReferences().ListMediaIDs(ctx, mediaID)
+		refs, err := store.ListMediaIDs(ctx, mediaID)
 		if err != nil || len(refs) != 2 {
 			t.Fatalf("durable report references = %#v, %v", refs, err)
 		}
@@ -531,25 +531,25 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	if _, err := s.Handle(ctx, "secret", req); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err := store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("queue refs %v %v", refs, err)
 	}
-	if err := store.Media().RecoverInterrupted(ctx); err != nil {
+	if err := store.RecoverInterrupted(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err = store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("media cleanup changed event references: %v, %v", refs, err)
 	}
-	row, err := store.ElnisEvents().GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID)
+	row, err := store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID)
 	if err != nil || row.Status != elnis.StatusQueued {
 		t.Fatalf("media cleanup changed event: %#v, %v", row, err)
 	}
 	if err := elnis.RecoverInterrupted(ctx, b); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, id)
+	refs, err = store.ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("interrupted refs %v %v", refs, err)
 	}
@@ -583,7 +583,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 	runtime.BeginClose()
 	// All workers are canceled; the occupied execution keeps cleanup from starting.
 	const mediaID = "shutdown-media"
-	if err := store.Media().Upsert(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+	if err := store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
 		t.Fatal(err)
 	}
 	rows := map[string]string{}
@@ -592,7 +592,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 		if status == elnis.StatusAccepted || status == elnis.StatusQueued || status == elnis.StatusRunning {
 			mediaIDs = []string{mediaID}
 		}
-		row, err := store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(),
+		row, err := store.CreateElnisEvent(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(),
 			EventKey: status, ElwispName: "close", Source: "test", SourceID: status, Status: status, MediaIDs: mediaIDs,
 		})
 		if err != nil {
@@ -600,7 +600,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 		}
 		rows[status] = row.ID
 		if status == elnis.StatusResultReady || status == elnis.StatusDelivering {
-			if err := store.ElnisEvents().PrepareReport(t.Context(), storage.PrepareElnisReportRequest{
+			if err := store.PrepareReport(t.Context(), storage.PrepareElnisReportRequest{
 				EventID: row.ID, ResultReadyStatus: status, Result: "durable",
 				Deliveries: []storage.CreateElnisReportDeliveryRequest{{Target: "{}", Output: `{"Source":{"media":"shutdown-media"}}`}},
 			}); err != nil {
@@ -618,12 +618,12 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	for status, id := range rows {
-		row, err := store.ElnisEvents().Get(t.Context(), id)
+		row, err := store.GetElnisEvent(t.Context(), id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if status == elnis.StatusResultReady || status == elnis.StatusDelivering {
-			items, err := store.ElnisEvents().ListReportDeliveries(t.Context(), id)
+			items, err := store.ListReportDeliveries(t.Context(), id)
 			if err != nil || len(items) != 1 || row.Status != status || row.Result != "durable" {
 				t.Fatalf("outbox lost: %#v %#v %v", row, items, err)
 			}
@@ -631,7 +631,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 			t.Fatalf("unfinished event not finalized: %#v", row)
 		}
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), mediaID)
+	refs, err := store.ListMediaIDs(t.Context(), mediaID)
 	if err != nil || len(refs) != 2 {
 		t.Fatalf("remaining references=%#v %v", refs, err)
 	}

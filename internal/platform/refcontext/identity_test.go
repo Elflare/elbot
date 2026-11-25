@@ -28,11 +28,11 @@ func TestReferenceBackgroundIdentityUsesMode(t *testing.T) {
 				scope.ChatID, scope.ChatType = tc.sessionScope, tc.kind
 			}
 			row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: tc.kind, ChatID: tc.sessionScope, Mode: tc.mode, Metadata: tc.metadata}
-			if err := store.Sessions().Create(t.Context(), row); err != nil {
+			if err := store.CreateSession(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}
 			msg := &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleAssistant, Content: "report"}
-			if err := store.Messages().Append(t.Context(), msg); err != nil {
+			if err := store.AppendMessage(t.Context(), msg); err != nil {
 				t.Fatal(err)
 			}
 			mapPlatformMessage(t, t.Context(), store, scope, "reply", msg)

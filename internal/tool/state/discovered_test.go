@@ -44,7 +44,7 @@ func TestEmptyDiscoveredToolsRemainNil(t *testing.T) {
 
 func TestStateCommitReportsUniqueNamesAndKeepsLastDeclaration(t *testing.T) {
 	store, row := stateTestStore(t, "")
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	alpha, beta := stateTestTool("alpha"), stateTestTool("beta")
 	if _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{alpha}}); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestStateCommitReportsUniqueNamesAndKeepsLastDeclaration(t *testing.T) {
 
 func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	store, row := stateTestStore(t, "")
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	left, right := stateTestTool("remote"), stateTestTool("remote")
 	left.Source, right.Source = toolshare.SourceKindELwisp, toolshare.SourceKindELwisp
 	left.CanonicalName, right.CanonicalName = "left_remote", "right_remote"
@@ -96,7 +96,7 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	if len(stored) != 2 || stored[0].Endpoint != left.Endpoint || stored[1].Endpoint != right.Endpoint || stored[0].EventKey != left.EventKey {
 		t.Fatalf("stored=%+v", stored)
 	}
-	restored, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).DiscoveredToolsForSession(t.Context(), row.ID, false)
+	restored, err := NewStateService(store, toolregistry.BackgroundDiscoveredTools).DiscoveredToolsForSession(t.Context(), row.ID, false)
 	if err != nil || !reflect.DeepEqual(restored, stored) {
 		t.Fatal("restored= log= err=", restored, err)
 	}
@@ -104,7 +104,7 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 
 func TestStateReadUsesPersistedDeclarationsAndBackgroundRules(t *testing.T) {
 	store, row := stateTestStore(t, "")
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	regular, front, workspace := stateTestTool("unregistered"), stateTestTool("front"), stateTestTool("workspace")
 	regular.Schema.Description = "persisted definition"
 	front.ForegroundOnly = true
@@ -132,7 +132,7 @@ func TestStateReadUsesPersistedDeclarationsAndBackgroundRules(t *testing.T) {
 func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	const raw = `{"unknown":9007199254740993,"elyph_rules_shown":true,"tool_tags":["old"]}`
 	store, row := stateTestStore(t, raw)
-	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	service := NewStateService(store, toolregistry.BackgroundDiscoveredTools)
 	item := stateTestTool("new")
 	update := toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"new"}}
 	patch, _, err := PrepareUpdate(raw, update)
@@ -142,7 +142,7 @@ func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	if len(patch) != 2 || patch["discovered_tools"] == nil || patch["tool_tags"] == nil {
 		t.Fatalf("patch contains fields outside tool state: %v", patch)
 	}
-	unchanged, err := store.Sessions().Get(t.Context(), row.ID)
+	unchanged, err := store.GetSession(t.Context(), row.ID)
 	if err != nil || unchanged.Metadata != raw {
 		t.Fatalf("prepare wrote storage: row=%+v err=%v", unchanged, err)
 	}

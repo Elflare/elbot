@@ -19,11 +19,11 @@ type Config struct {
 type ServiceDeps struct {
 	Log      func(context.Context, events.LogRecord) // 根部注入的日志发布能力；记录内容由命名源头确定。
 	Sessions interface {
-		Get(context.Context, string) (*storage.Session, error)
-		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
+		GetSession(context.Context, string) (*storage.Session, error)
+		MutateSession(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
 	}
 	Messages interface {
-		ListBySession(context.Context, string) ([]storage.Message, error)
+		ListSessionMessages(context.Context, string) ([]storage.Message, error)
 	}
 	ResolveNaming func(context.Context) modelmgr.NamingSelection
 }

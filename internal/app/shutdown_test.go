@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"slices"
 	"testing"
 	"testing/synctest"
@@ -111,12 +112,12 @@ func TestShutdownReportingDoesNotWaitForBlockedLogConsumer(t *testing.T) {
 }
 
 type failingResourceStore struct {
-	storage.Store
+	io.Closer
 	cause error
 }
 
 func (s failingResourceStore) Close() error {
-	return errors.Join(s.Store.Close(), s.cause)
+	return errors.Join(s.Closer.Close(), s.cause)
 }
 
 type testConfigLock struct{ closed bool }
@@ -131,21 +132,22 @@ func TestShutdownPreservesIngressAndDependencyPhases(t *testing.T) {
 	cleanupAppResources(t, r)
 	var order []string
 	lines := testBusinessLines()
-	for kind, line := range lines {
+	lines.storage = r.store
+	for kind, line := range lines.active {
 		line.supervisor.(*testLifecycle).begin = func() { order = append(order, kind.String()+" begin") }
 		line.supervisor.(*testLifecycle).close = func(ctx context.Context) error {
 			order = append(order, kind.String()+" close")
-			_, err := r.historyStore.Repository().GetByPlatformMessage(ctx, "test", "", "scope", "message")
+			_, err := r.store.GetByPlatformMessage(ctx, "test", "", "scope", "message")
 			return err
 		}
 	}
 	row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
-	if err := r.historyStore.Repository().Append(t.Context(), row); err != nil {
+	if err := r.store.AppendChatMessage(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	line := lines[componentPlatform]
+	line := lines.active[componentPlatform]
 	line.waitIngress = func(context.Context) error { order = append(order, "platform ingress"); return nil }
-	lines[componentPlatform] = line
+	lines.active[componentPlatform] = line
 	lock := &testConfigLock{}
 	if err := shutdown(t.Context(), lines, r, lock); err != nil {
 		t.Fatal(err)
@@ -158,7 +160,7 @@ func TestShutdownPreservesIngressAndDependencyPhases(t *testing.T) {
 	if !slices.Equal(order, want) || !lock.closed {
 		t.Fatalf("order=%v lock closed=%v", order, lock.closed)
 	}
-	if _, err := r.historyStore.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {
+	if _, err := r.store.GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {
 		t.Fatal("App did not close history")
 	}
 }
@@ -171,9 +173,10 @@ func TestShutdownContinuesAfterOrdinaryError(t *testing.T) {
 	}
 	cleanupAppResources(t, r)
 	cause := errors.New("storage close failure")
-	r.store = failingResourceStore{Store: r.store, cause: cause}
+	lines := testBusinessLines()
+	lines.storage = failingResourceStore{Closer: r.store, cause: cause}
 	lock := &testConfigLock{}
-	if err := shutdown(t.Context(), testBusinessLines(), r, lock); !errors.Is(err, cause) || !lock.closed {
+	if err := shutdown(t.Context(), lines, r, lock); !errors.Is(err, cause) || !lock.closed {
 		t.Fatalf("shutdown error=%v lock closed=%v", err, lock.closed)
 	}
 	next, err := logging.NewManager("debug", r.config.Storage.SessionsSQLitePath, 1)
@@ -183,8 +186,6 @@ func TestShutdownContinuesAfterOrdinaryError(t *testing.T) {
 	if err := next.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	// Restore the closed underlying store so test cleanup does not inject another failure.
-	r.store = r.store.(failingResourceStore).Store
 }
 
 func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
@@ -196,14 +197,15 @@ func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 			}
 			cleanupAppResources(t, r)
 			row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
-			if err := r.historyStore.Repository().Append(t.Context(), row); err != nil {
+			if err := r.store.AppendChatMessage(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}
 			synctest.Test(t, func(t *testing.T) {
 				release := make(chan struct{})
 				defer close(release)
 				lines := testBusinessLines()
-				user := lines[componentBackground].supervisor.(*testLifecycle)
+				lines.storage = r.store
+				user := lines.active[componentBackground].supervisor.(*testLifecycle)
 				switch phase {
 				case "begin":
 					user.begin = func() { <-release }
@@ -222,7 +224,7 @@ func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 				if lock.closed {
 					t.Fatal("timeout released config lock")
 				}
-				if _, err := r.historyStore.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err != nil {
+				if _, err := r.store.GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err != nil {
 					t.Fatal("timeout released dependency", err)
 				}
 			})

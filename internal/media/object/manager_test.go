@@ -17,7 +17,6 @@ import (
 	"elbot/internal/media/share"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
 )
 
@@ -79,7 +78,7 @@ func (b *testBackend) PresignGet(ctx context.Context, location string, expiry ti
 	return fmt.Sprintf("https://media.test/%s?version=%d", location, b.signs), nil
 }
 
-func newTestManager(t *testing.T) (*Manager, *sqlite.Store, *testBackend) {
+func newTestManager(t *testing.T) (*Manager, *storage.Supervisor, *testBackend) {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	backend := &testBackend{}
@@ -87,7 +86,7 @@ func newTestManager(t *testing.T) (*Manager, *sqlite.Store, *testBackend) {
 	m, err := NewManager(t.Context(), Options{
 		Backend: "local", MaxImportBytes: 1 << 20, DownloadTimeout: time.Second,
 		Media: cfg.Media, Now: storage.Now,
-	}, Deps{Media: store.Media(), References: store.MediaReferences(), Local: backend})
+	}, Deps{Media: store, References: store, Local: backend})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,17 +118,17 @@ type testRepository struct {
 	recover func(context.Context) error
 }
 
-func (r testRepository) Upsert(ctx context.Context, item *storage.Media) error {
+func (r testRepository) UpsertMedia(ctx context.Context, item *storage.Media) error {
 	if r.upsert != nil {
 		return r.upsert(ctx, item)
 	}
-	return r.MediaRepository.Upsert(ctx, item)
+	return r.MediaRepository.UpsertMedia(ctx, item)
 }
-func (r testRepository) Get(ctx context.Context, id string) (*storage.Media, error) {
+func (r testRepository) GetMedia(ctx context.Context, id string) (*storage.Media, error) {
 	if r.get != nil {
 		return r.get(ctx, id)
 	}
-	return r.MediaRepository.Get(ctx, id)
+	return r.MediaRepository.GetMedia(ctx, id)
 }
 func (r testRepository) RecoverInterrupted(ctx context.Context) error {
 	if r.recover != nil {
@@ -149,7 +148,7 @@ func TestImportReadExportAndDeduplication(t *testing.T) {
 	if item.Name != "a%2Fb.txt" || item.MIMEType != "text/plain" || item.Size != 5 || !share.ValidID(item.ID) {
 		t.Fatalf("info = %#v", item)
 	}
-	record, err := store.Media().Get(t.Context(), item.ID)
+	record, err := store.GetMedia(t.Context(), item.ID)
 	if err != nil || record.SourceURL != "" || record.SourceFileID != "" || record.SourcePlatform != "test" {
 		t.Fatalf("record = %#v, %v", record, err)
 	}
@@ -174,7 +173,7 @@ func TestImportReadExportAndDeduplication(t *testing.T) {
 	if err != nil || string(exported) != "hello" {
 		t.Fatalf("export = %q %v", exported, err)
 	}
-	if refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); err != nil || len(refs) != 0 {
+	if refs, err := store.ListMediaIDs(t.Context(), item.ID); err != nil || len(refs) != 0 {
 		t.Fatalf("leaked refs: %#v %v", refs, err)
 	}
 }
@@ -219,7 +218,7 @@ func TestManagerRecovery(t *testing.T) {
 	if err != nil || recovered == nil {
 		t.Fatalf("recovery: %v", err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
+	refs, err := store.ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(refs) != 1 || refs[0].OwnerID != "business" {
 		t.Fatalf("recovery refs = %#v %v", refs, err)
 	}

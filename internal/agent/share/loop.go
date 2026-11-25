@@ -123,7 +123,7 @@ func (s *LoopState) AppendUserText(d LoopDeps, persistence MessageCommitter, mes
 	if err := storage.PrepareMessageID(s.RequestCtx, d.NewMessageID, row); err != nil {
 		return err
 	}
-	if err := persistence.Commit(s.RequestCtx, storage.DialogueCommit{SessionID: s.Session.ID, Messages: []*storage.Message{row}}); err != nil {
+	if err := persistence.CommitDialogue(s.RequestCtx, storage.DialogueCommit{SessionID: s.Session.ID, Messages: []*storage.Message{row}}); err != nil {
 		return err
 	}
 	projected, err := MessageFromStorage(*row)

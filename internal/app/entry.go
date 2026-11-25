@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -47,7 +48,6 @@ const (
 	componentBackground
 	componentModels
 	componentMedia
-	componentChatHistory
 	componentStorage
 	componentLogs
 	componentConfigLock
@@ -57,7 +57,7 @@ func (kind componentKind) String() string {
 	return [...]string{
 		componentTool: "tool", componentAgent: "agent",
 		componentHook: "hook", componentPlatform: "platform", componentBackground: "background",
-		componentModels: "models", componentMedia: "media", componentChatHistory: "chat history",
+		componentModels: "models", componentMedia: "media",
 		componentStorage: "storage", componentLogs: "logs", componentConfigLock: "config lock",
 	}[kind]
 }
@@ -89,7 +89,10 @@ type businessLine struct {
 }
 
 // businessLines 按组件身份保存全部装配成功的业务线。
-type businessLines map[componentKind]businessLine
+type businessLines struct {
+	active  map[componentKind]businessLine // 有接入或后台工作的业务线。
+	storage io.Closer                      // 被动存储线：构造时已就绪，最后一个存储消费者退出后关闭。
+}
 
 // startupTiming 记录总起点及四个入口阶段。
 type startupTiming struct {
@@ -217,7 +220,7 @@ func startBusinessLines(ctx context.Context, lines businessLines) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := lines[kind].supervisor.Start(); err != nil {
+		if err := lines.active[kind].supervisor.Start(); err != nil {
 			return fmt.Errorf("%s start: %w", kind, err)
 		}
 	}
@@ -235,7 +238,7 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	}
 	results := make(chan result, 2)
 	for _, kind := range []componentKind{componentPlatform, componentBackground} {
-		go func() { results <- result{kind, lines[kind].supervisor.(Waiter).Wait(waitCtx)} }()
+		go func() { results <- result{kind, lines.active[kind].supervisor.(Waiter).Wait(waitCtx)} }()
 	}
 	received := <-results
 	cancel()

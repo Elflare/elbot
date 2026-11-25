@@ -15,7 +15,7 @@ func TestCompactMessagesScopesToolCallResultsBySession(t *testing.T) {
 	session := &storage.Session{ID: storage.NewID()}
 	parent := &storage.Session{ID: storage.NewID()}
 	for _, row := range []*storage.Session{session, parent} {
-		if err := store.Sessions().Create(ctx, row); err != nil {
+		if err := store.CreateSession(ctx, row); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
 	}
@@ -25,7 +25,7 @@ func TestCompactMessagesScopesToolCallResultsBySession(t *testing.T) {
 		{SessionID: parent.ID, ToolCallID: "same", ToolName: "failed-parent", Success: false},
 		{SessionID: parent.ID, ToolCallID: "missing", ToolName: "inherited", Success: true},
 	} {
-		if err := store.ToolCalls().Create(ctx, record); err != nil {
+		if err := store.CreateToolCallRecord(ctx, record); err != nil {
 			t.Fatalf("create tool call: %v", err)
 		}
 	}
@@ -36,7 +36,7 @@ func TestCompactMessagesScopesToolCallResultsBySession(t *testing.T) {
 		{SessionID: session.ID, Role: storage.RoleTool, Content: "secret tool result", ToolCallID: "same"},
 		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "H"},
 	}
-	runtime := &chatroute.Compactor{ToolCalls: store.ToolCalls()}
+	runtime := &chatroute.Compactor{ToolCalls: store}
 	compacted, err := runtime.CompactMessages(ctx, messages)
 	if err != nil {
 		t.Fatalf("compact messages: %v", err)

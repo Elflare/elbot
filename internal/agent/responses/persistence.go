@@ -13,7 +13,7 @@ import (
 
 type inputCommitter struct{ state *turnState }
 
-func (c inputCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (c inputCommitter) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	inputs := make([]storage.NativeInput, 0, len(commit.Messages))
 	for _, message := range commit.Messages {
 		if message.Role == storage.RoleAssistant && len(message.ToolCalls) == 1 {
@@ -83,7 +83,7 @@ func (s *turnState) advance(messageID string) storage.NativeCommit {
 
 type replyCommitter struct{ state *turnState }
 
-func (c replyCommitter) Commit(ctx context.Context, commit storage.DialogueCommit) error {
+func (c replyCommitter) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	id := ""
 	if len(commit.Messages) != 0 {
 		id = commit.Messages[0].ID
