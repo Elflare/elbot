@@ -87,9 +87,6 @@ func ReadOrCreateFileWithLimit(path, requestedEncoding string, create bool, hasE
 	if err != nil {
 		return operationresult.Result[File]{}, false, err
 	}
-	if file.Status == operationresult.Success {
-		return file, false, nil
-	}
 	if !create || hasExpectedRevision || file.Status != operationresult.NotFound {
 		return file, false, nil
 	}

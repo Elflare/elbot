@@ -39,24 +39,16 @@ func (p *PreparedEdit) Commit(ctx context.Context) (operationresult.Result[EditR
 	return p.service.edit(ctx, p.request, p)
 }
 
-func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.ResolvedPath, string, operationresult.Result[struct{}], error) {
+func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.ResolvedPath, operationresult.Result[string], error) {
 	path, err := workspace.ResolveWorkspacePath(ctx, req.Path, workspace.PathResolveOptions{AllowCreate: req.Create})
 	if err != nil {
-		return workspace.ResolvedPath{}, "", operationresult.Result[struct{}]{}, err
+		return workspace.ResolvedPath{}, operationresult.Result[string]{}, err
 	}
 	if path.Status != operationresult.Success {
-		return workspace.ResolvedPath{}, "", operationresult.Result[struct{}]{Status: path.Status, Message: path.Message}, nil
+		return workspace.ResolvedPath{}, operationresult.Result[string]{Status: path.Status, Message: path.Message}, nil
 	}
-	resolved := path.Data
-	selected, err := ResolveFileTarget(resolved.Path, req.Create)
-	if err != nil {
-		return resolved, "", operationresult.Result[struct{}]{}, err
-	}
-	if selected.Status != operationresult.Success {
-		return resolved, "", operationresult.Result[struct{}]{Status: selected.Status, Message: selected.Message}, nil
-	}
-	target := selected.Data
-	return resolved, target, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	target, err := ResolveFileTarget(path.Data.Path, req.Create)
+	return path.Data, target, err
 }
 
 func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationresult.Result[*PreparedEdit], error) {
@@ -67,22 +59,22 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationre
 	if captured.Status != operationresult.Success {
 		return operationresult.Result[*PreparedEdit]{Status: captured.Status, Message: captured.Message}, nil
 	}
-	resolved, target, checked, err := s.editPath(ctx, req)
+	resolved, target, err := s.editPath(ctx, req)
 	if err != nil {
 		return operationresult.Result[*PreparedEdit]{}, err
 	}
-	if checked.Status != operationresult.Success {
-		return operationresult.Result[*PreparedEdit]{Status: checked.Status, Message: checked.Message}, nil
+	if target.Status != operationresult.Success {
+		return operationresult.Result[*PreparedEdit]{Status: target.Status, Message: target.Message}, nil
 	}
 	if s.CheckWrite != nil {
-		for _, path := range []string{resolved.Path, target} {
+		for _, path := range []string{resolved.Path, target.Data} {
 			checked := s.CheckWrite(path)
 			if checked.Status != operationresult.Success {
 				return operationresult.Result[*PreparedEdit]{Status: checked.Status, Message: checked.Message}, nil
 			}
 		}
 	}
-	unlock, err := s.manager.lockTarget(ctx, target)
+	unlock, err := s.manager.lockTarget(ctx, target.Data)
 	if err != nil {
 		return operationresult.Result[*PreparedEdit]{}, err
 	}
@@ -97,7 +89,7 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationre
 		return operationresult.Result[*PreparedEdit]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
 	file := prepared.Data
-	if file.target != target {
+	if file.target != target.Data {
 		return operationresult.Result[*PreparedEdit]{Status: operationresult.Conflict, Message: "edit target changed during preparation"}, nil
 	}
 	req.Edits = nil
@@ -121,19 +113,19 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 	if prepared != nil {
 		binding = prepared.binding
 	}
-	resolved, target, checked, err := s.editPath(ctx, req)
+	resolved, target, err := s.editPath(ctx, req)
 	if err != nil {
 		return operationresult.Result[EditResult]{}, resolved, err
 	}
-	if checked.Status != operationresult.Success {
-		return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, resolved, nil
+	if target.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: target.Status, Message: target.Message}, resolved, nil
 	}
-	if prepared != nil && (prepared.resolved.Path != resolved.Path || prepared.file.target != target) {
+	if prepared != nil && (prepared.resolved.Path != resolved.Path || prepared.file.target != target.Data) {
 		return operationresult.Result[EditResult]{Status: operationresult.Conflict, Message: "edit target changed after preflight"}, resolved, nil
 	}
 	// Reject before creating parent directories; Manager rechecks at commit.
 	if s.CheckWrite != nil {
-		for _, path := range []string{resolved.Path, target} {
+		for _, path := range []string{resolved.Path, target.Data} {
 			checked := s.CheckWrite(path)
 			if checked.Status != operationresult.Success {
 				return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, resolved, nil
@@ -141,14 +133,14 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 		}
 	}
 	guard := commitGuard{validate: func(locked context.Context) (operationresult.Result[struct{}], error) {
-		latest, currentTarget, checked, err := s.editPath(locked, req)
+		latest, currentTarget, err := s.editPath(locked, req)
 		if err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
-		if checked.Status != operationresult.Success {
-			return checked, nil
+		if currentTarget.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: currentTarget.Status, Message: currentTarget.Message}, nil
 		}
-		if latest.Path != resolved.Path || currentTarget != target {
+		if latest.Path != resolved.Path || currentTarget.Data != target.Data {
 			return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "edit target changed before commit"}, nil
 		}
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil

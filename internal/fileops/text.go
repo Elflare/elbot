@@ -84,29 +84,17 @@ func RestoreLineEndings(text, lineEnding string) string {
 }
 
 func NormalizeGrepContextLines(value int) int {
-	if value < 0 {
-		return 0
-	}
 	if value == 0 {
 		return 2
 	}
-	if value > 20 {
-		return 20
-	}
-	return value
+	return NormalizeContextLines(value)
 }
 
 func NormalizeContextLines(value int) int {
-	if value < 0 {
-		return 0
-	}
 	if value == 0 {
 		return 3
 	}
-	if value > 20 {
-		return 20
-	}
-	return value
+	return min(max(value, 0), 20)
 }
 
 func ValidateLineRange(total, start, end int) error {

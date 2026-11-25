@@ -36,23 +36,15 @@ func DecodeBytes(data []byte, requested string) (string, string, []byte, error) 
 	if name == "utf8" {
 		name = "utf-8"
 	}
-	if name == "utf-8-bom" {
-		if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
-			data = data[3:]
-		}
+	if name == "utf-8" || name == "utf-8-bom" {
+		data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 		if !utf8.Valid(data) {
 			return "", "", nil, fmt.Errorf("file is not valid UTF-8")
 		}
-		return string(data), "utf-8-bom", []byte{0xEF, 0xBB, 0xBF}, nil
-	}
-	if name == "utf-8" {
-		if bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}) {
-			data = data[3:]
+		if name == "utf-8-bom" {
+			return string(data), name, []byte{0xEF, 0xBB, 0xBF}, nil
 		}
-		if !utf8.Valid(data) {
-			return "", "", nil, fmt.Errorf("file is not valid UTF-8")
-		}
-		return string(data), "utf-8", nil, nil
+		return string(data), name, nil, nil
 	}
 	return decodeWithEncoding(data, name, nil)
 }
