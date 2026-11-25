@@ -10,7 +10,7 @@ import (
 func TestUpgradeAliasSendersFromScopedHistory(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "history.db")
-	db, err := openDB(ctx, path)
+	db, err := openDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ INSERT INTO platform_message_aliases(platform,chat_type,chat_id,alias,platform_m
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err := openHistoryForTest(ctx, path)
+	store, err := NewSupervisor(ctx, ":memory:", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ INSERT INTO platform_message_aliases(platform,chat_type,chat_id,alias,platform_m
 func TestPlatformMessageAliasesPersistAndExpireWithHistory(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "history.db")
-	db, err := openHistoryForTest(ctx, path)
+	db, err := NewSupervisor(ctx, ":memory:", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestPlatformMessageAliasesPersistAndExpireWithHistory(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = openHistoryForTest(ctx, path)
+	db, err = NewSupervisor(ctx, ":memory:", path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestPlatformMessageAliasesPersistAndExpireWithHistory(t *testing.T) {
 	if _, _, err := repo.ResolvePlatformMessageAlias(ctx, "qqofficial", "private", "1", "REFIDX_same"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing alias: %v", err)
 	}
-	deleted, err := repo.DeleteHistoryBefore(ctx, cutoff)
+	deleted, err := repo.DeleteChatHistoryBefore(ctx, cutoff)
 	if err != nil || deleted != 1 {
 		t.Fatalf("cleanup: count=%d err=%v", deleted, err)
 	}

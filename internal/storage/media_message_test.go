@@ -10,7 +10,7 @@ import (
 
 func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "p"}
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)

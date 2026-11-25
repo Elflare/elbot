@@ -73,7 +73,7 @@ func TestSuccessfulIDsBatchBoundaries(t *testing.T) {
 func nativeStorageFixture(t *testing.T) (*Supervisor, *NativeExchange) {
 	t.Helper()
 	ctx := t.Context()
-	store, err := OpenMainForTest(ctx, ":memory:")
+	store, err := NewSupervisor(ctx, ":memory:", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

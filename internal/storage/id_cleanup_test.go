@@ -6,7 +6,7 @@ import (
 )
 
 func TestRemoveUnusedIDsPreservesRecordsAndConstraints(t *testing.T) {
-	db, err := openDB(t.Context(), filepath.Join(t.TempDir(), "old.db"))
+	db, err := openDB(filepath.Join(t.TempDir(), "old.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

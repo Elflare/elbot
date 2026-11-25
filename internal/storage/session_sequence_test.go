@@ -10,7 +10,7 @@ import (
 )
 
 func TestSessionSequenceConcurrentAllocations(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	const count = 64
 	results := make(chan int64, count)
 	var workers sync.WaitGroup
@@ -40,7 +40,7 @@ func TestSessionSequenceConcurrentAllocations(t *testing.T) {
 
 func TestSessionSequenceSurvivesRollbackDeletionAndReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sequence.db")
-	store, err := OpenMainForTest(t.Context(), path)
+	store, err := NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestSessionSequenceSurvivesRollbackDeletionAndReopen(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = OpenMainForTest(t.Context(), path)
+	store, err = NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestSessionSequenceSurvivesRollbackDeletionAndReopen(t *testing.T) {
 
 func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "migration.db")
-	store, err := OpenMainForTest(t.Context(), path)
+	store, err := NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err = OpenMainForTest(t.Context(), path)
+	store, err = NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

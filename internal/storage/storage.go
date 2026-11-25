@@ -508,7 +508,7 @@ type MediaRepository interface {
 	SaveHistory(ctx context.Context, item HistoryMedia) error
 	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error)
-	DeleteHistory(ctx context.Context, ownerID string) error
+	DeleteMediaHistoryAssociation(ctx context.Context, ownerID string) error
 	GetMedia(ctx context.Context, id string) (*Media, error)
 	UpsertMedia(ctx context.Context, media *Media) error
 	GetSignedURL(ctx context.Context, mediaID string) (*MediaSignedURL, error)
@@ -576,5 +576,5 @@ type ChatHistoryRepository interface {
 	GetByPlatformMessages(context.Context, string, contextinfo.ChatType, string, []string) ([]ChatMessage, error)
 	SearchChatHistory(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
 	ChatHistoryAround(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
-	DeleteHistoryBefore(ctx context.Context, cutoff time.Time) (int, error)
+	DeleteChatHistoryBefore(ctx context.Context, cutoff time.Time) (int, error)
 }

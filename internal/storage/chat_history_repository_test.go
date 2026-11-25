@@ -14,7 +14,7 @@ import (
 
 func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.db")
-	old, err := openDB(t.Context(), path)
+	old, err := openDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		store, err := openHistoryForTest(t.Context(), path)
+		store, err := NewSupervisor(t.Context(), ":memory:", path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,7 +53,7 @@ func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 
 func TestAssistantHistoryVisibility(t *testing.T) {
 	ctx := t.Context()
-	store, err := openHistoryForTest(ctx, filepath.Join(t.TempDir(), "history.db"))
+	store, err := NewSupervisor(ctx, ":memory:", filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestAssistantHistoryVisibility(t *testing.T) {
 
 func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 	ctx := context.Background()
-	store, err := openHistoryForTest(ctx, filepath.Join(t.TempDir(), "history.db"))
+	store, err := NewSupervisor(ctx, ":memory:", filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatalf("NewChatHistory: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 
 func TestChatHistorySearchMatchesIDOrNameWithinScope(t *testing.T) {
 	ctx := t.Context()
-	store, err := openHistoryForTest(ctx, filepath.Join(t.TempDir(), "history.db"))
+	store, err := NewSupervisor(ctx, ":memory:", filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestCronRunStatePreservesDefinitionAndAtomicallyCounts(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := t.Context()
 	next := time.Now().Add(time.Hour).Truncate(time.Second)
 	job, err := store.UpsertCronJob(ctx, UpsertCronJobRequest{Name: "job", Handler: "handler", Schedule: "0 4 * * *", Enabled: true, Metadata: `{"title":"new"}`, NextRunAt: &next})

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -22,7 +23,7 @@ type Supervisor struct {
 }
 
 func NewSupervisor(ctx context.Context, sessionsPath, historyPath string) (*Supervisor, error) {
-	db, err := openDB(ctx, sessionsPath)
+	db, err := openDB(sessionsPath)
 	if err != nil {
 		return nil, fmt.Errorf("open main database: %w", err)
 	}
@@ -30,7 +31,7 @@ func NewSupervisor(ctx context.Context, sessionsPath, historyPath string) (*Supe
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize main database: %w", err)
 	}
-	history, err := openDB(ctx, historyPath)
+	history, err := openDB(historyPath)
 	if err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("chat history build: %w", err)
@@ -45,7 +46,7 @@ func NewSupervisor(ctx context.Context, sessionsPath, historyPath string) (*Supe
 
 func (s *Supervisor) Close() error { return errors.Join(s.history.Close(), s.db.Close()) }
 
-func openDB(ctx context.Context, path string) (*sql.DB, error) {
+func openDB(path string) (*sql.DB, error) {
 	if path == "" {
 		return nil, fmt.Errorf("sqlite path is empty")
 	}
@@ -53,19 +54,15 @@ func openDB(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("create sqlite directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", path)
+	// The driver applies _pragma on every physical connection, including replacements.
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	db, err := sql.Open("sqlite", path+sep+"_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ping sqlite: %w", err)
-	}
 	return db, nil
 }

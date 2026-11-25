@@ -11,7 +11,7 @@ import (
 
 func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	id := "media:" + strings.Repeat("a", 64)
 	expires := time.Now().UTC().Add(time.Hour)
 	if err := store.UpsertMedia(ctx, &Media{ID: id, Name: "image.png", Backend: "local", LocalPath: "objects/image.png", MIMEType: "image/png", Size: 42, SourcePlatform: "p", SourceFileID: "file", CreatedAt: time.Now().Add(-24 * time.Hour), ExpiresAt: &expires}); err != nil {
@@ -69,7 +69,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 
 func TestOutputMediaOrderScopeReplacementAndExpiry(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	now := time.Now()
 	var ids []string
 	for _, ch := range []string{"a", "b", "c"} {
@@ -129,7 +129,7 @@ func TestOutputMediaOrderScopeReplacementAndExpiry(t *testing.T) {
 
 func TestReferenceAndCleanupRace(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	for i := range 12 {
 		id := fmt.Sprintf("media:%064x", i)
 		if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "text/plain", CreatedAt: time.Now().Add(-24 * time.Hour)}); err != nil {
@@ -162,7 +162,7 @@ func TestReferenceAndCleanupRace(t *testing.T) {
 
 func TestReferenceAuditAndRecovery(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	id := "media:" + strings.Repeat("c", 64)
 	if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "text/plain"}); err != nil {
 		t.Fatal(err)

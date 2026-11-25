@@ -42,12 +42,12 @@ func TestBusinessIDsShareReservedRange(t *testing.T) {
 
 func TestGeneralIDRangesConcurrentStores(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ids.DBForTest()")
-	first, err := storage.OpenMainForTest(t.Context(), path)
+	first, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	second, err := storage.OpenMainForTest(t.Context(), path)
+	second, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestGeneralIDRangesConcurrentStores(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("session=%d %v", n, err)
 	}
-	third, err := storage.OpenMainForTest(t.Context(), path)
+	third, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

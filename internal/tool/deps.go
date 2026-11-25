@@ -32,7 +32,7 @@ type ModelCapabilities interface {
 
 // Store 是本业务借用的持久化操作，不拥有连接或关闭权。
 type Store interface {
-	storage.CronJobRepository
+	cronStore
 	GetSession(ctx context.Context, id string) (*storage.Session, error)
 	MutateSession(ctx context.Context, id string, update func(*storage.Session) error) (*storage.Session, error)
 	CreateToolCallRecord(ctx context.Context, record *storage.ToolCallRecord) error

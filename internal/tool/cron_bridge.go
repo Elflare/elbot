@@ -34,8 +34,17 @@ func (m *Supervisor) ObserveCronChanged(handler func(CronChangedEvent) error, op
 	}, options)
 }
 
+// cronStore 是 Tool 的任务定义读写边界；运行状态和投递由 Background 管理。
+type cronStore interface {
+	UpsertCronJob(context.Context, storage.UpsertCronJobRequest) (*storage.CronJob, error)
+	GetByName(context.Context, string) (*storage.CronJob, error)
+	ListCronJobs(context.Context, bool) ([]storage.CronJob, error)
+	DisableByName(context.Context, string) error
+	DeleteByName(context.Context, string) error
+}
+
 type cronBridge struct {
-	repo    storage.CronJobRepository                      // 借用共享存储，不持有数据库生命周期。
+	repo    cronStore                                      // 借用共享存储，不持有数据库生命周期。
 	models  ModelCapabilities                              // 借用模型选择校验能力。
 	changed *signal.Signal[CronChangedEvent, signal.Empty] // Tool 实例拥有的任务定义变更信号。
 }

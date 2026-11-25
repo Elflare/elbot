@@ -13,9 +13,9 @@ import (
 	"time"
 )
 
-func newTestStore(t *testing.T) *Supervisor {
+func NewStoreForTest(t *testing.T) *Supervisor {
 	t.Helper()
-	store, err := OpenMainForTest(context.Background(), filepath.Join(t.TempDir(), "elbot_sessions.db"))
+	store, err := NewSupervisor(context.Background(), filepath.Join(t.TempDir(), "elbot_sessions.db"), ":memory:")
 	if err != nil {
 		t.Fatalf("New store: %v", err)
 	}
@@ -37,7 +37,7 @@ func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {
 }
 
 func TestListInputHistory(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := t.Context()
 	account := contextinfo.ActorIdentity{Platform: "remote-cli", ID: "alice"}
 	at := Now()
@@ -80,7 +80,7 @@ func TestListInputHistory(t *testing.T) {
 	check([]string{"again", " keep\nwhitespace "})
 }
 func TestNewCreatesCurrentTables(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 
 	for _, table := range []string{"schema_migrations", "sessions", "messages", "platform_message_map", "context_summaries", "tool_call_records", "cron_jobs", "elnis_events", "elnis_report_deliveries", "media", "media_references"} {
 		var name string
@@ -194,7 +194,7 @@ func TestStructuredMessageMigrationMovesTranscriptFieldsAndPreservesInternalMeta
 
 func TestNewCanRunTwice(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "elbot_sessions.db")
-	first, err := OpenMainForTest(context.Background(), path)
+	first, err := NewSupervisor(context.Background(), path, ":memory:")
 	if err != nil {
 		t.Fatalf("first New: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestNewCanRunTwice(t *testing.T) {
 		t.Fatalf("close first: %v", err)
 	}
 
-	second, err := OpenMainForTest(context.Background(), path)
+	second, err := NewSupervisor(context.Background(), path, ":memory:")
 	if err != nil {
 		t.Fatalf("second New: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestNewCanRunTwice(t *testing.T) {
 }
 
 func TestSessionRepositoryCRUDAndScope(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	s1 := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "qq session"}
@@ -283,7 +283,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 }
 
 func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := t.Context()
 	now := Now()
 	oldPin, oldUpdate := now.Add(-time.Hour), now.Add(-2*time.Hour)
@@ -334,7 +334,7 @@ func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
 }
 
 func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 	old := Now().AddDate(0, 0, -40)
 	now := Now()
@@ -403,7 +403,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 }
 
 func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
@@ -434,7 +434,7 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 }
 
 func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
@@ -479,7 +479,7 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 }
 
 func TestSessionCountUsesListFilters(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := t.Context()
 	now := Now()
 	for _, row := range []Session{
@@ -524,7 +524,7 @@ func TestSessionCountUsesListFilters(t *testing.T) {
 }
 
 func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	initialNextRun := Now().Add(30 * time.Minute)
@@ -612,7 +612,7 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 }
 
 func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 	req := UpsertCronJobRequest{Name: "user.cron.delivery", Handler: "builtin.cron", Schedule: "0 3 * * *", Enabled: true, Metadata: `{"title":"old"}`}
 	job, err := store.UpsertCronJob(ctx, req)
@@ -674,7 +674,7 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 }
 
 func TestCronJobRepositoryUpdateMissingJob(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	repo := store
 	job, err := repo.update(context.Background(), &CronJob{ID: "missing", UpdatedAt: Now()}, false)
 	if !errors.Is(err, ErrNotFound) || job != nil {
@@ -683,7 +683,7 @@ func TestCronJobRepositoryUpdateMissingJob(t *testing.T) {
 }
 
 func TestToolCallRepositoryUsageBySession(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "tools", ChatType: "private"}
@@ -727,7 +727,7 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 }
 
 func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
@@ -787,7 +787,7 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 }
 
 func TestMessageRepositoryAndPlatformMap(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "test"}
@@ -856,7 +856,7 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 }
 
 func TestMediaRepositoryAndReferences(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 	createdAt := Now().Add(-time.Minute)
 	media := &Media{
@@ -908,7 +908,7 @@ func TestMediaRepositoryAndReferences(t *testing.T) {
 }
 
 func TestForkIndexesExist(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 
 	if !hasSQLiteObject(t, store.db, "index", "idx_sessions_parent") {
 		t.Fatal("fork parent index missing")
@@ -919,7 +919,7 @@ func TestForkIndexesExist(t *testing.T) {
 }
 
 func TestForkFieldsPersistAndBoundedMessageQueries(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 
 	parent := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "parent", ChatType: "private"}

@@ -47,7 +47,7 @@ type MediaRepository interface {
 	SaveHistory(ctx context.Context, item storage.HistoryMedia) error
 	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]storage.HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]storage.HistoryMedia, error)
-	DeleteHistory(ctx context.Context, ownerID string) error
+	DeleteMediaHistoryAssociation(ctx context.Context, ownerID string) error
 	GetMedia(ctx context.Context, id string) (*storage.Media, error)
 	UpsertMedia(ctx context.Context, media *storage.Media) error
 	GetSignedURL(ctx context.Context, mediaID string) (*storage.MediaSignedURL, error)

@@ -7,7 +7,7 @@ import (
 
 func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 	ctx := t.Context()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	if err := store.UpsertMedia(ctx, &Media{ID: "input", Backend: "local", MIMEType: "text/plain"}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 
 func TestTakenOverEventReleasesEventAndOutboxMedia(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	if err := store.UpsertMedia(ctx, &Media{ID: "attachment", MIMEType: "image/png", Backend: "local"}); err != nil {
 		t.Fatal(err)
 	}

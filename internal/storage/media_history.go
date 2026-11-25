@@ -37,7 +37,7 @@ func (r *Supervisor) ListHistory(ctx context.Context, afterOwnerID string, limit
 	return r.queryHistory(ctx, `WHERE owner_id>? ORDER BY owner_id LIMIT ?`, afterOwnerID, limit)
 }
 
-func (r *Supervisor) DeleteHistory(ctx context.Context, ownerID string) error {
+func (r *Supervisor) DeleteMediaHistoryAssociation(ctx context.Context, ownerID string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM media_history WHERE owner_id=?`, ownerID)
 	return err
 }

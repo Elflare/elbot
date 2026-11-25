@@ -11,7 +11,7 @@ import (
 )
 
 func TestSessionMutateReadsLatestAndRollsBack(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx := context.Background()
 	row := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Mode: SessionModeWork, Title: "original", Metadata: `{"unknown":9007199254740993,"count":0}`, ChatType: "private"}
 	if err := store.CreateSession(ctx, row); err != nil {
@@ -73,7 +73,7 @@ func TestSessionMutateReadsLatestAndRollsBack(t *testing.T) {
 func TestSessionMutatePreservesAndChangesStoredValues(t *testing.T) {
 	for _, name := range []string{"same values", "activity only", "in-place archive", "in-place pin", "clear timestamps"} {
 		t.Run(name, func(t *testing.T) {
-			store := newTestStore(t)
+			store := NewStoreForTest(t)
 			at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 			archived, pinned := at, at
 			row := &Session{ID: NewID(), Title: "kept", Metadata: `{"unknown":9007199254740993}`, CreatedAt: at, UpdatedAt: at, ArchivedAt: &archived, PinnedAt: &pinned}
@@ -131,7 +131,7 @@ func TestSessionMutatePreservesAndChangesStoredValues(t *testing.T) {
 }
 
 func TestSessionMutateCancellationDoesNotReportSuccess(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	row := &Session{ID: NewID(), Title: "kept"}
 	if err := store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)

@@ -114,7 +114,7 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	if _, err := deps.Store.GetElnisEvent(t.Context(), row.ID); err != nil {
 		t.Fatal("borrowed store closed", err)
 	}
-	if _, err := deps.Store.DeleteHistoryBefore(t.Context(), time.Time{}); err != nil {
+	if _, err := deps.Store.DeleteChatHistoryBefore(t.Context(), time.Time{}); err != nil {
 		t.Fatal("borrowed history closed", err)
 	}
 	if err := m.Start(); !errors.Is(err, context.Canceled) {

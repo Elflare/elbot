@@ -20,7 +20,7 @@ func TestContextSummaryNullableTokens(t *testing.T) {
 		{"partial exact", [4]*int64{testTokenCount(9007199254740993), nil, testTokenCount(9223372036854775807), nil}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newTestStore(t)
+			store := NewStoreForTest(t)
 			ctx := context.Background()
 			session := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 			if err := store.CreateSession(ctx, session); err != nil {

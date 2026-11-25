@@ -121,7 +121,7 @@ func (m *Manager) ReconcileHistory(ctx context.Context, history History) error {
 				owners[key] = owner
 			}
 			if owner != item.HistoryID {
-				if err := m.media.DeleteHistory(ctx, item.OwnerID); err != nil {
+				if err := m.media.DeleteMediaHistoryAssociation(ctx, item.OwnerID); err != nil {
 					return err
 				}
 			}

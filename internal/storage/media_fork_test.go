@@ -11,7 +11,7 @@ import (
 
 func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	parent := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "s"}
 	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 
 func TestForkInheritsSessionToolMediaBeforeCheckpoint(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	parent := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "s"}
 	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatal(err)

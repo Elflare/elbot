@@ -409,7 +409,7 @@ func (r *Supervisor) loadLatestSenderAvatars(ctx context.Context, messages []Cha
 	return messages, nil
 }
 
-func (r *Supervisor) DeleteHistoryBefore(ctx context.Context, cutoff time.Time) (int, error) {
+func (r *Supervisor) DeleteChatHistoryBefore(ctx context.Context, cutoff time.Time) (int, error) {
 	tx, err := r.history.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin chat history cleanup: %w", err)

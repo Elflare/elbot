@@ -9,7 +9,7 @@ import (
 
 func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 	ctx := context.Background()
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	repo := store
 	id := "media:" + strings.Repeat("a", 64)
 	if err := repo.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
@@ -69,7 +69,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 		t.Fatalf("tail = %#v %v", tail, err)
 	}
 	for _, row := range append(page, tail...) {
-		if err := repo.DeleteHistory(ctx, row.OwnerID); err != nil {
+		if err := repo.DeleteMediaHistoryAssociation(ctx, row.OwnerID); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -92,7 +92,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 }
 
 func TestHistoryMediaRejectsInvalidPosition(t *testing.T) {
-	repo := newTestStore(t)
+	repo := NewStoreForTest(t)
 	for _, index := range []int{-1, 0} {
 		if err := repo.SaveHistory(context.Background(), HistoryMedia{HistoryID: "h", Platform: "p", ChatID: "s", MessageID: "m", MediaIndex: index, Kind: "image", MediaID: "media:" + strings.Repeat("a", 64)}); err == nil {
 			t.Fatalf("accepted index %d", index)

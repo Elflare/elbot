@@ -47,7 +47,7 @@ func TestOriginMigrationPreservesFactsAndRunsOnlyOnce(t *testing.T) {
 	} {
 		insertOldOriginSession(t, db, id, metadata)
 	}
-	store, err := storage.OpenMainForTest(t.Context(), path)
+	store, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestOriginMigrationPreservesFactsAndRunsOnlyOnce(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := storage.OpenMainForTest(t.Context(), path)
+	reopened, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestOriginMigrationRollsBackMalformedMetadata(t *testing.T) {
 			path, db := oldOriginDatabase(t)
 			insertOldOriginSession(t, db, "good", `{"unknown":true}`)
 			insertOldOriginSession(t, db, "bad", invalid)
-			if store, err := storage.OpenMainForTest(t.Context(), path); err == nil {
+			if store, err := storage.NewSupervisor(t.Context(), path, ":memory:"); err == nil {
 				store.Close()
 				t.Fatal("invalid metadata silently migrated")
 			}
@@ -117,7 +117,7 @@ func TestOriginMigrationRollsBackMalformedMetadata(t *testing.T) {
 			if _, err := db.Exec(`UPDATE sessions SET metadata='' WHERE id='bad'`); err != nil {
 				t.Fatal(err)
 			}
-			store, err := storage.OpenMainForTest(context.Background(), path)
+			store, err := storage.NewSupervisor(context.Background(), path, ":memory:")
 			if err != nil {
 				t.Fatal(err)
 			}

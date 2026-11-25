@@ -39,7 +39,7 @@ func TestToolSnapshotMigrationPreservesStateAndRunsOnce(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO messages(id,session_id,role,content,metadata,created_at) VALUES('message','legacy','user','keep history','{"custom":true}','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	store, err := storage.OpenMainForTest(t.Context(), path)
+	store, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestToolSnapshotMigrationPreservesStateAndRunsOnce(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO sessions(id,owner_platform,owner_id,platform,chat_type,chat_id,mode,status,metadata,created_at,updated_at) VALUES('after','cli','local','cli','private','local','work','active',?,?,?)`, metadata, storage.FormatTime(storage.Now()), storage.FormatTime(storage.Now())); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := storage.OpenMainForTest(t.Context(), path)
+	reopened, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

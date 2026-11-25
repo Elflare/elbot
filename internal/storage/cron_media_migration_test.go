@@ -36,7 +36,7 @@ func TestCronSourceMigrationPreservesReportsAndUpdatesReferences(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store, err := storage.OpenMainForTest(t.Context(), path)
+	store, err := storage.NewSupervisor(t.Context(), path, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

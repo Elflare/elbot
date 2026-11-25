@@ -12,7 +12,7 @@ import (
 
 func legacyIdentityDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := openDB(t.Context(), filepath.Join(t.TempDir(), "legacy.db"))
+	db, err := openDB(filepath.Join(t.TempDir(), "legacy.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestStructuredIdentityMigrationRollsBackAmbiguityAndConflicts(t *testing.T)
 
 func TestChatHistoryMigrationSeparatesConversationKinds(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.db")
-	db, err := openDB(t.Context(), path)
+	db, err := openDB(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestChatHistoryMigrationSeparatesConversationKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		store, err := openHistoryForTest(t.Context(), path)
+		store, err := NewSupervisor(t.Context(), ":memory:", path)
 		if err != nil {
 			t.Fatal(err)
 		}

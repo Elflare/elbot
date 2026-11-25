@@ -63,5 +63,5 @@ type Store interface {
 	storage.CronJobRepository
 	storage.ElnisEventRepository
 	NextIDSequence(context.Context) (int64, error)
-	DeleteHistoryBefore(context.Context, time.Time) (int, error)
+	DeleteChatHistoryBefore(context.Context, time.Time) (int, error)
 }

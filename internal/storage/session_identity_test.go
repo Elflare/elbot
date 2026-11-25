@@ -10,7 +10,7 @@ import (
 )
 
 func TestSessionListReleasesRowsOnInvalidTime(t *testing.T) {
-	store := newTestStore(t)
+	store := NewStoreForTest(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	session := &Session{ID: NewID()}
@@ -32,7 +32,7 @@ func TestSessionListReleasesRowsOnInvalidTime(t *testing.T) {
 }
 
 func TestSessionListUsesModeForBackgroundIdentity(t *testing.T) {
-	store, err := OpenMainForTest(t.Context(), filepath.Join(t.TempDir(), "sessions.db"))
+	store, err := NewSupervisor(t.Context(), filepath.Join(t.TempDir(), "sessions.db"), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
