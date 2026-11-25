@@ -45,7 +45,8 @@ type Event struct {
 	ToolHash         string            // 工具声明快照的哈希。
 	TagsJSON         string            // 规范化标签的 JSON 快照。
 	RequestedTargets string            // 请求目标的 JSON 快照。
-	ResolvedTargets  string            // 目标裁决结果的 JSON 快照。
+	DeliveryTargets  []Target          // 入口裁决后的有序目标，供执行和准备报告时只读使用。
+	ResolvedTargets  string            // DeliveryTargets 在入口生成的持久化 JSON 快照。
 	CreatedAt        time.Time         // 请求指定的事件时间，未指定时使用接收阶段时间。
 	ReceivedAt       time.Time         // Elnis 完成请求准备时记录的接收时间。
 }

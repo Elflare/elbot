@@ -4,7 +4,6 @@ package elnis
 
 import (
 	"elbot/internal/contextinfo"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -80,12 +79,4 @@ func disabledTargetMatches(disabled config.ElnisTargetConfig, target Target) boo
 		return true
 	}
 	return disabled.Type == target.Type && disabled.ID == target.ID
-}
-
-func decodeResolvedTargets(raw string) ([]Target, error) {
-	var targets []Target
-	if err := json.Unmarshal([]byte(raw), &targets); err != nil {
-		return nil, err
-	}
-	return targets, nil
 }

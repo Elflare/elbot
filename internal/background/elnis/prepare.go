@@ -104,6 +104,7 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) operationresul
 		ToolHash:         hashText(toolDeclarations),
 		TagsJSON:         string(tagsJSON),
 		RequestedTargets: string(requestedTargets),
+		DeliveryTargets:  resolved,
 		ResolvedTargets:  string(resolvedTargets),
 		CreatedAt:        createdAt,
 		ReceivedAt:       time.Now(),

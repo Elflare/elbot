@@ -15,12 +15,8 @@ import (
 // runDirect coordinates direct execution; each operation owns its diagnostics.
 func (s *Service) runDirect(ctx context.Context, event Event, eventID string) (operationresult.Result[struct{}], error) {
 	req := event.Request
-	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
-	}
-	err = s.executeCalls(ctx, resolved, req.Calls)
-	if err != nil {
+	resolved := event.DeliveryTargets
+	if err := s.executeCalls(ctx, resolved, req.Calls); err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
 	if len(resolved) > 0 && (strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0) {

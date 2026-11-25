@@ -63,12 +63,8 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", segments.Message)
 	}
 	model := s.modelForEvent(event)
-	targets, err := decodeResolvedTargets(event.ResolvedTargets)
-	if err != nil {
-		return err
-	}
-	platforms := make([]string, 0, len(targets))
-	for _, target := range targets {
+	platforms := make([]string, 0, len(event.DeliveryTargets))
+	for _, target := range event.DeliveryTargets {
 		platforms = append(platforms, target.Platform)
 	}
 	runRequest := background.RunRequest{
@@ -153,14 +149,16 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_llm_failed", Module: "elnis", Content: prepared.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
 			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), prepared.Message)
 		}
-		if prepared.Data {
-			ctx, delivered, err := s.deliverReport(ctx, eventID)
-			if err == nil && delivered.Status != operationresult.Success {
-				globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_report_rejected", Module: "elnis", Content: delivered.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
-			}
-			return err
+		if !prepared.Data {
+			return nil // 前台接管已落库，不再投递或记录后台完成。
 		}
-	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
+		ctx, delivered, err := s.deliverReport(ctx, eventID)
+		if err == nil && delivered.Status != operationresult.Success {
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_report_rejected", Module: "elnis", Content: delivered.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+		}
+		return err
+	}
+	if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
 		return err
 	}
 

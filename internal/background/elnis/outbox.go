@@ -23,10 +23,6 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	} else if taken {
 		return operationresult.Result[bool]{Status: operationresult.Success}, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: sessionID, MessageID: messageID, Outcome: "taken_over", Text: resultJSON}, nil)
 	}
-	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
-	if err != nil {
-		return operationresult.Result[bool]{}, err
-	}
 	dir, err := workspace.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(event.Request.Elwisp.Name))
 	if err != nil {
 		return operationresult.Result[bool]{}, err
@@ -47,12 +43,9 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 		outputs = append(outputs, delivery.Text(text))
 	}
 	outputs = append(outputs, result.ReportSegments...)
-	if len(outputs) == 0 {
-		return operationresult.Result[bool]{Status: operationresult.Success}, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
-	}
 
-	deliveries := make([]CreateReportDeliveryRequest, 0, len(resolved)*len(outputs))
-	for _, target := range resolved {
+	deliveries := make([]CreateReportDeliveryRequest, 0, len(event.DeliveryTargets)*len(outputs))
+	for _, target := range event.DeliveryTargets {
 		targetJSON, _ := json.Marshal(target)
 		for _, output := range outputs {
 			outputJSON, _ := json.Marshal(output)

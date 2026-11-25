@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/directive"
+	"elbot/internal/command"
 	"elbot/internal/storage"
 
 	"elbot/internal/workspace"
@@ -37,10 +37,10 @@ type skillDirectiveResult struct {
 
 func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, error) {
 	result := toolDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork {
 		return result, nil
 	}
-	matches := directive.ToolMatches(text)
+	matches := command.ToolMatches(text)
 	if len(matches) == 0 {
 		return result, nil
 	}
@@ -61,17 +61,17 @@ func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 	}
 	result.update = prepared.Update
 	result.NeedsElyphRules = prepared.NeedsElyphRules
-	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
+	result.Text = command.StripToolMatches(text, matches, prepared.Accepted)
 	result.Text = appendDirectiveContent(result.Text, prepared.Content)
 	return result, nil
 }
 
 func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) (skillDirectiveResult, error) {
 	result := skillDirectiveResult{Text: text}
-	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
+	if row == nil || row.Mode != storage.SessionModeWork {
 		return result, nil
 	}
-	matches := directive.SkillMatches(text)
+	matches := command.SkillMatches(text)
 	if len(matches) == 0 {
 		return result, nil
 	}
@@ -89,7 +89,7 @@ func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *stor
 	}
 	result.Skills, result.update = prepared.Names, prepared.Update
 	result.NeedsElyphRules = prepared.NeedsElyphRules
-	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
+	result.Text = command.StripToolMatches(text, matches, prepared.Accepted)
 	result.Text = appendDirectiveContent(result.Text, prepared.Content)
 	return result, nil
 }
@@ -102,15 +102,6 @@ func appendDirectiveContent(text, content string) string {
 		return content
 	}
 	return text + "\n\n" + content
-}
-
-func containsAny(text string, values ...string) bool {
-	for _, value := range values {
-		if strings.Contains(text, value) {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) error {
