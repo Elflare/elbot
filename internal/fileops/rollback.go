@@ -224,13 +224,8 @@ func (m *RollbackManager) editFile(ctx context.Context, s *RollbackSession, path
 		if err != nil || checked.Status != operationresult.Success {
 			return checked, err
 		}
-		if checkWrite != nil {
-			for _, checkedPath := range []string{path, target} {
-				checked := checkWrite(checkedPath)
-				if checked.Status != operationresult.Success {
-					return checked, nil
-				}
-			}
+		if checked := checkWritePaths(checkWrite, path, target); checked.Status != operationresult.Success {
+			return checked, nil
 		}
 		checked, err = checkFileState(path, created, snapshot.Data)
 		if err != nil || checked.Status != operationresult.Success {
@@ -407,13 +402,8 @@ func (s *RollbackSession) rollback(ctx context.Context, path string, expectedID 
 		if checked, err := checkRollbackFileTarget(record.Path, record.Target); err != nil || checked.Status != operationresult.Success {
 			return checked, err
 		}
-		if checkWrite != nil {
-			for _, p := range []string{path, record.Path, record.Target} {
-				checked := checkWrite(p)
-				if checked.Status != operationresult.Success {
-					return checked, nil
-				}
-			}
+		if checked := checkWritePaths(checkWrite, path, record.Path, record.Target); checked.Status != operationresult.Success {
+			return checked, nil
 		}
 		if checked, err := checkFileState(record.Target, false, snapshot.Data); err != nil || checked.Status != operationresult.Success {
 			return checked, err
@@ -471,11 +461,8 @@ func (s *RollbackSession) prepare(ctx context.Context, path string, expectedID u
 	if err != nil {
 		return operationresult.Result[*rollbackRecord]{}, nil, nil, err
 	}
-	if checkWrite != nil {
-		checked := checkWrite(path)
-		if checked.Status != operationresult.Success {
-			return operationresult.Result[*rollbackRecord]{Status: checked.Status, Message: checked.Message}, nil, nil, nil
-		}
+	if checked := checkWritePaths(checkWrite, path); checked.Status != operationresult.Success {
+		return operationresult.Result[*rollbackRecord]{Status: checked.Status, Message: checked.Message}, nil, nil, nil
 	}
 	resolved, err := ResolveFileTarget(path, false)
 	if err != nil {
@@ -531,13 +518,8 @@ func (s *RollbackSession) loadRecord(ctx context.Context, path, target string, e
 			return operationresult.Result[*rollbackRecord]{Status: checked.Status, Message: checked.Message}, nil, nil
 		}
 	}
-	if checkWrite != nil {
-		for _, checkedPath := range []string{record.Path, record.Target} {
-			checked := checkWrite(checkedPath)
-			if checked.Status != operationresult.Success {
-				return operationresult.Result[*rollbackRecord]{Status: checked.Status, Message: checked.Message}, nil, nil
-			}
-		}
+	if checked := checkWritePaths(checkWrite, record.Path, record.Target); checked.Status != operationresult.Success {
+		return operationresult.Result[*rollbackRecord]{Status: checked.Status, Message: checked.Message}, nil, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[*rollbackRecord]{}, nil, err

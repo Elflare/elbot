@@ -51,7 +51,7 @@
     - [x] elnis
     - [x] execution、maintenance、share
 - [x] completion包
-- [ ] fileops包
+- [x] fileops包
 - [ ] workspace包
 - [x] llm包
 - [ ] media包

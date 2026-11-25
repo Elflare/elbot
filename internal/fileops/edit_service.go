@@ -66,13 +66,8 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationre
 	if target.Status != operationresult.Success {
 		return operationresult.Result[*PreparedEdit]{Status: target.Status, Message: target.Message}, nil
 	}
-	if s.CheckWrite != nil {
-		for _, path := range []string{resolved.Path, target.Data} {
-			checked := s.CheckWrite(path)
-			if checked.Status != operationresult.Success {
-				return operationresult.Result[*PreparedEdit]{Status: checked.Status, Message: checked.Message}, nil
-			}
-		}
+	if checked := checkWritePaths(s.CheckWrite, resolved.Path, target.Data); checked.Status != operationresult.Success {
+		return operationresult.Result[*PreparedEdit]{Status: checked.Status, Message: checked.Message}, nil
 	}
 	unlock, err := s.manager.lockTarget(ctx, target.Data)
 	if err != nil {
@@ -124,13 +119,8 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 		return operationresult.Result[EditResult]{Status: operationresult.Conflict, Message: "edit target changed after preflight"}, resolved, nil
 	}
 	// Reject before creating parent directories; Manager rechecks at commit.
-	if s.CheckWrite != nil {
-		for _, path := range []string{resolved.Path, target.Data} {
-			checked := s.CheckWrite(path)
-			if checked.Status != operationresult.Success {
-				return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, resolved, nil
-			}
-		}
+	if checked := checkWritePaths(s.CheckWrite, resolved.Path, target.Data); checked.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, resolved, nil
 	}
 	guard := commitGuard{validate: func(locked context.Context) (operationresult.Result[struct{}], error) {
 		latest, currentTarget, err := s.editPath(locked, req)

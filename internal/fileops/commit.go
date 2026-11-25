@@ -51,3 +51,15 @@ func (g commitGuard) enter(ctx context.Context) (operationresult.Result[CommitAd
 	}
 	return admitted, nil
 }
+
+// checkWritePaths 按给定顺序逐项授权，保留重复路径。
+func checkWritePaths(checkWrite func(string) operationresult.Result[struct{}], paths ...string) operationresult.Result[struct{}] {
+	if checkWrite != nil {
+		for _, path := range paths {
+			if checked := checkWrite(path); checked.Status != operationresult.Success {
+				return checked
+			}
+		}
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
+}
