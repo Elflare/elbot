@@ -99,9 +99,9 @@ xychart-beta horizontal
 
 ### IV. Flexible Deployment and Comprehensive Sessions
 
-**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via platform adapters.
+**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via adapters.
 
-**CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces in any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).
+**CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces of any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png" width="500" />
@@ -110,9 +110,9 @@ xychart-beta horizontal
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png" width="500" />
 </p>
 
-For the complete frontend code and more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
+For the complete frontend code and more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend). The current functionality is sufficient to handle most Coding Agent tasks.
 
-**Sessions, Forking, and Context Compaction**: Built-in persistent Session service supporting features such as session recovery, archiving, pinning, forking, deletion, paginated viewing, platform isolation, and compaction.
+**Sessions, Forking, and Context Compaction**: Built-in persistent Session service, supporting features such as session recovery, archiving, pinning, forking, deletion, paginated viewing, platform isolation, and compaction.
 
 ### V. Secure and Reliable
 
