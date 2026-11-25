@@ -207,41 +207,27 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (operati
 		return operationresult.Result[Response]{}, err
 	}
 
-	{
-		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
-		record := globalevents.LogRecord{
-			Category:  globalevents.LogCategoryAudit,
-			Level:     slog.LevelInfo,
-			EventName: "elnis.accepted",
-			Module:    "elnis",
-			Type:      globalevents.ContentJSON,
-			Content:   string(content),
-		}
-		record.Identity = identity
-		globalevents.Log(ctx, record)
-		record.Category, record.EventName = globalevents.LogCategoryElnis, "elnis_event_accepted"
-		globalevents.Log(ctx, record)
+	fields := map[string]any{
+		"origin": event.Origin, "elwisp_name": req.Elwisp.Name, "source": req.Source, "source_id": req.ID,
+		"event_key": event.EventKey, "mode": req.Mode, "tags": req.Elwisp.Tags, "event_id": record.ID,
 	}
+	data, _ := json.Marshal(fields)
+	audit := globalevents.LogRecord{
+		Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: "elnis.accepted",
+		Module: "elnis", Type: globalevents.ContentJSON, Content: string(data), Identity: identity,
+	}
+	globalevents.Log(ctx, audit)
+	eventLog := audit
+	eventLog.Category, eventLog.EventName = globalevents.LogCategoryElnis, "elnis_event_accepted"
+	globalevents.Log(ctx, eventLog)
 
 	switch req.Mode {
 	case ModeRecord:
 		if err := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusCompleted, "", ""); err != nil {
 			return operationresult.Result[Response]{}, err
 		}
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryAudit,
-				Level:        slog.LevelInfo,
-				EventName:    "elnis.recorded",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultSucceeded,
-			}
-			record.Identity = identity
-			globalevents.Log(ctx, record)
-		}
+		audit.EventName, audit.ResultStatus = "elnis.recorded", globalevents.ResultSucceeded
+		globalevents.Log(ctx, audit)
 		return acceptedEventResult(event, StatusCompleted, false, ""), nil
 	case ModeDirect:
 		result, err := s.runDirect(ctx, event, record.ID)
@@ -265,57 +251,23 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (operati
 			}
 			return acceptedEventResult(event, StatusFailed, false, result.Message), nil
 		}
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogCategoryAudit,
-				Level:        slog.LevelInfo,
-				EventName:    "elnis.direct_completed",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultSucceeded,
-			}
-			record.Identity = identity
-			globalevents.Log(ctx, record)
-		}
+		audit.EventName, audit.ResultStatus = "elnis.direct_completed", globalevents.ResultSucceeded
+		globalevents.Log(ctx, audit)
 		return acceptedEventResult(event, StatusCompleted, false, ""), nil
 	case ModeLLM:
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
-			record := globalevents.LogRecord{
-				Category:  globalevents.LogCategoryAudit,
-				Level:     slog.LevelInfo,
-				EventName: "elnis.llm_queued",
-				Module:    "elnis",
-				Type:      globalevents.ContentJSON,
-				Content:   string(content),
-			}
-			record.Identity = identity
-			globalevents.Log(ctx, record)
-			record.Category, record.EventName = globalevents.LogCategoryElnis, "elnis_llm_queued"
-			globalevents.Log(ctx, record)
-		}
+		audit.EventName = "elnis.llm_queued"
+		globalevents.Log(ctx, audit)
+		eventLog.EventName = "elnis_llm_queued"
+		globalevents.Log(ctx, eventLog)
 		if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
-			{
-				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
-				data, _ := json.Marshal(content)
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogCategoryElnis,
-					Level:        slog.LevelError,
-					EventName:    "elnis_llm_enqueue_failed",
-					Module:       "elnis",
-					Type:         globalevents.ContentJSON,
-					Content:      string(data),
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				record.Identity = identity
-				globalevents.Log(ctx, record)
+			fields["error"] = fmt.Sprintf("%.2048s", err.Error())
+			data, _ := json.Marshal(fields)
+			eventLog.EventName, eventLog.Content = "elnis_llm_enqueue_failed", string(data)
+			eventLog.Level, eventLog.ResultStatus = slog.LevelError, globalevents.LogStatus(err)
+			if eventLog.ResultStatus == globalevents.ResultCanceled {
+				eventLog.Level = slog.LevelInfo
 			}
+			globalevents.Log(ctx, eventLog)
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 			if persistenceErr != nil {
 				return operationresult.Result[Response]{}, persistenceErr

@@ -24,10 +24,9 @@ type Runtime struct {
 	mu          sync.Mutex      // Serializes admission and lifecycle transitions.
 	ctx         context.Context // Cancels HTTP handlers and all background workers.
 	cancel      context.CancelFunc
-	started     bool           // A single startup attempt has been claimed.
 	ready       bool           // Listening and workers have been published.
 	closed      bool           // No new handlers or queued work may be admitted.
-	startupDone chan struct{}  // Startup has stopped publishing owned work.
+	startupDone chan struct{}  // Non-nil once startup is claimed; closed after startup stops publishing work.
 	startErr    error          // Result of the first startup attempt.
 	runErr      error          // Fatal Serve failure, published through failed.
 	failed      chan struct{}  // Wakes observers before shutdown finishes.
@@ -50,8 +49,7 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 		r.mu.Unlock()
 		return context.Canceled
 	}
-	if r.started {
-		done := r.startupDone
+	if done := r.startupDone; done != nil {
 		r.mu.Unlock()
 		select {
 		case <-done:
@@ -60,7 +58,6 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 			return r.Wait(ctx)
 		}
 	}
-	r.started = true
 	r.startupDone = make(chan struct{})
 	r.ctx, r.cancel = context.WithCancel(ctx)
 	r.work.Go(func() {

@@ -248,9 +248,7 @@ func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string
 	message := ""
 	if runErr != nil {
 		message = runErr.Error()
-	}
-	if runErr != nil {
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelInfo, EventName: "elnis_takeover_result", Module: "elnis", Content: runErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(runErr)})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelInfo, EventName: "elnis_takeover_result", Module: "elnis", Content: message, Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(runErr)})
 	}
 	return s.completeEventWithSession(ctx, eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message)
 }
