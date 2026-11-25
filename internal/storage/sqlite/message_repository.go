@@ -38,12 +38,9 @@ func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) 
 	if calls == nil {
 		calls = []storage.ToolCall{}
 	}
-	toolCalls, err := json.Marshal(calls)
-	if err != nil {
-		return err
-	}
+	toolCalls, _ := json.Marshal(calls)
 
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 INSERT INTO messages (
     id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
     reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content,

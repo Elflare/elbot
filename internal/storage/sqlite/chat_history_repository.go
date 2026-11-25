@@ -290,7 +290,6 @@ func (r *ChatHistoryRepository) GetByPlatformMessages(ctx context.Context, platf
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	return scanChatMessages(rows)
 }
 func (r *ChatHistoryRepository) GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*storage.ChatMessage, error) {

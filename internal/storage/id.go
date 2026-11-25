@@ -36,9 +36,7 @@ func PrepareMessageID(ctx context.Context, allocate func(context.Context) (strin
 
 func NewID() string {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(fmt.Sprintf("generate id: %v", err))
-	}
+	rand.Read(b[:])
 
 	b[6] = (b[6] & 0x0f) | 0x40
 	b[8] = (b[8] & 0x3f) | 0x80

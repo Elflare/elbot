@@ -169,7 +169,7 @@ func (r *CronJobRepository) CompareAndSwapDelivery(ctx context.Context, id, expe
 	if err != nil {
 		return false, fmt.Errorf("begin cron delivery commit: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
 	for _, mapping := range mappings {
 		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
 			return false, err

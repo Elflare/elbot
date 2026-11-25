@@ -189,7 +189,7 @@ func (r *ElnisEventRepository) PrepareReport(ctx context.Context, req storage.Pr
 	if err != nil {
 		return fmt.Errorf("begin prepare elnis report: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
 
 	now := storage.Now()
 	res, err := tx.ExecContext(ctx, `
@@ -373,7 +373,7 @@ func (r *ElnisEventRepository) MarkReportDeliveryFailed(ctx context.Context, eve
 	if err != nil {
 		return fmt.Errorf("begin fail elnis report delivery: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
 	now := storage.FormatTime(storage.Now())
 	res, err := tx.ExecContext(ctx, `
 UPDATE elnis_report_deliveries
@@ -419,7 +419,7 @@ func (r *ElnisEventRepository) MarkReportDeliveriesDelivered(ctx context.Context
 	if err != nil {
 		return fmt.Errorf("begin complete elnis report deliveries: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer tx.Rollback()
 	for _, mapping := range mappings {
 		if err := mapPlatformMessage(ctx, tx, mapping); err != nil {
 			return err

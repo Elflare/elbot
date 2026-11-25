@@ -58,7 +58,7 @@ func MarshalChatSegments(segments []ChatSegment) string {
 		segment.MediaID = ""
 		segment.URL = chatMediaURL(segment.URL)
 		if segment.Type != "text" {
-			if strings.ContainsAny(segment.PlatformFileID, "/\\") || strings.Contains(segment.PlatformFileID, ":") {
+			if strings.ContainsAny(segment.PlatformFileID, "/\\:") {
 				segment.PlatformFileID = ""
 			}
 			if strings.Contains(segment.Name, "://") || strings.HasPrefix(segment.Name, "data:") || strings.HasPrefix(segment.Name, "base64:") {

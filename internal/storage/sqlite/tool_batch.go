@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"elbot/internal/storage"
 )
@@ -58,10 +59,7 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit storage.DialogueCo
 		var args []any
 		if message == update.Call {
 			query = `UPDATE messages SET content=?,segments=?,metadata=?,tool_calls=?,tool_batch_status=? WHERE id=? AND session_id=? AND role=? AND COALESCE(tool_call_id,'')=? AND tool_batch_status='pending'`
-			calls, err := json.Marshal(message.ToolCalls)
-			if err != nil {
-				return err
-			}
+			calls, _ := json.Marshal(message.ToolCalls)
 			args = []any{message.Content, nullString(message.Segments), message.Metadata, string(calls), message.ToolBatchStatus, message.ID, commit.SessionID, message.Role, message.ToolCallID}
 		} else {
 			query = `UPDATE messages SET content=?,segments=?,metadata=?,tool_name=?,tool_result_status=? WHERE id=? AND session_id=? AND role=? AND COALESCE(tool_call_id,'')=? AND tool_result_status='pending'`
@@ -111,8 +109,6 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit storage.DialogueCo
 			return err
 		}
 	}
-	for key, value := range update.Metadata {
-		fields[key] = value
-	}
+	maps.Copy(fields, update.Metadata)
 	return nil
 }

@@ -12,8 +12,7 @@ import (
 
 type DialogueRepository struct{ db *sql.DB }
 
-func (r *DialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) (err error) {
-
+func (r *DialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -166,9 +165,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, checkpoint.SeedID, checkpoint.CallsJSON, storage.FormatTime(checkpoint.CreatedAt)); err != nil {
 				return err
 			}
-			if err := fields.Set("llm_checkpoint", checkpoint.ID); err != nil {
-				return err
-			}
+			_ = fields.Set("llm_checkpoint", checkpoint.ID)
 		}
 		if len(native.ConsumedInputs) > 0 && checkpoint.ID == "" {
 			return fmt.Errorf("input consumption requires a checkpoint")
