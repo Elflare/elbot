@@ -91,21 +91,19 @@ func (s *Service) RunLogCleanup(ctx context.Context) error {
 }
 
 func (s *Service) RunSessionCleanup(ctx context.Context) error {
-	if !s.sessionCleanup.Enabled {
-		return nil
-	}
-	deleted, err := s.cleanupSessions(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
-	logCleanupResult(ctx, "maintenance.session_cleanup", fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays), err)
-	return err
+	return runCleanup(ctx, "maintenance.session_cleanup", s.sessionCleanup, s.cleanupSessions)
 }
 
 func (s *Service) RunChatHistoryCleanup(ctx context.Context) error {
-	if !s.chatHistoryCleanup.Enabled {
+	return runCleanup(ctx, "maintenance.chat_history_cleanup", s.chatHistoryCleanup, s.cleanupChatHistory)
+}
+
+func runCleanup(ctx context.Context, event string, cfg config.MaintenanceCleanupConfig, cleanup func(context.Context, time.Time) (int, error)) error {
+	if !cfg.Enabled {
 		return nil
 	}
-	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
-	deleted, err := s.cleanupChatHistory(ctx, cutoff)
-	logCleanupResult(ctx, "maintenance.chat_history_cleanup", fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays), err)
+	deleted, err := cleanup(ctx, time.Now().AddDate(0, 0, -cfg.RetentionDays))
+	logCleanupResult(ctx, event, fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, cfg.RetentionDays), err)
 	return err
 }
 

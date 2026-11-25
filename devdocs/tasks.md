@@ -45,11 +45,11 @@
     - [x] share 根部（按实际消费者核对共享契约）
         - [x] 统一匹配校验、重启策略、媒体导入限长和日志截断的调用边界
         - [x] 规则正则随候选规则加载预编译，匹配时只读复用
-- [ ] background 包
+- [x] background 包
     - [x] background 根部（装配、启动状态与存储适配；保留现有关闭契约）
     - [x] cron
     - [x] elnis
-    - [ ] execution、maintenance、share
+    - [x] execution、maintenance、share
 - [x] completion包
 - [ ] fileops包
 - [ ] workspace包

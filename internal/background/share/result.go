@@ -12,18 +12,20 @@ import (
 	"elbot/internal/workspace"
 )
 
+type reportJSON struct {
+	Completed      bool                 `json:"completed"`
+	NeedReport     bool                 `json:"need_report"`
+	Report         string               `json:"report"`
+	ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
+}
+
 func ParseJSONResult(text string) (JSONResult, error) {
 	start := strings.Index(text, "{")
 	end := strings.LastIndex(text, "}")
 	if start < 0 || end < start {
 		return JSONResult{}, fmt.Errorf("json object not found")
 	}
-	var raw struct {
-		Completed      bool                 `json:"completed"`
-		NeedReport     bool                 `json:"need_report"`
-		Report         string               `json:"report"`
-		ReportSegments []llm.MessageSegment `json:"report_segments"`
-	}
+	var raw reportJSON
 	if err := json.Unmarshal([]byte(text[start:end+1]), &raw); err != nil {
 		return JSONResult{}, err
 	}
@@ -87,12 +89,9 @@ func (r JSONResult) MarshalJSON() ([]byte, error) {
 		}
 		segments = append(segments, segment)
 	}
-	return json.Marshal(struct {
-		Completed      bool                 `json:"completed"`
-		NeedReport     bool                 `json:"need_report"`
-		Report         string               `json:"report"`
-		ReportSegments []llm.MessageSegment `json:"report_segments,omitempty"`
-	}{r.Completed, r.NeedReport, r.Report, segments})
+	return json.Marshal(reportJSON{
+		Completed: r.Completed, NeedReport: r.NeedReport, Report: r.Report, ReportSegments: segments,
+	})
 }
 
 func DefaultJSONRetryPrompt() string {
