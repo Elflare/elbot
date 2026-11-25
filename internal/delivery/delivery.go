@@ -213,13 +213,10 @@ func ValidateOutputsTarget(outputs []Output) (Target, error) {
 		if out.Target.Empty() {
 			continue
 		}
-		if target.Empty() {
-			target = out.Target
-			continue
-		}
-		if target != out.Target {
+		if !target.Empty() && target != out.Target {
 			return Target{}, fmt.Errorf("outputs in one batch must use the same target")
 		}
+		target = out.Target
 	}
 	return target, nil
 }
@@ -234,11 +231,7 @@ func FallbackText(out Output) string {
 	case KindAt:
 		return fmt.Sprintf("@%s", strings.TrimSpace(out.Name))
 	case KindReply:
-		text := out.Text
-		if len(out.Blocks) > 0 {
-			text = ContentBlocksText(out.Blocks)
-		}
-		return fmt.Sprintf("[引用消息 %s]\n%s", strings.TrimSpace(out.ReplyToPlatformMessageID), text)
+		return fmt.Sprintf("[引用消息 %s]\n%s", strings.TrimSpace(out.ReplyToPlatformMessageID), out.bodyText())
 	case KindImage:
 		label = "图片"
 	case KindFile:
@@ -263,11 +256,15 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func OutputBody(out Output, buttons bool) string {
-	body := out.Text
+func (out Output) bodyText() string {
 	if len(out.Blocks) > 0 {
-		body = ContentBlocksText(out.Blocks)
+		return ContentBlocksText(out.Blocks)
 	}
+	return out.Text
+}
+
+func OutputBody(out Output, buttons bool) string {
+	body := out.bodyText()
 	if !buttons || out.ShowActionHints {
 		body = WithActionHints(body, out.Actions)
 	}

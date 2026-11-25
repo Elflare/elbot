@@ -54,9 +54,8 @@ func SessionListText(d controlshare.ListSessionsResult) string {
 	if out.Len() > 0 {
 		out.WriteString("\n")
 	}
-	fmt.Fprintf(&out, "page=%d", d.Page.Page)
-	fmt.Fprintf(&out, "/%d", d.TotalPages)
-	return strings.TrimRight(out.String(), "\n")
+	fmt.Fprintf(&out, "page=%d/%d", d.Page.Page, d.TotalPages)
+	return out.String()
 }
 
 func MessagePreview(message controlshare.MessageData, n int) string {
@@ -78,7 +77,7 @@ func MessagePreview(message controlshare.MessageData, n int) string {
 }
 
 func Preview(text string, n int) string {
-	text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
+	text = strings.Join(strings.Fields(text), " ")
 	runes := []rune(text)
 	if n > 0 && len(runes) > n {
 		return string(runes[:n]) + "..."

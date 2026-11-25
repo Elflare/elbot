@@ -41,27 +41,18 @@ func TestValidateOutputsTargetReturnsBatchTarget(t *testing.T) {
 }
 
 func TestFallbackTextForMedia(t *testing.T) {
-	for _, media := range []struct {
-		kind  Kind
-		label string
-	}{{KindImage, "图片"}, {KindFile, "文件"}, {KindRecord, "语音"}} {
-		for _, tc := range []struct {
-			name string
-			out  Output
-			want string
-		}{
-			{"name", Output{Name: "显示名", Source: Source{URL: "https://example.com/media"}}, ": 显示名"},
-			{"url", Output{Source: Source{URL: "https://example.com/media"}}, ": https://example.com/media"},
-			{"path", Output{Source: Source{Path: "media.bin"}}, ": media.bin"},
-			{"text", Output{Text: "描述", Source: Source{Data: []byte("media")}}, ": 描述"},
-			{"unnamed", Output{Source: Source{Data: []byte("media")}}, ""},
-		} {
-			t.Run(string(media.kind)+"/"+tc.name, func(t *testing.T) {
-				tc.out.Kind = media.kind
-				if got, want := FallbackText(tc.out), "["+media.label+tc.want+"]"; got != want {
-					t.Fatalf("FallbackText = %q, want %q", got, want)
-				}
-			})
+	for _, tc := range []struct {
+		out  Output
+		want string
+	}{
+		{Output{Kind: KindImage, Name: "显示名", Source: Source{URL: "https://example.com/media"}}, "[图片: 显示名]"},
+		{Output{Kind: KindFile, Source: Source{URL: "https://example.com/media", Path: "media.bin"}}, "[文件: https://example.com/media]"},
+		{Output{Kind: KindRecord, Source: Source{Path: "media.bin"}, Text: "描述"}, "[语音: media.bin]"},
+		{Output{Kind: KindImage, Source: Source{Data: []byte("media")}, Text: "描述"}, "[图片: 描述]"},
+		{Output{Kind: KindFile, Source: Source{Data: []byte("media")}}, "[文件]"},
+	} {
+		if got := FallbackText(tc.out); got != tc.want {
+			t.Errorf("FallbackText = %q, want %q", got, tc.want)
 		}
 	}
 }

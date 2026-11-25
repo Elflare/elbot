@@ -49,44 +49,37 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	var target any
+	decoder := json.NewDecoder(bytes.NewReader(raw.Content))
+	decoder.UseNumber()
+	var content any
+	var err error
 	switch raw.Kind {
 	case ContentSessionList:
-		target = new(controlshare.ListSessionsResult)
+		content, err = decodeBlockContent[controlshare.ListSessionsResult](decoder)
 	case ContentPreview:
-		target = new([]ContentBlock)
+		content, err = decodeBlockContent[[]ContentBlock](decoder)
 	case ContentQuestion:
-		target = new(QuestionContent)
+		content, err = decodeBlockContent[QuestionContent](decoder)
 	case ContentFields:
-		target = new([]ContentField)
+		content, err = decodeBlockContent[[]ContentField](decoder)
 	case ContentCode:
-		target = new(CodeContent)
+		content, err = decodeBlockContent[CodeContent](decoder)
 	case ContentText, ContentDiff:
-		target = new(string)
+		content, err = decodeBlockContent[string](decoder)
 	default:
 		return fmt.Errorf("unsupported content block kind %q", raw.Kind)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw.Content))
-	decoder.UseNumber()
-	if err := decoder.Decode(target); err != nil {
+	if err != nil {
 		return err
 	}
-	b.Kind = raw.Kind
-	switch value := target.(type) {
-	case *controlshare.ListSessionsResult:
-		b.Content = *value
-	case *[]ContentBlock:
-		b.Content = *value
-	case *QuestionContent:
-		b.Content = *value
-	case *[]ContentField:
-		b.Content = *value
-	case *CodeContent:
-		b.Content = *value
-	case *string:
-		b.Content = *value
-	}
+	*b = ContentBlock{Kind: raw.Kind, Content: content}
 	return nil
+}
+
+func decodeBlockContent[T any](decoder *json.Decoder) (T, error) {
+	var value T
+	err := decoder.Decode(&value)
+	return value, err
 }
 
 // ContentBlocksText renders structured blocks for consumers that only accept text.

@@ -59,7 +59,7 @@
 - [ ] session包
 - [x] command包
 - [ ] control包
-- [ ] delivery包
+- [x] delivery包
 
 ## 不一定实现
 
