@@ -38,21 +38,17 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		if err != nil {
 			return nil, fmt.Errorf("media credentials: %w", err)
 		}
-		remote, err = backend.NewS3Backend(ctx, backend.S3Options{
+		remote = backend.NewS3Backend(backend.S3Options{
 			Endpoint: deliveryConfig.S3Endpoint, Region: deliveryConfig.S3Region,
 			Bucket: deliveryConfig.S3Bucket, Credentials: provider,
 		})
-		if err != nil {
-			return nil, err
-		}
 	default:
 		return nil, fmt.Errorf("unsupported media backend %q", deliveryConfig.Backend)
 	}
 	local := &backend.LocalBackend{Root: filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media")}
-	timeout := time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
 	objects, err := object.NewManager(ctx, object.Options{
 		Backend: objectBackend, MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
-		DownloadTimeout: timeout, Media: cfg.Media, Now: storage.Now,
+		DownloadTimeout: time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second, Media: cfg.Media, Now: storage.Now,
 	}, object.Deps{
 		Media: deps.Store.Media(), References: deps.Store.MediaReferences(), Local: local, Remote: remote,
 	})
@@ -66,7 +62,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 	m.transfer = transfer.NewManager(objects, transfer.Options{
 		Log:     events.Log,
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
-		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
+		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
 	})
 	if err := m.connectUsageFinished(); err != nil {
 		return nil, err

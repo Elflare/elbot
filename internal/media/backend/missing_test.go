@@ -25,7 +25,7 @@ func TestS3MissingContentClassification(t *testing.T) {
 				_, _ = io.WriteString(w, fmt.Sprintf("<Error><Code>%s</Code><Message>test</Message></Error>", code))
 			}))
 			defer server.Close()
-			_, err := newTestS3Backend(t, server.URL).Open(t.Context(), "object")
+			_, err := newTestS3Backend(server.URL).Open(t.Context(), "object")
 			if errors.Is(err, fs.ErrNotExist) != (code == "NoSuchKey" || code == "NotFound") {
 				t.Fatalf("classification: %v", err)
 			}

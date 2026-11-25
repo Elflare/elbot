@@ -79,8 +79,7 @@ func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resol
 	if input.MIMEType == "" {
 		input.MIMEType = source.MIMEType
 	}
-	limits := share.ImportLimits{MaxImportBytes: m.options.MaxImportBytes, DownloadTimeout: m.options.DownloadTimeout}
-	return m.ImportSource(ctx, source, input, limits)
+	return m.ImportSource(ctx, source, input, share.ImportLimits{})
 }
 
 func (m *Manager) ImportSource(ctx context.Context, source delivery.Source, input share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {

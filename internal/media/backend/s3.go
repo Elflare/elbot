@@ -31,17 +31,14 @@ type S3Backend struct {
 }
 
 // NewS3Backend 只使用根部交付的配置与凭据，不加载 AWS 默认配置链。
-func NewS3Backend(ctx context.Context, opts S3Options) (*S3Backend, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+func NewS3Backend(opts S3Options) *S3Backend {
 	options := s3.Options{Region: opts.Region, Credentials: opts.Credentials}
 	if opts.Endpoint != "" {
 		options.BaseEndpoint = aws.String(opts.Endpoint)
 		options.UsePathStyle = true
 	}
 	client := s3.New(options)
-	return &S3Backend{client: client, presign: s3.NewPresignClient(client), bucket: opts.Bucket}, nil
+	return &S3Backend{client: client, presign: s3.NewPresignClient(client), bucket: opts.Bucket}
 }
 
 // Put 写入内容寻址对象，返回实际对象键。

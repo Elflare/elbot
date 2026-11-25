@@ -3,6 +3,7 @@ package transfer
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/media/share"
 	"errors"
 	"testing"
 	"time"
@@ -21,8 +22,7 @@ func TestUsageCancellationKeepsUnstartedResources(t *testing.T) {
 	firstCalls, secondCalls := 0, 0
 	first := &cancelHeld{release: func(ctx context.Context) error { firstCalls++; cancel(); return ctx.Err() }}
 	second := &cancelHeld{release: func(context.Context) error { secondCalls++; return nil }}
-	id := m.registerUsage(first, "")
-	m.addHeld(id, second)
+	id := m.registerUsage([]share.HeldMedia{first, second}, "")
 	m.FinishUsages([]string{id})
 	if err := m.CleanupUsages(ctx, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)

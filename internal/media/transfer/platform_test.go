@@ -6,7 +6,6 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/media/share"
@@ -20,7 +19,7 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 			info := share.MediaInfo{ID: "saved"}
 			check := func(ctx context.Context, input share.Input, limits share.ImportLimits) {
 				imports++
-				if ctx != t.Context() || limits.MaxImportBytes != 100 || limits.DownloadTimeout != time.Second || input.Name != "raw%2520" || input.MIMEType != "text/plain" || input.Source.Platform != "platform" || input.Source.FileID != "file-id" {
+				if ctx != t.Context() || limits != (share.ImportLimits{}) || input.Name != "raw%2520" || input.MIMEType != "text/plain" || input.Source.Platform != "platform" || input.Source.FileID != "file-id" {
 					t.Errorf("input=%+v limits=%+v", input, limits)
 				}
 			}
@@ -53,7 +52,7 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 					return info, nil
 				},
 			}
-			m := NewManager(objects, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 100, DownloadTimeout: time.Second})
+			m := NewManager(objects, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 100})
 			segment := PlatformMedia{Name: "raw%2520", PlatformFileID: "file-id"}
 			if kind == "existing" {
 				segment.MediaID = "saved"

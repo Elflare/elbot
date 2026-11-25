@@ -5,7 +5,6 @@ import (
 	"elbot/internal/events"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -63,20 +62,20 @@ func (f *fakeObjects) AssociateHistory(ctx context.Context, key share.HistoryKey
 type fakeHeld struct {
 	share.HeldMedia      // 交付测试只实现会使用的持有操作。
 	info                 share.MediaInfo
-	open                 func(context.Context) (io.ReadCloser, error)
+	readErr              error
 	sign                 func(context.Context) (string, error)
 	close                func() error
-	opens, signs, closes atomic.Int32
+	reads, signs, closes atomic.Int32
 }
 
 func (h *fakeHeld) Info() share.MediaInfo { return h.info }
 func (h *fakeHeld) LocalPath() string     { return "" }
-func (h *fakeHeld) Open(ctx context.Context) (io.ReadCloser, error) {
-	h.opens.Add(1)
-	if h.open != nil {
-		return h.open(ctx)
+func (h *fakeHeld) Read(context.Context) ([]byte, error) {
+	h.reads.Add(1)
+	if h.readErr != nil {
+		return nil, h.readErr
 	}
-	return io.NopCloser(strings.NewReader("body")), nil
+	return []byte("body"), nil
 }
 func (h *fakeHeld) SignedURL(ctx context.Context) (string, error) {
 	h.signs.Add(1)
@@ -93,17 +92,6 @@ func (h *fakeHeld) Close(context.Context) error {
 	return nil
 }
 
-type failingReader struct {
-	io.Reader
-	closeErr error
-	closes   int
-}
-
-func (r *failingReader) Close() error { r.closes++; return r.closeErr }
-
-type failingRead struct{ err error }
-
-func (r failingRead) Read([]byte) (int, error) { return 0, r.err }
 func TestAcquireModesDedupNamesAndIsolation(t *testing.T) {
 	for _, tc := range []struct {
 		mode         string
@@ -139,7 +127,7 @@ func TestAcquireModesDedupNamesAndIsolation(t *testing.T) {
 				if h.closes.Load() != 0 {
 					t.Fatal("released before consumer finishes")
 				}
-				if tc.remote && (h.signs.Load() != 1 || h.opens.Load() != 0) || !tc.remote && (h.opens.Load() != 1 || h.signs.Load() != 0) {
+				if tc.remote && (h.signs.Load() != 1 || h.reads.Load() != 0) || !tc.remote && (h.reads.Load() != 1 || h.signs.Load() != 0) {
 					t.Fatal("duplicated or wrong delivery")
 				}
 				m.FinishUsages([]string{usageID})
@@ -166,33 +154,21 @@ func TestAcquireMissingHoldBecomesPlaceholder(t *testing.T) {
 }
 
 func TestAcquireStorageFailuresRemainErrors(t *testing.T) {
-	fault, closeErr := errors.New("storage failed"), errors.New("reader close failed")
-	for _, stage := range []string{"open", "sign", "read"} {
-		t.Run(stage, func(t *testing.T) {
+	fault := errors.New("storage failed")
+	for _, mode := range []string{"base64", "s3"} {
+		t.Run(mode, func(t *testing.T) {
 			h := &fakeHeld{info: share.MediaInfo{ID: "one", Name: "saved.txt", MIMEType: "text/plain", Size: 4}}
-			var reader *failingReader
-			if stage == "open" {
-				h.open = func(context.Context) (io.ReadCloser, error) { return nil, fault }
-			}
-			if stage == "sign" {
+			if mode == "s3" {
 				h.sign = func(context.Context) (string, error) { return "", fault }
-			}
-			if stage == "read" {
-				reader = &failingReader{Reader: failingRead{fault}, closeErr: closeErr}
-				h.open = func(context.Context) (io.ReadCloser, error) { return reader, nil }
+			} else {
+				h.readErr = fault
 			}
 			m := NewManager(&fakeObjects{hold: func(context.Context, string) (operationresult.Result[share.HeldMedia], error) {
 				return operationresult.Result[share.HeldMedia]{Status: operationresult.Success, Data: h}, nil
-			}}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: "base64", MaxDirectBase64Bytes: 100})
-			if stage == "sign" {
-				m.options.Backend = "s3"
-			}
+			}}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: mode, MaxDirectBase64Bytes: 100})
 			result, usageID, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: "one"}}}})
 			if !errors.Is(err, fault) || result.Status == operationresult.Success || usageID != "" || h.closes.Load() != 1 {
 				t.Fatalf("result=%+v usage=%q close=%d err=%v", result, usageID, h.closes.Load(), err)
-			}
-			if reader != nil && reader.closes != 1 {
-				t.Fatal("reader not closed")
 			}
 		})
 	}

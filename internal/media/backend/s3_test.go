@@ -20,16 +20,11 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-func newTestS3Backend(t *testing.T, endpoint string) *S3Backend {
-	t.Helper()
-	b, err := NewS3Backend(t.Context(), S3Options{
+func newTestS3Backend(endpoint string) *S3Backend {
+	return NewS3Backend(S3Options{
 		Endpoint: endpoint, Region: "us-east-1", Bucket: "bucket",
 		Credentials: credentials.NewStaticCredentialsProvider("access", "secret", ""),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 func TestS3BackendRequestsAndSignature(t *testing.T) {
@@ -51,7 +46,7 @@ func TestS3BackendRequestsAndSignature(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	b := newTestS3Backend(t, server.URL)
+	b := newTestS3Backend(server.URL)
 	hash := strings.Repeat("a", 64)
 	location, err := b.Put(t.Context(), share.IDPrefix+hash, strings.NewReader("payload"), 7, "text/plain")
 	if err != nil || location != "media/"+hash {
@@ -120,7 +115,7 @@ func TestS3BackendUsesOnlySuppliedOptions(t *testing.T) {
 	t.Setenv("AWS_ENDPOINT_URL_S3", "http://wrong-s3.invalid")
 	for _, endpoint := range []string{"", "https://objects.example.test"} {
 		t.Run(endpoint, func(t *testing.T) {
-			b := newTestS3Backend(t, endpoint)
+			b := newTestS3Backend(endpoint)
 			signed, err := b.PresignGet(t.Context(), "selected", time.Minute)
 			if err != nil {
 				t.Fatal(err)
@@ -151,7 +146,7 @@ func TestS3BackendHTTPFailuresPreserveAPIError(t *testing.T) {
 		_, _ = io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>denied</Message></Error>`)
 	}))
 	defer server.Close()
-	b := newTestS3Backend(t, server.URL)
+	b := newTestS3Backend(server.URL)
 	operations := map[string]func() error{
 		"Put": func() error {
 			_, err := b.Put(t.Context(), share.IDPrefix+strings.Repeat("a", 64), strings.NewReader("x"), 1, "text/plain")
@@ -173,13 +168,10 @@ func TestS3BackendHTTPFailuresPreserveAPIError(t *testing.T) {
 func TestS3BackendCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if b, err := NewS3Backend(ctx, S3Options{}); b != nil || !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled constructor = %v, %v", b, err)
-	}
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1); w.WriteHeader(http.StatusOK) }))
 	defer server.Close()
-	b := newTestS3Backend(t, server.URL)
+	b := newTestS3Backend(server.URL)
 	if _, err := b.Put(ctx, share.IDPrefix+strings.Repeat("b", 64), strings.NewReader("x"), 1, "text/plain"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Put = %v", err)
 	}
@@ -204,7 +196,7 @@ func TestS3BackendCancelsInFlightRequest(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
-	b := newTestS3Backend(t, server.URL)
+	b := newTestS3Backend(server.URL)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
@@ -228,12 +220,12 @@ func TestS3BackendCancelsInFlightRequest(t *testing.T) {
 func TestS3BackendDefersProviderUseAndPreservesSigningError(t *testing.T) {
 	failure := errors.New("credentials unavailable")
 	calls := 0
-	b, err := NewS3Backend(t.Context(), S3Options{
+	b := NewS3Backend(S3Options{
 		Region: "us-east-1", Bucket: "bucket",
 		Credentials: aws.CredentialsProviderFunc(func(context.Context) (aws.Credentials, error) { calls++; return aws.Credentials{}, failure }),
 	})
-	if err != nil || calls != 0 {
-		t.Fatalf("constructor = %v, provider calls=%d", err, calls)
+	if calls != 0 {
+		t.Fatalf("constructor called provider %d times", calls)
 	}
 	if _, err := b.PresignGet(t.Context(), "key", time.Minute); !errors.Is(err, failure) {
 		t.Fatalf("signing error lost: %v", err)

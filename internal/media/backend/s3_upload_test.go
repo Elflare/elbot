@@ -63,7 +63,7 @@ func TestS3BackendNonSeekableUploadAndRetry(t *testing.T) {
 					server.Start()
 				}
 				defer server.Close()
-				b := newTestS3Backend(t, server.URL)
+				b := newTestS3Backend(server.URL)
 				options := b.client.Options()
 				options.HTTPClient = server.Client()
 				options.Retryer = retry.NewStandard(func(o *retry.StandardOptions) {
@@ -102,7 +102,7 @@ func TestS3BackendSeekableUploadPreservesOwnershipAndOffset(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
-	b := newTestS3Backend(t, server.URL)
+	b := newTestS3Backend(server.URL)
 	input := &uploadTestSeeker{Reader: strings.NewReader("prefixpayload")}
 	defer input.Close()
 	if _, err := input.Seek(6, io.SeekStart); err != nil {
@@ -138,7 +138,7 @@ func TestS3BackendUploadFailureRemovesTemporaryFile(t *testing.T) {
 				_, _ = io.WriteString(w, `<Error><Code>AccessDenied</Code><Message>denied</Message></Error>`)
 			}))
 			defer server.Close()
-			b := newTestS3Backend(t, server.URL)
+			b := newTestS3Backend(server.URL)
 			failure := errors.New("source read failed")
 			input := &uploadTestReader{Reader: strings.NewReader("payload")}
 			defer input.Close()

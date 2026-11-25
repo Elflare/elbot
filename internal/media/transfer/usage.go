@@ -23,28 +23,12 @@ type usage struct {
 	dir   string            // 尚未成功删除的私有目录。
 }
 
-func (m *Manager) registerUsage(held share.HeldMedia, dir string) string {
-	u := &usage{mu: make(chan struct{}, 1), dir: dir}
-	if held != nil {
-		u.held = append(u.held, held)
-	}
+func (m *Manager) registerUsage(held []share.HeldMedia, dir string) string {
+	u := &usage{mu: make(chan struct{}, 1), held: held, dir: dir}
 	id := rand.Text()
 	m.usagesMu.Lock()
 	m.usages[id] = u
 	m.usagesMu.Unlock()
-	return id
-}
-
-func (m *Manager) addHeld(id string, held share.HeldMedia) string {
-	if id == "" {
-		return m.registerUsage(held, "")
-	}
-	m.usagesMu.Lock()
-	u := m.usages[id]
-	m.usagesMu.Unlock()
-	u.mu <- struct{}{}
-	u.held = append(u.held, held)
-	<-u.mu
 	return id
 }
 
@@ -138,7 +122,15 @@ func (m *Manager) cleanupUsage(ctx context.Context, id string, u *usage, stopOnE
 	return ctx.Err()
 }
 
-func (m *Manager) abortUsage(ctx context.Context, id string) {
+// completeBatch 在准备退出时一次接管全部持有；失败则登记结束，清理失败的仍可重试。
+func (m *Manager) completeBatch(ctx context.Context, held []share.HeldMedia, success bool) string {
+	if len(held) == 0 {
+		return ""
+	}
+	id := m.registerUsage(held, "")
+	if success {
+		return id
+	}
 	ids := []string{id}
 	m.FinishUsages(ids)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -146,6 +138,7 @@ func (m *Manager) abortUsage(ctx context.Context, id string) {
 	if err := m.CleanupUsages(ctx, ids); err != nil {
 		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_usage_cleanup_interrupted", Module: "media", Content: fmt.Sprintf("usage_id=%s error=%v", id, err), ContentLimit: 4096, ResultStatus: events.ResultCanceled})
 	}
+	return ""
 }
 
 // Hold 将显式持有登记到使用记录中，资源释放始终由 Media 负责。
@@ -157,7 +150,7 @@ func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[s
 	if held.Status != operationresult.Success {
 		return held, "", nil
 	}
-	return held, m.registerUsage(held.Data, ""), nil
+	return held, m.registerUsage([]share.HeldMedia{held.Data}, ""), nil
 }
 
 // Workspace 创建并登记调用私有目录；base 的路径范围由消费方决定。

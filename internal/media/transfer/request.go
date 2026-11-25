@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -20,23 +19,20 @@ import (
 const requestUploadConcurrency = 8
 
 // AcquireForLLM 克隆请求、按 ID 复用持有，补齐信息并按总大小选择交付方式。
-// 内联使用 held.Open，远端使用 held.SignedURL，不接收存储记录。
+// 内联使用 held.Read，远端使用 held.SignedURL，不接收存储记录。
 // 使用记录归 Media；准备失败在工作退出后收尾，失败资源由维护继续处理。
 func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) (result operationresult.Result[[]llm.LLMMessage], usageID string, err error) {
 	out := llm.CloneMessages(messages)
+	var items []share.HeldMedia
 	defer func() {
-		if err != nil || result.Status != operationresult.Success {
-			m.abortUsage(ctx, usageID)
-			usageID = ""
-		}
+		usageID = m.completeBatch(ctx, items, err == nil && result.Status == operationresult.Success)
 	}()
 	mediaByID := map[string]share.HeldMedia{}
-	var items []share.HeldMedia
 	var total int64
 	for i := range out {
 		for j, segment := range out[i].Segments {
 			if err := ctx.Err(); err != nil {
-				return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+				return operationresult.Result[[]llm.LLMMessage]{}, "", err
 			}
 			if (segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile) || segment.MediaID == "" {
 				continue
@@ -45,14 +41,13 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			if !ok {
 				retained, err := m.objects.Hold(ctx, segment.MediaID)
 				if err != nil {
-					return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+					return operationresult.Result[[]llm.LLMMessage]{}, "", err
 				}
 				if retained.Status == operationresult.Success {
 					held = retained.Data
-					usageID = m.addHeld(usageID, held)
 					items = append(items, held)
 				} else if retained.Status != operationresult.NotFound {
-					return operationresult.Result[[]llm.LLMMessage]{Status: retained.Status, Message: retained.Message}, usageID, nil
+					return operationresult.Result[[]llm.LLMMessage]{Status: retained.Status, Message: retained.Message}, "", nil
 				}
 				mediaByID[segment.MediaID] = held
 			}
@@ -68,13 +63,13 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 	}
 	remote := m.options.Backend == "s3" || (m.options.Backend == "hybrid" && total > m.options.MaxDirectBase64Bytes)
 	if !remote && total > m.options.MaxDirectBase64Bytes {
-		return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Rejected, Message: fmt.Sprintf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.options.MaxDirectBase64Bytes)}, usageID, nil
+		return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Rejected, Message: fmt.Sprintf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.options.MaxDirectBase64Bytes)}, "", nil
 	}
 	urls := map[string]string{}
 	if remote {
 		urls, err = m.prepareRemoteURLs(ctx, items)
 		if err != nil {
-			return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+			return operationresult.Result[[]llm.LLMMessage]{}, "", err
 		}
 	}
 	for i := range out {
@@ -85,9 +80,9 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			}
 			value, ok := urls[segment.MediaID]
 			if !ok {
-				data, err := m.readMedia(ctx, held)
+				data, err := held.Read(ctx)
 				if err != nil {
-					return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+					return operationresult.Result[[]llm.LLMMessage]{}, "", err
 				}
 				value = "data:" + segment.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
 				urls[segment.MediaID] = value
@@ -100,9 +95,9 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+		return operationresult.Result[[]llm.LLMMessage]{}, "", err
 	}
-	return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Success, Data: out}, usageID, nil
+	return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Success, Data: out}, "", nil
 }
 
 // prepareRemoteURLs 并发处理去重后的持有句柄，全部 worker 退出后才返回。
@@ -161,27 +156,7 @@ dispatch:
 	return urls, nil
 }
 
-// readMedia 从已持有对象读取内容并关闭读取器，不结束对象持有。
-func (m *Manager) readMedia(ctx context.Context, held share.HeldMedia) ([]byte, error) {
-	reader, err := held.Open(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer m.closeMediaReader(ctx, reader)
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	return data, ctx.Err()
-}
-
 // unavailable 将不可用媒体替换为包含展示名称和媒体标识的文本说明。
-func (m *Manager) closeMediaReader(ctx context.Context, reader io.Closer) {
-	if err := reader.Close(); err != nil {
-		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
-	}
-}
-
 func unavailable(segment llm.MessageSegment) llm.MessageSegment {
 	return llm.MessageSegment{Type: llm.SegmentText, Text: "[媒体不可用；" + strings.TrimSpace(segment.Name) + "；媒体 ID：" + segment.MediaID + "]"}
 }

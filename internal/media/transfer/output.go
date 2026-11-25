@@ -49,11 +49,9 @@ type PreparedOutput struct {
 
 // PrepareOutputs 按输入顺序准备；仅成功时才交付批次持有。
 func (m *Manager) PrepareOutputs(ctx context.Context, requests []OutputRequest) (result operationresult.Result[[]PreparedOutput], usage string, err error) {
+	var holds []share.HeldMedia
 	defer func() {
-		if usage != "" && (err != nil || result.Status != operationresult.Success) {
-			m.abortUsage(ctx, usage)
-			usage = ""
-		}
+		usage = m.completeBatch(ctx, holds, err == nil && result.Status == operationresult.Success)
 	}()
 	outputs := make([]PreparedOutput, 0, len(requests))
 	for _, req := range requests {
@@ -61,27 +59,27 @@ func (m *Manager) PrepareOutputs(ctx context.Context, requests []OutputRequest) 
 		if id == "" {
 			item, err := m.ImportSource(ctx, req.Source, share.Input{Name: req.Name, MIMEType: req.Source.MIMEType}, share.ImportLimits{})
 			if err != nil {
-				return result, usage, fmt.Errorf("prepare output media %d: %w", req.Index, err)
+				return result, "", fmt.Errorf("prepare output media %d: %w", req.Index, err)
 			}
 			if item.Status != operationresult.Success {
 				result.Status, result.Message = item.Status, item.Message
-				return result, usage, nil
+				return result, "", nil
 			}
 			id = item.Data.ID
 		}
 		item, err := m.objects.Hold(ctx, id)
 		if err != nil {
-			return result, usage, err
+			return result, "", err
 		}
 		if item.Status != operationresult.Success {
 			result.Status, result.Message = item.Status, item.Message
-			return result, usage, nil
+			return result, "", nil
 		}
 		held := item.Data
-		usage = m.addHeld(usage, held)
+		holds = append(holds, held)
 		source, err := outputSource(ctx, held)
 		if err != nil {
-			return result, usage, err
+			return result, "", err
 		}
 		name := held.Info().Name
 		if req.Name != "" {
@@ -89,5 +87,5 @@ func (m *Manager) PrepareOutputs(ctx context.Context, requests []OutputRequest) 
 		}
 		outputs = append(outputs, PreparedOutput{Index: req.Index, Name: name, Source: source})
 	}
-	return operationresult.Result[[]PreparedOutput]{Status: operationresult.Success, Data: outputs}, usage, nil
+	return operationresult.Result[[]PreparedOutput]{Status: operationresult.Success, Data: outputs}, "", nil
 }

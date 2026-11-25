@@ -54,7 +54,7 @@
 - [x] fileops包
 - [x] workspace包
 - [x] llm包
-- [ ] media包
+- [x] media包
 - [ ] storage包
 - [ ] session包
 - [x] command包

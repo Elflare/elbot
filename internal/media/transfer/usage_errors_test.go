@@ -16,8 +16,7 @@ func TestCleanupRecordsIndependentFailuresBeforeCancellation(t *testing.T) {
 	defer cancel()
 	first := &cancelHeld{fakeHeld: fakeHeld{info: share.MediaInfo{ID: "first"}}, release: func(context.Context) error { return errors.New("first failure") }}
 	second := &cancelHeld{fakeHeld: fakeHeld{info: share.MediaInfo{ID: "second"}}, release: func(context.Context) error { cancel(); return errors.New("second failure") }}
-	id := m.registerUsage(first, "")
-	m.addHeld(id, second)
+	id := m.registerUsage([]share.HeldMedia{first, second}, "")
 	m.FinishUsages([]string{id})
 	if err := m.CleanupUsages(ctx, nil); err != context.Canceled {
 		t.Fatalf("interruption: %v", err)
