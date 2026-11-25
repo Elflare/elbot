@@ -108,7 +108,7 @@ xychart-beta horizontal
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png" width="500" />
 </p>
 
-完整前端代码及更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。
+完整前端代码及更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。目前功能足以胜任 Coding Agent 大部分任务。
 
 **会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看、平台隔离、压缩等功能。
 
