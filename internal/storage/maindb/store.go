@@ -28,3 +28,18 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 func (s *Store) Close() error { return s.db.Close() }
+
+// requireRow distinguishes a missing row from a failed write or unavailable row count.
+func requireRow(res sql.Result, err error, operation string) error {
+	if err == nil {
+		var n int64
+		n, err = res.RowsAffected()
+		if err == nil && n == 0 {
+			return share.ErrNotFound
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	return nil
+}

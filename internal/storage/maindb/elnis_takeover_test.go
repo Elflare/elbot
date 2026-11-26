@@ -22,6 +22,14 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	state := func() (status, reason, updated string) {
+		t.Helper()
+		if err := store.db.QueryRowContext(ctx, `SELECT status,COALESCE(error,''),updated_at FROM elnis_events WHERE id=?`, event.ID).Scan(&status, &reason, &updated); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	_, _, before := state()
 	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_recovery_release BEFORE DELETE ON media_references
 		WHEN OLD.owner_type='elnis_event' BEGIN SELECT RAISE(ABORT,'reference release failed'); END`); err != nil {
 		t.Fatal(err)
@@ -29,9 +37,8 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 	if err := repo.FailInterrupted(ctx, []string{"queued"}, "failed", "test interruption"); err == nil {
 		t.Fatal("expected reference release failure")
 	}
-	row, err := repo.GetElnisEvent(ctx, event.ID)
-	if err != nil || row.Status != "queued" || row.Error != "" || !row.UpdatedAt.Equal(event.UpdatedAt) {
-		t.Fatalf("failed recovery changed event: %#v, %v", row, err)
+	if status, reason, updated := state(); status != "queued" || reason != "" || updated != before {
+		t.Fatalf("failed recovery changed event: %s %q %s", status, reason, updated)
 	}
 	refs, err := store.ListByOwner(ctx, "elnis_event", event.ID)
 	if err != nil || len(refs) != 1 {
@@ -44,16 +51,14 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 	if err := repo.FailInterrupted(ctx, nil, "failed", "must not apply"); err != nil {
 		t.Fatal(err)
 	}
-	row, err = repo.GetElnisEvent(ctx, event.ID)
-	if err != nil || row.Status != "queued" {
-		t.Fatalf("empty recovery changed event: %#v, %v", row, err)
+	if status, _, _ := state(); status != "queued" {
+		t.Fatalf("empty recovery changed event: %s", status)
 	}
 	if err := repo.FailInterrupted(ctx, []string{"queued"}, "failed", "test interruption"); err != nil {
 		t.Fatal(err)
 	}
-	row, err = repo.GetElnisEvent(ctx, event.ID)
-	if err != nil || row.Status != "failed" || row.Error != "test interruption" {
-		t.Fatalf("recovery did not apply caller policy: %#v, %v", row, err)
+	if status, reason, _ := state(); status != "failed" || reason != "test interruption" {
+		t.Fatalf("recovery did not apply caller policy: %s %q", status, reason)
 	}
 	refs, err = store.ListByOwner(ctx, "elnis_event", event.ID)
 	if err != nil || len(refs) != 0 {

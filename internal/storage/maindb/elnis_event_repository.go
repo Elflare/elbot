@@ -11,44 +11,22 @@ import (
 	"elbot/internal/storage/share"
 )
 
+// ElnisEvent contains the facts used for duplicate detection and report recovery.
 type ElnisEvent struct {
-	ID               string
-	EventKey         string
-	OriginKind       string // 已认证来源类型。
-	OriginName       string // 已认证来源名称。
-	ElwispName       string
-	Source           string
-	SourceID         string
-	Tags             string
-	Mode             string
-	ModelSlot        string
-	ContentHash      string
-	ToolDeclarations string
-	ToolHash         string
-	RequestedTargets string
-	ResolvedTargets  string
-	Status           string
-	SessionID        string
-	Result           string
-	Error            string
-	ReceivedAt       time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID              string
+	EventKey        string
+	ContentHash     string
+	ResolvedTargets string
+	SessionID       string
+	Result          string
 }
 
 type ElnisReportDelivery struct {
 	ID        string
-	EventID   string
-	Ordinal   int
 	Target    string
 	Output    string
 	MessageID string
 	Status    string
-	Receipt   string
-	Error     string
-	Attempts  int
-	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 const (
@@ -126,26 +104,6 @@ func (r *Store) CreateElnisEvent(ctx context.Context, req CreateElnisEventReques
 		return nil, fmt.Errorf("elnis event requires a preallocated ID")
 	}
 	now := time.Now()
-	event := &ElnisEvent{
-		ID:         req.ID,
-		EventKey:   req.EventKey,
-		OriginKind: req.OriginKind, OriginName: req.OriginName,
-		ElwispName:       req.ElwispName,
-		Source:           req.Source,
-		SourceID:         req.SourceID,
-		Tags:             req.Tags,
-		Mode:             req.Mode,
-		ModelSlot:        req.ModelSlot,
-		ContentHash:      req.ContentHash,
-		ToolDeclarations: req.ToolDeclarations,
-		ToolHash:         req.ToolHash,
-		RequestedTargets: req.RequestedTargets,
-		ResolvedTargets:  req.ResolvedTargets,
-		Status:           req.Status,
-		ReceivedAt:       req.ReceivedAt,
-		CreatedAt:        req.CreatedAt,
-		UpdatedAt:        now,
-	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -157,37 +115,37 @@ INSERT INTO elnis_events (
     model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
     received_at, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		event.ID,
-		event.EventKey,
-		event.OriginKind, event.OriginName,
-		event.ElwispName,
-		event.Source,
-		event.SourceID,
-		share.NullString(event.Tags),
-		event.Mode,
-		share.NullString(event.ModelSlot),
-		event.ContentHash,
-		share.NullString(event.ToolDeclarations),
-		share.NullString(event.ToolHash),
-		share.NullString(event.RequestedTargets),
-		share.NullString(event.ResolvedTargets),
-		event.Status,
-		share.FormatTime(event.ReceivedAt),
-		share.FormatTime(event.CreatedAt),
-		share.FormatTime(event.UpdatedAt),
+		req.ID,
+		req.EventKey,
+		req.OriginKind, req.OriginName,
+		req.ElwispName,
+		req.Source,
+		req.SourceID,
+		share.NullString(req.Tags),
+		req.Mode,
+		share.NullString(req.ModelSlot),
+		req.ContentHash,
+		share.NullString(req.ToolDeclarations),
+		share.NullString(req.ToolHash),
+		share.NullString(req.RequestedTargets),
+		share.NullString(req.ResolvedTargets),
+		req.Status,
+		share.FormatTime(req.ReceivedAt),
+		share.FormatTime(req.CreatedAt),
+		share.FormatTime(now),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create elnis event: %w", err)
 	}
 	for _, id := range req.MediaIDs {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at) VALUES(?,'elnis_event',?,'input',?) ON CONFLICT DO NOTHING`, id, event.ID, share.FormatTime(now)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at) VALUES(?,'elnis_event',?,'input',?) ON CONFLICT DO NOTHING`, id, req.ID, share.FormatTime(now)); err != nil {
 			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return event, nil
+	return &ElnisEvent{ID: req.ID, EventKey: req.EventKey, ContentHash: req.ContentHash, ResolvedTargets: req.ResolvedTargets}, nil
 }
 
 func (r *Store) GetElnisEvent(ctx context.Context, id string) (*ElnisEvent, error) {
@@ -199,18 +157,17 @@ func (r *Store) GetByKey(ctx context.Context, elwispName, source, sourceID strin
 }
 
 func (r *Store) readElnisEvent(ctx context.Context, operation, predicate string, args ...any) (*ElnisEvent, error) {
-	event, err := scanElnisEvent(r.db.QueryRowContext(ctx, `SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
-       model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
-       session_id, result, error, received_at, created_at, updated_at
-FROM elnis_events
-WHERE `+predicate, args...))
+	var event ElnisEvent
+	err := r.db.QueryRowContext(ctx, `SELECT id, event_key, content_hash, COALESCE(resolved_targets,''),
+COALESCE(session_id,''), COALESCE(result,'') FROM elnis_events WHERE `+predicate, args...).Scan(
+		&event.ID, &event.EventKey, &event.ContentHash, &event.ResolvedTargets, &event.SessionID, &event.Result)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, share.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
-	return event, nil
+	return &event, nil
 }
 
 func (r *Store) UpdateElnisEvent(ctx context.Context, req UpdateElnisEventRequest) error {
@@ -231,11 +188,8 @@ WHERE id = ?`,
 		share.FormatTime(time.Now()),
 		req.ID,
 	)
-	if err != nil {
-		return fmt.Errorf("update elnis event: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return share.ErrNotFound
+	if err := requireRow(res, err, "update elnis event"); err != nil {
+		return err
 	}
 	if req.ReleaseMediaReferences {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM media_references WHERE (owner_type='elnis_event' AND owner_id=?) OR (owner_type='elnis_report' AND owner_id IN (SELECT id FROM elnis_report_deliveries WHERE event_id=?))", req.ID, req.ID); err != nil {
@@ -243,59 +197,4 @@ WHERE id = ?`,
 		}
 	}
 	return tx.Commit()
-}
-
-func scanElnisEvent(row interface{ Scan(dest ...any) error }) (*ElnisEvent, error) {
-	var event ElnisEvent
-	var tags, modelSlot, toolDeclarations, toolHash, requestedTargets, resolvedTargets, sessionID, result, eventErr sql.NullString
-	var receivedAt, createdAt, updatedAt string
-	if err := row.Scan(
-		&event.ID,
-		&event.EventKey,
-		&event.OriginKind, &event.OriginName,
-		&event.ElwispName,
-		&event.Source,
-		&event.SourceID,
-		&tags,
-		&event.Mode,
-		&modelSlot,
-		&event.ContentHash,
-		&toolDeclarations,
-		&toolHash,
-		&requestedTargets,
-		&resolvedTargets,
-		&event.Status,
-		&sessionID,
-		&result,
-		&eventErr,
-		&receivedAt,
-		&createdAt,
-		&updatedAt,
-	); err != nil {
-		return nil, err
-	}
-	event.Tags = tags.String
-	event.ModelSlot = modelSlot.String
-	event.ToolDeclarations = toolDeclarations.String
-	event.ToolHash = toolHash.String
-	event.RequestedTargets = requestedTargets.String
-	event.ResolvedTargets = resolvedTargets.String
-	event.SessionID = sessionID.String
-	event.Result = result.String
-	event.Error = eventErr.String
-
-	var err error
-	event.ReceivedAt, err = share.ParseTime(receivedAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse elnis event received_at: %w", err)
-	}
-	event.CreatedAt, err = share.ParseTime(createdAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse elnis event created_at: %w", err)
-	}
-	event.UpdatedAt, err = share.ParseTime(updatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse elnis event updated_at: %w", err)
-	}
-	return &event, nil
 }

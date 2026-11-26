@@ -9,7 +9,6 @@ import (
 
 type (
 	CronJob              = maindb.CronJob
-	CronJobRunState      = maindb.CronJobRunState
 	UpsertCronJobRequest = maindb.UpsertCronJobRequest
 )
 
@@ -18,7 +17,7 @@ type CronJobRepository interface {
 	GetByName(ctx context.Context, name string) (*CronJob, error)
 	ListCronJobs(ctx context.Context, includeDisabled bool) ([]CronJob, error)
 	UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error
-	UpdateRunState(ctx context.Context, id string, state CronJobRunState) error
+	UpdateRunState(ctx context.Context, id string, lastRunAt, updatedAt time.Time) error
 	// CompareAndSwapDelivery saves actual sent-message mappings atomically with the
 	// conditional progress update. A stale token preserves mappings but changes no progress.
 	CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []PlatformMessageMap) (bool, error)

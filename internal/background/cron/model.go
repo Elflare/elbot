@@ -75,24 +75,10 @@ func parseRunAt(value string) (time.Time, error) {
 	return runAt, nil
 }
 
-var (
-	invalidJobNameChars     = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
-	invalidSandboxNameChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
-)
-
-func normalizeJobName(name string) string {
-	name = strings.TrimSpace(name)
-	name = strings.TrimPrefix(name, "user.cron.")
-	name = invalidJobNameChars.ReplaceAllString(name, "_")
-	name = strings.Trim(name, "._-")
-	if name == "" {
-		return ""
-	}
-	return "user.cron." + name
-}
+var invalidSandboxNameChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 func cronSandboxSubdir(jobName string) string {
-	name := strings.TrimPrefix(normalizeJobName(jobName), "user.cron.")
+	name := strings.TrimPrefix(crondef.NormalizeJobName(jobName), "user.cron.")
 	name = invalidSandboxNameChars.ReplaceAllString(name, "_")
 	name = strings.Trim(name, "_-")
 	if name == "" {

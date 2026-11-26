@@ -4,7 +4,6 @@ package branch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -288,11 +287,9 @@ func (s *Service) copySession(ctx context.Context, request storage.SessionMateri
 		if message.ToolBatchStatus == "pending" {
 			return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "cannot copy an unfinished tool batch"}, nil
 		}
-		var resultIDs []string
-		if raw, ok := fields[storage.ToolResultMessageKey]; ok {
-			if err := json.Unmarshal(raw, &resultIDs); err != nil {
-				return operationresult.Result[*storage.Session]{}, err
-			}
+		resultIDs, err := fields.ToolResultMessageIDs()
+		if err != nil {
+			return operationresult.Result[*storage.Session]{}, err
 		}
 		for i, id := range resultIDs {
 			mapped, ok := ids[id]

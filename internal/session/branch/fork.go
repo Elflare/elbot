@@ -4,7 +4,6 @@ package branch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"unicode/utf8"
@@ -185,11 +184,9 @@ func (s *Service) forkBoundary(ctx context.Context, sourceID string, message *st
 	if message.ToolBatchStatus == "pending" {
 		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "cannot fork an unfinished tool batch"}, nil
 	}
-	var resultIDs []string
-	if raw, ok := fields[storage.ToolResultMessageKey]; ok {
-		if err := json.Unmarshal(raw, &resultIDs); err != nil {
-			return operationresult.Result[string]{}, err
-		}
+	resultIDs, err := fields.ToolResultMessageIDs()
+	if err != nil {
+		return operationresult.Result[string]{}, err
 	}
 	if len(resultIDs) == 0 {
 		return operationresult.Result[string]{Status: operationresult.Success, Data: message.ID}, nil

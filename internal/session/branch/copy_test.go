@@ -77,7 +77,7 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			if rows[0].ID == parent.ID || rows[1].ParentMessageID != "" || rows[1].ReplyToMessageID != "" || rows[1].ReplyToPlatformMessageID != "" {
 				t.Fatal("source message refs retained")
 			}
-			ids, err := storage.ToolResultMessageIDs(rows[2])
+			ids, err := rows[2].ToolResultMessageIDs()
 			if err != nil {
 				t.Fatal(err)
 			}

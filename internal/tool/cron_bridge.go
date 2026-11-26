@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -52,7 +50,7 @@ type cronBridge struct {
 
 func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (operationresult.Result[builtin.CronInfo], error) {
 	definition := req.Definition
-	name := normalizeCronName(definition.Name)
+	name := crondef.NormalizeJobName(definition.Name)
 	if name == "" {
 		return operationresult.Result[builtin.CronInfo]{Status: operationresult.InvalidArguments, Message: "cron name is required"}, nil
 	}
@@ -83,7 +81,7 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (op
 }
 
 func (b cronBridge) GetByName(ctx context.Context, name string) (operationresult.Result[builtin.CronInfo], error) {
-	job, err := b.repo.GetByName(ctx, normalizeCronName(name))
+	job, err := b.repo.GetByName(ctx, crondef.NormalizeJobName(name))
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[builtin.CronInfo]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
 	}
@@ -116,7 +114,7 @@ func (b cronBridge) List(ctx context.Context, includeDisabled bool) (operationre
 }
 
 func (b cronBridge) DisableByName(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
-	name = normalizeCronName(name)
+	name = crondef.NormalizeJobName(name)
 	if err := b.repo.DisableByName(ctx, name); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
@@ -130,7 +128,7 @@ func (b cronBridge) DisableByName(ctx context.Context, name string) (operationre
 }
 
 func (b cronBridge) DeleteByName(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
-	name = normalizeCronName(name)
+	name = crondef.NormalizeJobName(name)
 	if err := b.repo.DeleteByName(ctx, name); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
@@ -145,16 +143,6 @@ func (b cronBridge) DeleteByName(ctx context.Context, name string) (operationres
 
 func (b cronBridge) ValidateSelection(provider, model string) operationresult.Result[struct{}] {
 	return b.models.ValidateSelection(config.ModelSelection{Provider: provider, Model: model})
-}
-
-func normalizeCronName(name string) string {
-	name = strings.TrimPrefix(strings.TrimSpace(name), "user.cron.")
-	name = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`).ReplaceAllString(name, "_")
-	name = strings.Trim(name, "._-")
-	if name == "" {
-		return ""
-	}
-	return "user.cron." + name
 }
 
 func cronInfo(job storage.CronJob) (operationresult.Result[builtin.CronInfo], error) {

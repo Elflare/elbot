@@ -26,11 +26,6 @@ type CronJob struct {
 	UpdatedAt     time.Time
 }
 
-type CronJobRunState struct {
-	LastRunAt time.Time // 本次执行开始时间，执行结束后记录。
-	UpdatedAt time.Time // 本次运行事实的记录时间；次数由仓库原子递增。
-}
-
 type UpsertCronJobRequest struct {
 	Name          string
 	Handler       string
@@ -42,51 +37,38 @@ type UpsertCronJobRequest struct {
 }
 
 func (r *Store) UpsertCronJob(ctx context.Context, req UpsertCronJobRequest) (*CronJob, error) {
-	now := time.Now()
-	job, err := r.GetByName(ctx, req.Name)
-	if errors.Is(err, share.ErrNotFound) {
-		job = &CronJob{
-			ID:        share.NewID(),
-			Name:      req.Name,
-			Handler:   req.Handler,
-			Schedule:  req.Schedule,
-			Enabled:   req.Enabled,
-			Metadata:  req.Metadata,
-			NextRunAt: req.NextRunAt,
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
-		if err := r.create(ctx, job); err != nil {
-			return nil, err
-		}
-		return job, nil
-	}
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin cron upsert: %w", err)
 	}
-
-	if cronJobMatchesUpsert(job, req) {
-		return job, nil
+	defer tx.Rollback()
+	now := share.FormatTime(time.Now())
+	// Take the write lock before reading. An unchanged definition must not refresh updated_at.
+	_, err = tx.ExecContext(ctx, `INSERT INTO cron_jobs
+(id, name, handler, schedule, enabled, metadata, next_run_at, run_count, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT(name) DO NOTHING`,
+		share.NewID(), req.Name, req.Handler, req.Schedule, req.Enabled, share.NullString(req.Metadata), nullTime(req.NextRunAt), now, now)
+	if err != nil {
+		return nil, fmt.Errorf("insert cron job: %w", err)
 	}
-
-	job.Handler = req.Handler
-	job.Schedule = req.Schedule
-	job.Enabled = req.Enabled
-	job.Metadata = req.Metadata
-	job.NextRunAt = req.NextRunAt
-	job.UpdatedAt = now
-	return r.update(ctx, job, req.ResetDelivery)
-}
-
-func cronJobMatchesUpsert(job *CronJob, req UpsertCronJobRequest) bool {
-	if req.ResetDelivery && (job.DeliveryState != "" || job.DeliveryToken != "") {
-		return false
+	job, err := scanCronJob(tx.QueryRowContext(ctx, `SELECT `+cronJobColumns+` FROM cron_jobs WHERE name = ?`, req.Name))
+	if err != nil {
+		return nil, fmt.Errorf("read cron definition: %w", err)
 	}
-	return job.Handler == req.Handler &&
-		job.Schedule == req.Schedule &&
-		job.Enabled == req.Enabled &&
-		job.Metadata == req.Metadata &&
-		optionalTimeEqual(job.NextRunAt, req.NextRunAt)
+	if job.Handler != req.Handler || job.Schedule != req.Schedule || job.Enabled != req.Enabled || job.Metadata != req.Metadata ||
+		!optionalTimeEqual(job.NextRunAt, req.NextRunAt) || req.ResetDelivery && (job.DeliveryToken != "" || job.DeliveryState != "") {
+		job, err = scanCronJob(tx.QueryRowContext(ctx, `UPDATE cron_jobs SET handler=?, schedule=?, enabled=?, metadata=?,
+next_run_at=?, updated_at=?, delivery_state=CASE WHEN ? THEN NULL ELSE delivery_state END,
+delivery_token=CASE WHEN ? THEN NULL ELSE delivery_token END WHERE id=? RETURNING `+cronJobColumns,
+			req.Handler, req.Schedule, req.Enabled, share.NullString(req.Metadata), nullTime(req.NextRunAt), now, req.ResetDelivery, req.ResetDelivery, job.ID))
+		if err != nil {
+			return nil, fmt.Errorf("update cron definition: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit cron upsert: %w", err)
+	}
+	return job, nil
 }
 
 func optionalTimeEqual(a, b *time.Time) bool {
@@ -148,39 +130,19 @@ WHERE id = ?`,
 		share.FormatTime(updatedAt),
 		id,
 	)
-	if err != nil {
-		return fmt.Errorf("update cron job next run: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("disable cron job rows: %w", err)
-	}
-	if n == 0 {
-		return share.ErrNotFound
-	}
-	return nil
+	return requireRow(res, err, "update cron job next run")
 }
 
-func (r *Store) UpdateRunState(ctx context.Context, id string, state CronJobRunState) error {
+func (r *Store) UpdateRunState(ctx context.Context, id string, lastRunAt, updatedAt time.Time) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs
 SET last_run_at = ?, run_count = run_count + 1, updated_at = ?
 WHERE id = ?`,
-		share.FormatTime(state.LastRunAt),
-		share.FormatTime(state.UpdatedAt),
+		share.FormatTime(lastRunAt),
+		share.FormatTime(updatedAt),
 		id,
 	)
-	if err != nil {
-		return fmt.Errorf("update cron job run state: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("delete cron job rows: %w", err)
-	}
-	if n == 0 {
-		return share.ErrNotFound
-	}
-	return nil
+	return requireRow(res, err, "update cron job run state")
 }
 
 func (r *Store) CompareAndSwapDelivery(ctx context.Context, id, expectedToken, nextToken, deliveryState string, mappings []PlatformMessageMap) (bool, error) {
@@ -222,13 +184,7 @@ func (r *Store) DisableByName(ctx context.Context, name string) error {
 UPDATE cron_jobs
 SET enabled = 0, next_run_at = NULL, updated_at = ?
 WHERE name = ?`, share.FormatTime(time.Now()), name)
-	if err != nil {
-		return fmt.Errorf("disable cron job: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return share.ErrNotFound
-	}
-	return nil
+	return requireRow(res, err, "disable cron job")
 }
 
 func (r *Store) DisableByNameIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
@@ -249,64 +205,7 @@ WHERE name = ? AND enabled = 1 AND COALESCE(delivery_token, '') = ?`,
 
 func (r *Store) DeleteByName(ctx context.Context, name string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM cron_jobs WHERE name = ?`, name)
-	if err != nil {
-		return fmt.Errorf("delete cron job: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return share.ErrNotFound
-	}
-	return nil
-}
-
-func (r *Store) create(ctx context.Context, job *CronJob) error {
-	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cron_jobs (
-    id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-    run_count, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID,
-		job.Name,
-		job.Handler,
-		job.Schedule,
-		job.Enabled,
-		share.NullString(job.Metadata),
-		nullTime(job.LastRunAt),
-		nullTime(job.NextRunAt),
-		job.RunCount,
-		share.FormatTime(job.CreatedAt),
-		share.FormatTime(job.UpdatedAt),
-	)
-	if err != nil {
-		return fmt.Errorf("create cron job: %w", err)
-	}
-	return nil
-}
-
-func (r *Store) update(ctx context.Context, job *CronJob, resetDelivery bool) (*CronJob, error) {
-	query := `
-UPDATE cron_jobs
-SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updated_at = ?`
-	args := []any{
-		job.Handler,
-		job.Schedule,
-		job.Enabled,
-		share.NullString(job.Metadata),
-		nullTime(job.NextRunAt),
-		share.FormatTime(job.UpdatedAt),
-	}
-	if resetDelivery {
-		query += ", delivery_state = NULL, delivery_token = NULL"
-	}
-	query += ` WHERE id = ? RETURNING ` + cronJobColumns
-	args = append(args, job.ID)
-	job, err := scanCronJob(r.db.QueryRowContext(ctx, query, args...))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, share.ErrNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("update cron job: %w", err)
-	}
-	return job, nil
+	return requireRow(res, err, "delete cron job")
 }
 
 func scanCronJob(row interface{ Scan(dest ...any) error }) (*CronJob, error) {

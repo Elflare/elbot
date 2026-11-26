@@ -2,7 +2,7 @@
 
 把以下包和5条业务线一样并列
 - [ ] control
-- [ ] storage
+- [x] storage
 - [ ] logging
 - [x] session 
 
@@ -55,7 +55,7 @@
 - [x] workspace包
 - [x] llm包
 - [x] media包
-- [ ] storage包
+- [x] storage包
 - [x] session包
 - [x] command包
 - [ ] control包

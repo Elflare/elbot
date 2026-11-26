@@ -2,7 +2,6 @@ package maindb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -31,10 +30,7 @@ WHERE id = ?`,
 		share.FormatTime(now),
 		req.EventID,
 	)
-	if err != nil {
-		return fmt.Errorf("prepare elnis report event: %w", err)
-	}
-	if err := requireElnisRow(res); err != nil {
+	if err := requireRow(res, err, "prepare elnis report event"); err != nil {
 		return err
 	}
 	for ordinal, delivery := range req.Deliveries {
@@ -133,15 +129,12 @@ WHERE id = ? AND status = ?`,
 		eventID,
 		deliveringStatus,
 	)
-	if err != nil {
-		return fmt.Errorf("release elnis report: %w", err)
-	}
-	return requireElnisRow(res)
+	return requireRow(res, err, "release elnis report")
 }
 
 func (r *Store) ListReportDeliveries(ctx context.Context, eventID string) ([]ElnisReportDelivery, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, event_id, ordinal, target, output, message_id, status, receipt, error, attempts, created_at, updated_at
+SELECT id, target, output, COALESCE(message_id,''), status
 FROM elnis_report_deliveries
 WHERE event_id = ?
 ORDER BY ordinal`, eventID)
@@ -151,8 +144,8 @@ ORDER BY ordinal`, eventID)
 	defer rows.Close()
 	var deliveries []ElnisReportDelivery
 	for rows.Next() {
-		delivery, err := scanElnisReportDelivery(rows)
-		if err != nil {
+		var delivery ElnisReportDelivery
+		if err := rows.Scan(&delivery.ID, &delivery.Target, &delivery.Output, &delivery.MessageID, &delivery.Status); err != nil {
 			return nil, fmt.Errorf("scan elnis report delivery: %w", err)
 		}
 		deliveries = append(deliveries, delivery)
@@ -172,10 +165,7 @@ WHERE id = ? AND status != ?`,
 		id,
 		ElnisReportDeliveryDelivered,
 	)
-	if err != nil {
-		return fmt.Errorf("start elnis report delivery: %w", err)
-	}
-	return requireElnisRow(res)
+	return requireRow(res, err, "start elnis report delivery")
 }
 
 func (r *Store) MarkReportDeliveryFailed(ctx context.Context, eventID, deliveryID, resultReadyStatus, deliveryError, receipt string, mappings []PlatformMessageMap) error {
@@ -197,10 +187,7 @@ WHERE id = ? AND event_id = ? AND status != ?`,
 		eventID,
 		ElnisReportDeliveryDelivered,
 	)
-	if err != nil {
-		return fmt.Errorf("fail elnis report delivery: %w", err)
-	}
-	if err := requireElnisRow(res); err != nil {
+	if err := requireRow(res, err, "fail elnis report delivery"); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -238,15 +225,8 @@ SET status = ?, receipt = ?, error = NULL, updated_at = ?
 WHERE id = ? AND status != ?`,
 			ElnisReportDeliveryDelivered, share.NullString(receipt), share.FormatTime(time.Now()),
 			deliveryID, ElnisReportDeliveryDelivered)
-		if err != nil {
-			return fmt.Errorf("complete elnis report delivery: %w", err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("complete elnis report delivery rows: %w", err)
-		}
-		if n == 0 {
-			return share.ErrNotFound
+		if err := requireRow(res, err, "complete elnis report delivery"); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -280,52 +260,6 @@ WHERE id = ? AND status = ?
 	}
 	if n == 0 {
 		return fmt.Errorf("complete elnis report: deliveries are not complete")
-	}
-	return nil
-}
-
-func scanElnisReportDelivery(row interface{ Scan(dest ...any) error }) (ElnisReportDelivery, error) {
-	var delivery ElnisReportDelivery
-	var messageID, receipt, deliveryError sql.NullString
-	var createdAt, updatedAt string
-	if err := row.Scan(
-		&delivery.ID,
-		&delivery.EventID,
-		&delivery.Ordinal,
-		&delivery.Target,
-		&delivery.Output,
-		&messageID,
-		&delivery.Status,
-		&receipt,
-		&deliveryError,
-		&delivery.Attempts,
-		&createdAt,
-		&updatedAt,
-	); err != nil {
-		return delivery, err
-	}
-	delivery.Receipt = receipt.String
-	delivery.MessageID = messageID.String
-	delivery.Error = deliveryError.String
-	var err error
-	delivery.CreatedAt, err = share.ParseTime(createdAt)
-	if err != nil {
-		return delivery, fmt.Errorf("parse elnis report delivery created_at: %w", err)
-	}
-	delivery.UpdatedAt, err = share.ParseTime(updatedAt)
-	if err != nil {
-		return delivery, fmt.Errorf("parse elnis report delivery updated_at: %w", err)
-	}
-	return delivery, nil
-}
-
-func requireElnisRow(res sql.Result) error {
-	n, rowsErr := res.RowsAffected()
-	if rowsErr != nil {
-		return fmt.Errorf("elnis affected rows: %w", rowsErr)
-	}
-	if n == 0 {
-		return share.ErrNotFound
 	}
 	return nil
 }

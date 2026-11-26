@@ -1,6 +1,22 @@
 // Package crondef defines the Cron metadata persisted by Tool and read by Background.
 package crondef
 
+import (
+	"regexp"
+	"strings"
+)
+
+var invalidJobNameChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+
+func NormalizeJobName(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "user.cron.")
+	name = strings.Trim(invalidJobNameChars.ReplaceAllString(name, "_"), "._-")
+	if name == "" {
+		return ""
+	}
+	return "user.cron." + name
+}
+
 const (
 	UserHandlerName = "builtin.cron"
 	MetadataKind    = "llm_cron"

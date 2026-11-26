@@ -203,11 +203,8 @@ WHERE id = ?`,
 			nullTime(session.PinnedAt),
 			session.ID,
 		)
-		if err != nil {
-			return nil, fmt.Errorf("update session: %w", err)
-		}
-		if n, err := res.RowsAffected(); err == nil && n == 0 {
-			return nil, share.ErrNotFound
+		if err := requireRow(res, err, "update session"); err != nil {
+			return nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -229,13 +226,7 @@ func sessionValuesEqual(a, b *Session) bool {
 
 func (r *Store) DeleteSession(ctx context.Context, id string) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
-	if err != nil {
-		return fmt.Errorf("delete session: %w", err)
-	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
-		return share.ErrNotFound
-	}
-	return nil
+	return requireRow(res, err, "delete session")
 }
 
 func (r *Store) ListExpiredIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
@@ -267,8 +258,7 @@ func (r *Store) DeleteIfExpired(ctx context.Context, id string, cutoff time.Time
 func scanSession(row interface{ Scan(dest ...any) error }) (*Session, error) {
 	var session Session
 	var parentSessionID, forkFromMessageID, title, metadata sql.NullString
-	var createdAt, updatedAt string
-	var archivedAt, pinnedAt sql.NullString
+	var times sessionTimeColumns
 	if err := row.Scan(
 		&session.ID,
 		&parentSessionID,
@@ -280,10 +270,10 @@ func scanSession(row interface{ Scan(dest ...any) error }) (*Session, error) {
 		&title,
 		&session.Status,
 		&metadata,
-		&createdAt,
-		&updatedAt,
-		&archivedAt,
-		&pinnedAt,
+		&times.createdAt,
+		&times.updatedAt,
+		&times.archivedAt,
+		&times.pinnedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -293,21 +283,7 @@ func scanSession(row interface{ Scan(dest ...any) error }) (*Session, error) {
 	session.Title = title.String
 	session.Metadata = metadata.String
 
-	var err error
-	session.CreatedAt, err = share.ParseTime(createdAt)
-	if err != nil {
-		return nil, err
-	}
-	session.UpdatedAt, err = share.ParseTime(updatedAt)
-	if err != nil {
-		return nil, err
-	}
-	session.ArchivedAt, err = share.ParseOptionalTime(archivedAt.String)
-	if err != nil {
-		return nil, err
-	}
-	session.PinnedAt, err = share.ParseOptionalTime(pinnedAt.String)
-	if err != nil {
+	if err := times.decode(&session.CreatedAt, &session.UpdatedAt, &session.ArchivedAt, &session.PinnedAt); err != nil {
 		return nil, err
 	}
 	return &session, nil
@@ -318,4 +294,27 @@ func nullTime(t *time.Time) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: share.FormatTime(*t), Valid: true}
+}
+
+// sessionTimeColumns is the same four-column projection in a session and its list summary.
+type sessionTimeColumns struct {
+	createdAt, updatedAt string
+	archivedAt, pinnedAt sql.NullString
+}
+
+func (c sessionTimeColumns) decode(created, updated *time.Time, archived, pinned **time.Time) error {
+	var err error
+	if *created, err = share.ParseTime(c.createdAt); err != nil {
+		return fmt.Errorf("parse session created_at: %w", err)
+	}
+	if *updated, err = share.ParseTime(c.updatedAt); err != nil {
+		return fmt.Errorf("parse session updated_at: %w", err)
+	}
+	if *archived, err = share.ParseOptionalTime(c.archivedAt.String); err != nil {
+		return fmt.Errorf("parse session archived_at: %w", err)
+	}
+	if *pinned, err = share.ParseOptionalTime(c.pinnedAt.String); err != nil {
+		return fmt.Errorf("parse session pinned_at: %w", err)
+	}
+	return nil
 }

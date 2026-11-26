@@ -86,8 +86,7 @@ LIMIT ? OFFSET ?`, where, order)
 		var summary SessionSummary
 		var title sql.NullString
 		var parentSessionID, forkFromMessageID sql.NullString
-		var createdAt, updatedAt string
-		var archivedAt, pinnedAt sql.NullString
+		var times sessionTimeColumns
 		if err := rows.Scan(
 			&summary.ID,
 			&summary.Owner.Platform, &summary.Owner.ID,
@@ -98,10 +97,10 @@ LIMIT ? OFFSET ?`, where, order)
 			&summary.Status,
 			&parentSessionID,
 			&forkFromMessageID,
-			&createdAt,
-			&updatedAt,
-			&archivedAt,
-			&pinnedAt,
+			&times.createdAt,
+			&times.updatedAt,
+			&times.archivedAt,
+			&times.pinnedAt,
 			&summary.MessageCount,
 			&summary.LastUserContent,
 			&summary.LastAssistantContent,
@@ -111,23 +110,8 @@ LIMIT ? OFFSET ?`, where, order)
 		summary.Title = title.String
 		summary.ParentSessionID = parentSessionID.String
 		summary.ForkFromMessageID = forkFromMessageID.String
-		parsedCreatedAt, err := share.ParseTime(createdAt)
-		if err != nil {
-			return nil, fmt.Errorf("parse session created_at: %w", err)
-		}
-		summary.CreatedAt = parsedCreatedAt
-		parsedUpdatedAt, err := share.ParseTime(updatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("parse session updated_at: %w", err)
-		}
-		summary.UpdatedAt = parsedUpdatedAt
-		summary.ArchivedAt, err = share.ParseOptionalTime(archivedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("parse session archived_at: %w", err)
-		}
-		summary.PinnedAt, err = share.ParseOptionalTime(pinnedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("parse session pinned_at: %w", err)
+		if err := times.decode(&summary.CreatedAt, &summary.UpdatedAt, &summary.ArchivedAt, &summary.PinnedAt); err != nil {
+			return nil, err
 		}
 		sessions = append(sessions, summary)
 	}

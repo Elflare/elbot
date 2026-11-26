@@ -334,7 +334,7 @@ func (s *Service) lockDeliveryJob(ctx context.Context, jobName string) (func(), 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	jobName = normalizeJobName(jobName)
+	jobName = crondef.NormalizeJobName(jobName)
 	s.mu.Lock()
 	gate := s.deliveryGates[jobName]
 	if gate == nil {

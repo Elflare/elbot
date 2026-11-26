@@ -366,7 +366,11 @@ func (r *Store) FinishExchange(ctx context.Context, id, status, response, items,
 	if err != nil {
 		return err
 	}
-	if n, err := result.RowsAffected(); err != nil || n != 1 {
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("finish native exchange: %w", err)
+	}
+	if n != 1 {
 		return fmt.Errorf("native exchange already finished or absent")
 	}
 	return nil

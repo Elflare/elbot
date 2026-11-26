@@ -18,13 +18,14 @@ func TestCronRunStatePreservesDefinitionAndAtomicallyCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := CronJobRunState{LastRunAt: time.Now().Add(-time.Minute).Truncate(time.Second), UpdatedAt: time.Now().Truncate(time.Second)}
+	started := time.Now().Add(-time.Minute).Truncate(time.Second)
+	updated := time.Now().Truncate(time.Second)
 	var wg sync.WaitGroup
 	for range 12 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := store.UpdateRunState(ctx, job.ID, state); err != nil {
+			if err := store.UpdateRunState(ctx, job.ID, started, updated); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -34,13 +35,13 @@ func TestCronRunStatePreservesDefinitionAndAtomicallyCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RunCount != 12 || !got.Enabled || got.NextRunAt == nil || !got.NextRunAt.Equal(next) || got.Schedule != job.Schedule || got.Metadata != job.Metadata || got.LastRunAt == nil || !got.LastRunAt.Equal(state.LastRunAt) {
+	if got.RunCount != 12 || !got.Enabled || got.NextRunAt == nil || !got.NextRunAt.Equal(next) || got.Schedule != job.Schedule || got.Metadata != job.Metadata || got.LastRunAt == nil || !got.LastRunAt.Equal(started) {
 		t.Fatalf("record=%#v", got)
 	}
 	if err := store.DisableByName(ctx, job.Name); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateRunState(ctx, job.ID, state); err != nil {
+	if err := store.UpdateRunState(ctx, job.ID, started, updated); err != nil {
 		t.Fatal(err)
 	}
 	got, err = store.GetByName(ctx, job.Name)
@@ -57,7 +58,7 @@ func TestCronRunStatePreservesDefinitionAndAtomicallyCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpdateRunState(ctx, job.ID, state); !errors.Is(err, share.ErrNotFound) {
+	if err := store.UpdateRunState(ctx, job.ID, started, updated); !errors.Is(err, share.ErrNotFound) {
 		t.Fatalf("old run=%v", err)
 	}
 	got, err = store.GetByName(ctx, job.Name)
@@ -114,10 +115,7 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	}
 
 	lastRun := time.Now()
-	if err := store.UpdateRunState(ctx, job.ID, CronJobRunState{
-		LastRunAt: lastRun,
-		UpdatedAt: lastRun,
-	}); err != nil {
+	if err := store.UpdateRunState(ctx, job.ID, lastRun, lastRun); err != nil {
 		t.Fatalf("update run state: %v", err)
 	}
 	got, err := store.GetByName(ctx, job.Name)
@@ -166,9 +164,7 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 		t.Fatalf("initial upsert: %v", err)
 	}
 	lastRun := time.Now().Add(-time.Hour)
-	if err := store.UpdateRunState(ctx, job.ID, CronJobRunState{
-		LastRunAt: lastRun, UpdatedAt: lastRun,
-	}); err != nil {
+	if err := store.UpdateRunState(ctx, job.ID, lastRun, lastRun); err != nil {
 		t.Fatalf("save prior run state: %v", err)
 	}
 
@@ -221,9 +217,35 @@ func TestCronJobRepositoryDeliveryCASAndReset(t *testing.T) {
 
 func TestCronJobRepositoryUpdateMissingJob(t *testing.T) {
 	store := NewStoreForTest(t)
-	repo := store
-	job, err := repo.update(context.Background(), &CronJob{ID: "missing", UpdatedAt: time.Now()}, false)
-	if !errors.Is(err, share.ErrNotFound) || job != nil {
-		t.Fatalf("update missing job: job=%#v err=%v", job, err)
+	if err := store.UpdateNextRunAt(t.Context(), "missing", nil, time.Now()); !errors.Is(err, share.ErrNotFound) {
+		t.Fatalf("update missing job: %v", err)
+	}
+}
+
+func TestCronConcurrentUpsertKeepsIdentityAndTimestamp(t *testing.T) {
+	store := NewStoreForTest(t)
+	next := time.Now().Add(time.Hour)
+	req := UpsertCronJobRequest{Name: "same", Enabled: true, NextRunAt: &next}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			<-start
+			if _, err := store.UpsertCronJob(t.Context(), req); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	close(start)
+	wg.Wait()
+	job, err := store.GetByName(t.Context(), req.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := next.In(time.FixedZone("offset", 3600))
+	req.NextRunAt = &same
+	again, err := store.UpsertCronJob(t.Context(), req)
+	if err != nil || again.ID != job.ID || !again.UpdatedAt.Equal(job.CreatedAt) {
+		t.Fatalf("identical definition changed: %#v, %v", again, err)
 	}
 }

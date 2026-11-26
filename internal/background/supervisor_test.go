@@ -84,9 +84,9 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	recovered, err := deps.Store.GetElnisEvent(t.Context(), row.ID)
-	if err != nil || recovered.Status != elnis.StatusFailed {
-		t.Fatalf("recovery=%#v, %v", recovered, err)
+	recovered := deps.Store.(*elnisTestStore).state(t, row.ID)
+	if recovered.Status != elnis.StatusFailed {
+		t.Fatalf("recovery=%#v", recovered)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

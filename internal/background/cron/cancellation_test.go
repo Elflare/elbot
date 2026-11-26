@@ -47,7 +47,7 @@ func TestDeliveryGateWaitCanBeCancelled(t *testing.T) {
 	}()
 	<-started
 	s.mu.Lock()
-	refs := s.deliveryGates[normalizeJobName("same")].refs
+	refs := s.deliveryGates[crondef.NormalizeJobName("same")].refs
 	s.mu.Unlock()
 	if refs != 2 {
 		t.Fatalf("holder and waiter refs=%d", refs)
@@ -81,7 +81,7 @@ func TestDeliveryGateStaysSharedUntilLastWaiterExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := s.deliveryGates[normalizeJobName("same")]
+	gate := s.deliveryGates[crondef.NormalizeJobName("same")]
 	acquired := make(chan func(), 2)
 	for range 2 {
 		ctx := &gateWaitContext{Context: t.Context(), started: make(chan struct{})}
@@ -98,7 +98,7 @@ func TestDeliveryGateStaysSharedUntilLastWaiterExits(t *testing.T) {
 		select {
 		case release := <-acquired:
 			s.mu.Lock()
-			shared := s.deliveryGates[normalizeJobName("same")] == gate && gate.refs == remaining
+			shared := s.deliveryGates[crondef.NormalizeJobName("same")] == gate && gate.refs == remaining
 			s.mu.Unlock()
 			release()
 			if !shared {

@@ -34,7 +34,3 @@ type DialogueRepository interface {
 }
 
 const ToolResultMessageKey = maindb.ToolResultMessageKey
-
-func ToolResultMessageIDs(message Message) ([]string, error) {
-	return maindb.ToolResultMessageIDs(message)
-}

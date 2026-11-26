@@ -14,16 +14,21 @@ import (
 const ToolResultMessageKey = "tool_result_message_ids"
 
 // ToolResultMessageIDs returns the ordered result boundaries of one call batch.
-func ToolResultMessageIDs(message Message) ([]string, error) {
+func (message Message) ToolResultMessageIDs() ([]string, error) {
 	fields, err := DecodeSessionMetadata(message.Metadata)
 	if err != nil {
 		return nil, err
 	}
+	return fields.ToolResultMessageIDs()
+}
+
+func (fields SessionMetadata) ToolResultMessageIDs() ([]string, error) {
 	var ids []string
 	if raw, ok := fields[ToolResultMessageKey]; ok {
-		err = json.Unmarshal(raw, &ids)
+		err := json.Unmarshal(raw, &ids)
+		return ids, err
 	}
-	return ids, err
+	return nil, nil
 }
 
 func validateToolBatch(commit DialogueCommit) error {
@@ -34,20 +39,13 @@ func validateToolBatch(commit DialogueCommit) error {
 	if batch.Call == nil || batch.Call.Role != RoleAssistant || batch.Call.ID == "" || len(batch.Results) == 0 {
 		return fmt.Errorf("invalid tool batch messages")
 	}
-	fields, err := DecodeSessionMetadata(batch.Call.Metadata)
+	ids, err := batch.Call.ToolResultMessageIDs()
 	if err != nil {
 		return err
 	}
 	calls := batch.Call.ToolCalls
-	var ids []string
-	if raw, ok := fields[ToolResultMessageKey]; ok {
-		err = json.Unmarshal(raw, &ids)
-	}
-	if err != nil || len(calls) != len(batch.Results) || len(ids) != len(calls) {
+	if len(calls) != len(batch.Results) || len(ids) != len(calls) {
 		return fmt.Errorf("tool batch identity mismatch")
-	}
-	if batch.Call.CreatedAt.IsZero() {
-		batch.Call.CreatedAt = time.Now()
 	}
 	seen := map[string]bool{batch.Call.ID: true}
 	callIDs := map[string]bool{}
@@ -56,7 +54,6 @@ func validateToolBatch(commit DialogueCommit) error {
 			return fmt.Errorf("tool batch identity mismatch")
 		}
 		seen[result.ID], callIDs[calls[i].ID] = true, true
-		result.CreatedAt = batch.Call.CreatedAt
 	}
 	return nil
 }
@@ -92,7 +89,7 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit DialogueCommit, fi
 	}
 	message := update.Result
 	if message == nil {
-		ids, err := ToolResultMessageIDs(*update.Call)
+		ids, err := update.Call.ToolResultMessageIDs()
 		if err != nil {
 			return err
 		}

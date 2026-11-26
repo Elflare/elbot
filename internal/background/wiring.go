@@ -50,11 +50,7 @@ func elnisError(err error) error {
 }
 
 func elnisEvent(row *storage.ElnisEvent, err error) (*elnis.EventRecord, error) {
-	if err != nil {
-		return nil, elnisError(err)
-	}
-	return &elnis.EventRecord{ID: row.ID, EventKey: row.EventKey, ContentHash: row.ContentHash,
-		ResolvedTargets: row.ResolvedTargets, SessionID: row.SessionID, Result: row.Result}, nil
+	return (*elnis.EventRecord)(row), elnisError(err)
 }
 
 func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (*elnis.EventRecord, error) {
@@ -124,7 +120,7 @@ func (b elnisBridge) ListReportDeliveries(ctx context.Context, id string) ([]eln
 	}
 	items := make([]elnis.ReportDelivery, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, elnis.ReportDelivery{ID: row.ID, Target: row.Target, Output: row.Output, MessageID: row.MessageID, Status: row.Status})
+		items = append(items, elnis.ReportDelivery(row))
 	}
 	return items, nil
 }
@@ -333,7 +329,7 @@ func (b cronBridge) UpdateNextRunAt(ctx context.Context, id string, next *time.T
 	return cronError(b.repo.UpdateNextRunAt(ctx, id, next, updated))
 }
 func (b cronBridge) UpdateRunState(ctx context.Context, id string, state elcron.JobRunState) error {
-	return cronError(b.repo.UpdateRunState(ctx, id, storage.CronJobRunState{LastRunAt: state.LastRunAt, UpdatedAt: state.UpdatedAt}))
+	return cronError(b.repo.UpdateRunState(ctx, id, state.LastRunAt, state.UpdatedAt))
 }
 func (b cronBridge) CompareAndSwapDelivery(ctx context.Context, id, expected, next, state string, mappings []share.ReportMessageMap) (bool, error) {
 	swapped, err := b.repo.CompareAndSwapDelivery(ctx, id, expected, next, state, reportMessageMaps(mappings))

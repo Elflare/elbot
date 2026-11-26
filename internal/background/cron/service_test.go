@@ -834,7 +834,7 @@ func deliverTestReport(t *testing.T, s *Service, platform, sessionID, messageID 
 }
 
 func TestNormalizeJobNameAddsUserPrefix(t *testing.T) {
-	if got := normalizeJobName(" daily summary! "); got != "user.cron.daily_summary" {
+	if got := crondef.NormalizeJobName(" daily summary! "); got != "user.cron.daily_summary" {
 		t.Fatalf("name=%q", got)
 	}
 }
