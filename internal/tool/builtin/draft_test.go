@@ -39,10 +39,10 @@ func TestDraftFiles(t *testing.T) {
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("listing created draft directory: %v", err)
 	}
-	if got := content("A", `{"name":"notes.md","content":"one\n"}`); got != "one\n" {
+	path := filepath.Join(root, "A", "notes.md")
+	if got := content("A", `{"name":"notes.md","content":"one\n"}`); got != path {
 		t.Fatalf("create returned %q", got)
 	}
-	path := filepath.Join(root, "A", "notes.md")
 	var files [][2]string
 	if err := json.Unmarshal([]byte(content("A", `{}`)), &files); err != nil || len(files) != 1 || files[0] != [2]string{"notes.md", path} {
 		t.Fatalf("list = %v, %v", files, err)
@@ -64,10 +64,11 @@ func TestDraftFiles(t *testing.T) {
 	if got := content("B", `{}`); got != `[]` {
 		t.Fatalf("another session saw %q", got)
 	}
-	if got := content("B", `{"name":"notes.md","content":""}`); got != "" {
+	pathB := filepath.Join(root, "B", "notes.md")
+	if got := content("B", `{"name":"notes.md","content":""}`); got != pathB {
 		t.Fatalf("empty create returned %q", got)
 	}
-	if b, err := os.ReadFile(filepath.Join(root, "B", "notes.md")); err != nil || len(b) != 0 {
+	if b, err := os.ReadFile(pathB); err != nil || len(b) != 0 {
 		t.Fatalf("empty draft: %q, %v", b, err)
 	}
 }
