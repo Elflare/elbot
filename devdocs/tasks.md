@@ -1,11 +1,3 @@
-## 业务线
-
-把以下包和5条业务线一样并列
-- [x] control
-- [x] storage
-- [x] logging
-- [x] session 
-
 ## 代码精简
 
 目标：精简所有过度防御、无用（或者多余）变量、重复逻辑、过度抽象
@@ -14,22 +6,6 @@
 每次看一个包时，列举所有if err之类的判断
 生命周期：启动失败直接报错退出；全部启动成功后才负责关闭
 每个包分两步，第一步不改变逻辑的精简，第二步可以改变逻辑，只不改变功能，从代码逻辑、架构方面还能怎么精简，主要是去重复逻辑、减少猜测、兜底之类的
-- [x] app包
-- [x] agent包
-- [x] platform包
-- [x] tool包
-- [x] hook 包（总管启动失败直接报错退出；单个插件失败只报该插件的错误，不阻断模块启动，修正后可热重载）
-- [x] background 包
-- [x] completion包
-- [x] fileops包
-- [x] workspace包
-- [x] llm包
-- [x] media包
-- [x] storage包
-- [x] session包
-- [x] command包
-- [x] control包
-- [x] delivery包
 
 ## 不一定实现
 
