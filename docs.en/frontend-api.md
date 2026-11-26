@@ -22,14 +22,18 @@ If login fails, `error` is returned and the connection is closed. On success, `h
 
 ## Sessions and First Message
 
-1. **Entering a new conversation**: Clear subscriptions for this connection and display a blank page. Do not create a Session, nor stop tasks from old Sessions.
-2. **First transmission**: First create a Session, subscribe to the returned ID, and then send a WebSocket `input`. When opening an existing Session, subscribe and read history directly without needing to create one.
-3. **Subsequent inputs**: Use a new `id` for each transmission; the `session_id` must match the subscription of this connection. Standard CLIs without a subscription may omit `session_id` and use the platform's current Session. Subscription is not equivalent to `/resume`.
+1. **Entering a new conversation**: Clear subscriptions for the current connection and display a blank page. Do not create a Session, nor stop tasks from old Sessions.
+2. **First send**: First create a Session, subscribe to the returned ID, and then send the WebSocket `input`. When opening an existing Session, subscribe and read history directly without needing to create one.
+3. **Subsequent inputs**: Use a new `id` for each send; the `session_id` must match the subscription of the current connection. Ordinary CLIs that are not subscribed may omit the `session_id` and use the platform's current Session. Subscribing is not equivalent to `/resume`.
 4. **Reconnection**: Re-login, subscribe, and read history. The server does not replay increments during the disconnection period, and the client should not automatically replay write requests. After switching Sessions, ignore in-flight output from old Sessions based on the `session_id`.
 
 ```json
 {"type":"input","id":"m-1","session_id":"cl93","text":"Hello"}
 ```
+
+A successful response to a Session change is a submission receipt. When a preview is needed, use the returned Session ID to query `GET /api/v1/sessions/{session_id}/messages`; if the preview fails, only retry the read, not the change.
+
+The `content_base64` of the management interface `GET /api/v1/files/content` is the Base64 encoding of the current byte range. Decode Base64 slice by slice and then concatenate bytes or stream-decode text, using `next_offset` for the next slice. For overwrite saves, use the revision obtained from a full-text read; `PUT` still submits UTF-8 text `content`.
 
 ## HTTP Attachment Interface
 

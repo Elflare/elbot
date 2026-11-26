@@ -1,5 +1,13 @@
 {
   "segments": {
+    "docs/frontend-api.md:section:16fd445454d0d096c9eb2a2de17074264c5637b1927628142fde5d530b2a6ad0": {
+      "kind": "section",
+      "source": "## 会话与首条消息\n\n1. **进入新对话**：清空本连接的订阅，显示空白页。不创建会话，也不停止旧会话的任务。\n2. **首次发送**：先创建会话，订阅返回的 ID，再发 WebSocket `input`。打开已有会话则直接订阅并读取历史，不必创建。\n3. **后续输入**：每次发送使用新的 `id`，`session_id` 必须与本连接的订阅一致。未订阅的普通 CLI 可省略 `session_id`，使用平台当前会话。订阅不等于 `/resume`。\n4. **重连**：重新登录、订阅并读取历史。服务端不重放断线期间的增量，客户端也不要自动重放写请求。切换会话后按 `session_id` 忽略旧会话在途的输出。\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"你好\"}\n```\n\n会话变更的成功响应是提交回执。需要预览时，用返回的会话 ID 查询 `GET /api/v1/sessions/{session_id}/messages`；预览失败只重试读取，不重试变更。\n\n管理接口 `GET /api/v1/files/content` 的 `content_base64` 是本次字节范围的 Base64。逐片解码 Base64 后再拼字节或流式解码文本，下一片用 `next_offset`。覆盖保存使用全文读取的 revision，`PUT` 仍提交 UTF-8 文本 `content`。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "33debcee79a82edd4e48dc445acbffc488020d5cfdbd6c32142773736e9d98ab",
+      "translation": "## Sessions and First Message\n\n1. **Entering a new conversation**: Clear subscriptions for the current connection and display a blank page. Do not create a Session, nor stop tasks from old Sessions.\n2. **First send**: First create a Session, subscribe to the returned ID, and then send the WebSocket `input`. When opening an existing Session, subscribe and read history directly without needing to create one.\n3. **Subsequent inputs**: Use a new `id` for each send; the `session_id` must match the subscription of the current connection. Ordinary CLIs that are not subscribed may omit the `session_id` and use the platform's current Session. Subscribing is not equivalent to `/resume`.\n4. **Reconnection**: Re-login, subscribe, and read history. The server does not replay increments during the disconnection period, and the client should not automatically replay write requests. After switching Sessions, ignore in-flight output from old Sessions based on the `session_id`.\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"Hello\"}\n```\n\nA successful response to a Session change is a submission receipt. When a preview is needed, use the returned Session ID to query `GET /api/v1/sessions/{session_id}/messages`; if the preview fails, only retry the read, not the change.\n\nThe `content_base64` of the management interface `GET /api/v1/files/content` is the Base64 encoding of the current byte range. Decode Base64 slice by slice and then concatenate bytes or stream-decode text, using `next_offset` for the next slice. For overwrite saves, use the revision obtained from a full-text read; `PUT` still submits UTF-8 text `content`.\n\n",
+      "updated_at": 1795679990
+    },
     "docs/frontend-api.md:section:48c2852d9344d5d757d7e9c2516090abb38bf961c2d85ef68ece0f4e3ac0fa8b": {
       "kind": "section",
       "source": "## WebSocket 消息\n\n| 消息 | 客户端处理 |\n|---|---|\n| `user_input` | 同账号订阅者收到输入回显，不代表模型已处理或历史已落库。按 `id` 与历史的 `input_ids` 去重，不按正文去重。 |\n| `chat` / `attachment` | 按到达顺序展示完整消息和附件。`chat.blocks` 优先于 `text`；`question` 块通过管理 API 填草稿、确认，回答后的模型输出仍走 WebSocket。 |\n| `stream` | 按 `stream_id` 维护单条消息的预览，见下文。已由 `send` 提交的正文不会再以 `chat` 重发。 |\n| `command_result` | 仅发给原连接。`request_id` 对应 `input.id`；优先展示 `error`，否则展示 `result.blocks`，仅在 `success` 时读取 `result.data`。`actions` 的命令作为新输入提交。 |\n| `complete` → `complete_result` | 发送 `id`、`text` 和可选的 `cursor`，按 `id` 匹配响应。`cursor`（默认末尾）及候选的 `ReplaceStart`、`ReplaceEnd` 都是 UTF-8 字节偏移，不是字符序号。 |\n| `status` / `notice` | `status.snapshot` 是可能合并的运行状态快照；`notice` 是账号级文本通知，不按会话过滤，缺省级别为 `INFO`。 |\n| `session_binding_changed` | 当前账号的绑定从 `session_id` 变为 `next_session_id`，只通知仍订阅旧 ID 的连接。服务端不代改订阅；页面若仍在看旧会话，可用 `PUT /view/session` 订阅新 ID。首次绑定、解绑、单纯切换 view 不发，断线不补发。 |\n| `error` | 展示 `text`；有 `id` 时关联原请求。断线或客户端超时不代表后台任务已取消。 |\n\n流事件中，`text_delta`、`reasoning_delta` 分别追加正文和推理，`reasoning_done` 结束推理。`reset` 清空预览以便重试；`finish` 只表示生成结束，仍须保留预览。收到 `send` 才用最终正文或 `blocks` 替换预览并提交，保留已有推理。\n\n工具调用与结果可能跨流：按 `tool_call_id` 而非 `stream_id` 配对 `tool_call` 和 `tool_result`，保留调用名称、参数和结果 segments。`stream_id` 仅在当前连接有效，不用于重连恢复。\n\n完整客户端示例见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n",
@@ -24,14 +32,6 @@
       "translation": "## Static Frontend Hosting\n\nPlace `frontend/index.html` next to the main configuration. After adding it for the first time, restart the CLI remote service to access it via `/`. Static files are public, and directory listing or SPA path fallback is not provided; authentication is still required to operate ElBot. See [CLI Remote Configuration](configuration.md#cli-远程配置) for the listening address and token.\n\nThe workspace panel uses `is_git` to distinguish between two types of empty lists: `true` indicates the workspace is clean; `false` indicates that the Git status cannot be read, displaying \"Not a Git repository or invalid Git configuration\".\n\n",
       "updated_at": 1795597014
     },
-    "docs/frontend-api.md:section:6c13858b77acecbf882e1d8ea947647d8fed11809d4e2608064a94380c638ddd": {
-      "kind": "section",
-      "source": "## 会话与首条消息\n\n1. **进入新对话**：清空本连接的订阅，显示空白页。不创建会话，也不停止旧会话的任务。\n2. **首次发送**：先创建会话，订阅返回的 ID，再发 WebSocket `input`。打开已有会话则直接订阅并读取历史，不必创建。\n3. **后续输入**：每次发送使用新的 `id`，`session_id` 必须与本连接的订阅一致。未订阅的普通 CLI 可省略 `session_id`，使用平台当前会话。订阅不等于 `/resume`。\n4. **重连**：重新登录、订阅并读取历史。服务端不重放断线期间的增量，客户端也不要自动重放写请求。切换会话后按 `session_id` 忽略旧会话在途的输出。\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"你好\"}\n```\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "c7bc853f96f0c5cd0a6e5896d4d73e0b43523f0990f3a79f10ef95e9301e659d",
-      "translation": "## Sessions and First Message\n\n1. **Entering a new conversation**: Clear subscriptions for this connection and display a blank page. Do not create a Session, nor stop tasks from old Sessions.\n2. **First transmission**: First create a Session, subscribe to the returned ID, and then send a WebSocket `input`. When opening an existing Session, subscribe and read history directly without needing to create one.\n3. **Subsequent inputs**: Use a new `id` for each transmission; the `session_id` must match the subscription of this connection. Standard CLIs without a subscription may omit `session_id` and use the platform's current Session. Subscription is not equivalent to `/resume`.\n4. **Reconnection**: Re-login, subscribe, and read history. The server does not replay increments during the disconnection period, and the client should not automatically replay write requests. After switching Sessions, ignore in-flight output from old Sessions based on the `session_id`.\n\n```json\n{\"type\":\"input\",\"id\":\"m-1\",\"session_id\":\"cl93\",\"text\":\"Hello\"}\n```\n\n",
-      "updated_at": 1795165025
-    },
     "docs/frontend-api.md:section:765418f0273b2194bb6e11e010bbe7b65e0f0bb8fa367930c4b81574f6753c54": {
       "kind": "section",
       "source": "## HTTP 附件接口\n\n`/cli/v1/files` 不属于管理 API。用 `media_token` 发 `POST /cli/v1/files`，每次上传一个 `multipart/form-data` 字段 `file`。把返回的 `id` 按顺序放入 `input.file_ids`；纯附件输入可省略 `text`。任一附件准备失败，整条输入不提交。\n\n输出的 `attachment` 帧含连接专属的附件描述（`id`、`name`、`mime_type`、`size`、`kind`）。通过 `GET /cli/v1/files/{id}` 下载，`HEAD` 只取元信息，`DELETE` 撤销授权。发送输入不会释放附件；断连后旧 ID 失效，待发送的文件须重新上传。\n\n",
@@ -50,8 +50,8 @@
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "71413c8aceec542a904309e4aa0b21446ebcd3872bb196c2ca332afeb3403c61",
+  "source_hash": "39936aeec8ab3fb3463ca28f8a3b581e61d4ea700d7d8e73c37a929c85f90f5f",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1795597014,
+  "updated_at": 1795679991,
   "version": 3
 }
