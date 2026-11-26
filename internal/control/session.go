@@ -173,7 +173,7 @@ func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest
 		return operationresult.Result[RenameSessionResult]{Status: renamed.Status, Message: renamed.Message}, nil
 	}
 	row := renamed.Data
-	return m.sessionChange(ctx, row, row.ID, 1)
+	return sessionChange(row, row.ID, ""), nil
 }
 
 func (m *Supervisor) SetSessionArchived(ctx context.Context, req SetSessionArchivedRequest) (operationresult.Result[SetSessionArchivedResult], error) {
@@ -204,7 +204,7 @@ func (m *Supervisor) SetSessionArchived(ctx context.Context, req SetSessionArchi
 		return operationresult.Result[SetSessionArchivedResult]{Status: changed.Status, Message: changed.Message}, nil
 	}
 	row := changed.Data
-	return m.sessionChange(ctx, row, row.ID, 1)
+	return sessionChange(row, row.ID, ""), nil
 }
 
 func (m *Supervisor) SetSessionPinned(ctx context.Context, req SetSessionPinnedRequest) (operationresult.Result[SetSessionPinnedResult], error) {
@@ -233,7 +233,7 @@ func (m *Supervisor) SetSessionPinned(ctx context.Context, req SetSessionPinnedR
 		return operationresult.Result[SetSessionPinnedResult]{Status: changed.Status, Message: changed.Message}, nil
 	}
 	row := changed.Data
-	return m.sessionChange(ctx, row, row.ID, 1)
+	return sessionChange(row, row.ID, ""), nil
 }
 
 func (m *Supervisor) DeleteSession(ctx context.Context, req DeleteSessionRequest) (operationresult.Result[DeleteSessionResult], error) {
@@ -254,7 +254,7 @@ func (m *Supervisor) DeleteSession(ctx context.Context, req DeleteSessionRequest
 	if deleted.Status != operationresult.Success {
 		return operationresult.Result[DeleteSessionResult]{Status: deleted.Status, Message: deleted.Message}, nil
 	}
-	return m.sessionChange(ctx, nil, req.SessionID, 1)
+	return sessionChange(nil, req.SessionID, ""), nil
 }
 
 func (m *Supervisor) CleanSessions(ctx context.Context, req CleanSessionsRequest) (operationresult.Result[CleanSessionsResult], error) {
@@ -281,9 +281,6 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 		return operationresult.Result[ResumeSessionResult]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	ctx = ready.Data
-	if req.MessageLimit < 0 {
-		return operationresult.Result[ResumeSessionResult]{Status: operationresult.InvalidArguments, Message: "message_limit 不能为负数"}, nil
-	}
 	if strings.TrimSpace(req.SessionID) == "" {
 		return operationresult.Result[ResumeSessionResult]{Status: operationresult.InvalidArguments, Message: "session_id 不能为空"}, nil
 	}
@@ -307,7 +304,7 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 	record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: "session_resume", Module: "control", Content: "title: " + row.Title, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
 	record.Identity.SessionID = row.ID
 	events.Log(ctx, record)
-	return m.sessionPreview(ctx, row, req.MessageLimit)
+	return sessionChange(row, row.ID, row.ID), nil
 }
 
 func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (operationresult.Result[ForkSessionResult], error) {
@@ -319,9 +316,6 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (o
 		return operationresult.Result[ForkSessionResult]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	ctx = ready.Data
-	if req.MessageLimit < 0 {
-		return operationresult.Result[ForkSessionResult]{Status: operationresult.InvalidArguments, Message: "message_limit 不能为负数"}, nil
-	}
 	if strings.TrimSpace(req.MessageID) == "" {
 		return operationresult.Result[ForkSessionResult]{Status: operationresult.InvalidArguments, Message: "message_id 不能为空"}, nil
 	}
@@ -343,7 +337,7 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (o
 	record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: "session_fork", Module: "control", Content: "parent: " + row.ParentSessionID + " · message: " + row.ForkFromMessageID, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
 	record.Identity.SessionID = row.ID
 	events.Log(ctx, record)
-	return m.sessionPreview(ctx, row, req.MessageLimit)
+	return sessionChange(row, row.ID, row.ID), nil
 }
 
 func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionRequest) (operationresult.Result[CompactSessionResult], error) {
@@ -370,7 +364,7 @@ func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionReque
 		return operationresult.Result[CompactSessionResult]{Status: compacted.Status, Message: compacted.Message}, nil
 	}
 	row := compacted.Data
-	return operationresult.Result[CompactSessionResult]{Status: operationresult.Success, Data: CompactSessionResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}}, nil
+	return sessionChange(row, row.ID, row.ID), nil
 }
 
 func (m *Supervisor) SetMode(ctx context.Context, req SetModeRequest) (operationresult.Result[SetModeResult], error) {
@@ -525,16 +519,8 @@ func (m *Supervisor) currentID(ctx context.Context) (operationresult.Result[stri
 	return operationresult.Result[string]{Status: operationresult.Success, Data: current.Data.ID}, nil
 }
 
-func (m *Supervisor) sessionChange(ctx context.Context, row *storage.Session, id string, count int) (operationresult.Result[SessionChangeResult], error) {
-	current, err := m.currentID(ctx)
-	if err != nil {
-		return operationresult.Result[SessionChangeResult]{}, err
-	}
-	if current.Status != operationresult.Success {
-		return operationresult.Result[SessionChangeResult]{Status: current.Status, Message: current.Message}, nil
-	}
-	result := SessionChangeResult{Session: sessionData(row), SessionID: id, CurrentSessionID: current.Data, AffectedCount: count}
-	return operationresult.Result[SessionChangeResult]{Status: operationresult.Success, Data: result}, nil
+func sessionChange(row *storage.Session, id, currentID string) operationresult.Result[SessionChangeResult] {
+	return operationresult.Result[SessionChangeResult]{Status: operationresult.Success, Data: SessionChangeResult{Session: sessionData(row), SessionID: id, CurrentSessionID: currentID, AffectedCount: 1}}
 }
 
 func sessionData(row *storage.Session) *SessionData {
@@ -575,20 +561,4 @@ func messageData(rows []storage.Message) ([]MessageData, error) {
 		result = append(result, item)
 	}
 	return result, nil
-}
-
-func (m *Supervisor) sessionPreview(ctx context.Context, row *storage.Session, limit int) (operationresult.Result[SessionChangeResult], error) {
-	result := SessionChangeResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}
-	if limit == 0 {
-		return operationresult.Result[SessionChangeResult]{Status: operationresult.Success, Data: result}, nil
-	}
-	messages, err := m.SessionMessages(ctx, SessionMessagesRequest{SessionID: row.ID, Page: 1, PageSize: limit})
-	if err != nil {
-		return operationresult.Result[SessionChangeResult]{}, err
-	}
-	if messages.Status != operationresult.Success {
-		return operationresult.Result[SessionChangeResult]{Status: messages.Status, Message: messages.Message}, nil
-	}
-	result.Messages = messages.Data.Items
-	return operationresult.Result[SessionChangeResult]{Status: operationresult.Success, Data: result}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -132,6 +133,41 @@ func TestWriteControlResultErrorPreservesGoErrorAndRejectsUnknownStatus(t *testi
 	}
 }
 
+func TestFileByteRangesOverHTTP(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.toml")
+	const text = "A冰B"
+	if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := control.NewSupervisor(&config.Config{ConfigPath: path}, control.SupervisorDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(NewHandler(HandlerOptions{Control: s, Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, error) {
+		return contextinfo.WithActor(ctx, contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Role: contextinfo.RoleSuperadmin}), nil
+	}}))
+	defer server.Close()
+	var got []byte
+	for _, q := range []string{"offset=0&limit=2", "offset=2"} {
+		resp, err := server.Client().Get(server.URL + "/api/v1/files/content?root=config&path=app.toml&" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var part struct {
+			Content []byte `json:"content_base64"`
+			Next    int    `json:"next_offset"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&part)
+		resp.Body.Close()
+		got = append(got, part.Content...)
+		if err != nil || resp.StatusCode != 200 || len(got) != part.Next {
+			t.Fatalf("chunk: %+v, status=%d, err=%v", part, resp.StatusCode, err)
+		}
+	}
+	if string(got) != text {
+		t.Fatalf("reassembled: %q", got)
+	}
+}
 func TestUsageBeforeFirstLog(t *testing.T) {
 	dir := t.TempDir()
 	supervisor, err := control.NewSupervisor(&config.Config{ConfigPath: filepath.Join(dir, "app.toml")}, control.SupervisorDeps{Logs: logging.Reader{Dir: dir}})

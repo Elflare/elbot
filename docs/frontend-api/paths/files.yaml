@@ -61,7 +61,7 @@
           schema: { type: integer, format: int64, minimum: 0, default: 0 }
       responses:
         '200':
-          description: File content and revision. Read the full file before using its revision to overwrite.
+          description: Base64-encoded bytes and their revision. Read the full file before using its revision to overwrite.
           content:
             application/json:
               schema: { $ref: '../components/schemas.yaml#/schemas/FileContent' }
@@ -82,7 +82,7 @@
               create: false
       responses:
         '200':
-          description: Write result.
+          description: Atomic write receipt. A failed write does not truncate the original file.
           content:
             application/json:
               schema: { $ref: '../components/schemas.yaml#/schemas/WriteFileResult' }

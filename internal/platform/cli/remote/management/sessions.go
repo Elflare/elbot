@@ -86,13 +86,7 @@ func (h *handler) sessionMessages(w http.ResponseWriter, req *http.Request) {
 	writeOKResult(w, result, err)
 }
 func (h *handler) resumeSession(w http.ResponseWriter, req *http.Request) {
-	body, ok := decodeAPIJSON[struct {
-		MessageLimit int `json:"message_limit"`
-	}](w, req)
-	if !ok {
-		return
-	}
-	result, err := h.control.ResumeSession(req.Context(), control.ResumeSessionRequest{SessionID: req.PathValue("session_id"), MessageLimit: body.MessageLimit})
+	result, err := h.control.ResumeSession(req.Context(), control.ResumeSessionRequest{SessionID: req.PathValue("session_id")})
 	if writeControlResultError(w, result, err) {
 		return
 	}
@@ -100,13 +94,12 @@ func (h *handler) resumeSession(w http.ResponseWriter, req *http.Request) {
 }
 func (h *handler) forkSession(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[struct {
-		MessageID    string `json:"message_id"`
-		MessageLimit int    `json:"message_limit"`
+		MessageID string `json:"message_id"`
 	}](w, req)
 	if !ok {
 		return
 	}
-	result, err := h.control.ForkSession(req.Context(), control.ForkSessionRequest{SessionID: req.PathValue("session_id"), MessageID: body.MessageID, MessageLimit: body.MessageLimit})
+	result, err := h.control.ForkSession(req.Context(), control.ForkSessionRequest{SessionID: req.PathValue("session_id"), MessageID: body.MessageID})
 	if writeControlResultError(w, result, err) {
 		return
 	}

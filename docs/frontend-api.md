@@ -29,6 +29,10 @@ ElBot 客户端通过 WebSocket 收发对话，通过同端口的 HTTP 接口管
 {"type":"input","id":"m-1","session_id":"cl93","text":"你好"}
 ```
 
+会话变更的成功响应是提交回执。需要预览时，用返回的会话 ID 查询 `GET /api/v1/sessions/{session_id}/messages`；预览失败只重试读取，不重试变更。
+
+管理接口 `GET /api/v1/files/content` 的 `content_base64` 是本次字节范围的 Base64。逐片解码 Base64 后再拼字节或流式解码文本，下一片用 `next_offset`。覆盖保存使用全文读取的 revision，`PUT` 仍提交 UTF-8 文本 `content`。
+
 ## HTTP 附件接口
 
 `/cli/v1/files` 不属于管理 API。用 `media_token` 发 `POST /cli/v1/files`，每次上传一个 `multipart/form-data` 字段 `file`。把返回的 `id` 按顺序放入 `input.file_ids`；纯附件输入可省略 `text`。任一附件准备失败，整条输入不提交。

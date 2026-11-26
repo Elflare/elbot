@@ -25,7 +25,7 @@ func TestFilesSaveExactContentAndPreservePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.Status != operationresult.Success || read.Data.Content != string(before) || read.Data.Revision != fileRevision(before) {
+	if read.Status != operationresult.Success || string(read.Data.Content) != string(before) || read.Data.Revision != fileRevision(before) {
 		t.Fatalf("read metadata: %+v", read)
 	}
 	result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "new\nline\n", ExpectedRevision: read.Data.Revision})
@@ -124,7 +124,7 @@ func TestExternalConfigAndManagedCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	read, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "providers.toml"})
-	if err != nil || read.Status != operationresult.Success || read.Data.Content != "provider = true\n" {
+	if err != nil || read.Status != operationresult.Success || string(read.Data.Content) != "provider = true\n" {
 		t.Fatalf("external config: %+v %v", read, err)
 	}
 	listed, err := m.ListFiles(testContext(true), ListFilesRequest{Root: "config"})
@@ -203,19 +203,19 @@ func TestLogReadRangesAndReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Status != operationresult.Success || first.Data.Content != content[:4] || !first.Data.Truncated || first.Data.NextOffset != 4 {
+	if first.Status != operationresult.Success || string(first.Data.Content) != content[:4] || !first.Data.Truncated || first.Data.NextOffset != 4 {
 		t.Fatalf("first chunk: %+v", first)
 	}
 	second, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: first.Data.NextOffset, Limit: 4})
-	if err != nil || second.Status != operationresult.Success || second.Data.Content != content[4:8] || second.Data.NextOffset != 8 {
+	if err != nil || second.Status != operationresult.Success || string(second.Data.Content) != content[4:8] || second.Data.NextOffset != 8 {
 		t.Fatalf("second chunk: %+v %v", second, err)
 	}
 	part, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: 1, Limit: 1})
-	if err != nil || part.Status != operationresult.Success || part.Data.Content != content[1:2] || part.Data.NextOffset != 2 {
+	if err != nil || part.Status != operationresult.Success || string(part.Data.Content) != content[1:2] || part.Data.NextOffset != 2 {
 		t.Fatalf("exact byte range: %+v %v", part, err)
 	}
 	rest, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: second.Data.NextOffset})
-	if err != nil || rest.Status != operationresult.Success || rest.Data.Content != content[8:] || rest.Data.NextOffset != int64(len(content)) || rest.Data.Truncated {
+	if err != nil || rest.Status != operationresult.Success || string(rest.Data.Content) != content[8:] || rest.Data.NextOffset != int64(len(content)) || rest.Data.Truncated {
 		t.Fatalf("read to end: %+v %v", rest, err)
 	}
 	forbidden, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "logs", Path: "runtime.log", Content: "clear", ExpectedRevision: first.Data.Revision})
@@ -228,11 +228,11 @@ func TestLogReadRangesAndReadOnly(t *testing.T) {
 func TestRegularFilesSupportCallerReadRanges(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
 	part, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "app.toml", Offset: 1, Limit: 2})
-	if err != nil || part.Status != operationresult.Success || part.Data.Content != "ni" || part.Data.Offset != 1 || part.Data.NextOffset != 3 || part.Data.Size != 8 || !part.Data.Truncated {
+	if err != nil || part.Status != operationresult.Success || string(part.Data.Content) != "ni" || part.Data.Offset != 1 || part.Data.NextOffset != 3 || part.Data.Size != 8 || !part.Data.Truncated {
 		t.Fatalf("partial read: %+v %v", part, err)
 	}
 	rest, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "app.toml", Offset: 3})
-	if err != nil || rest.Status != operationresult.Success || rest.Data.Content != "tial\n" || rest.Data.NextOffset != 8 || rest.Data.Truncated {
+	if err != nil || rest.Status != operationresult.Success || string(rest.Data.Content) != "tial\n" || rest.Data.NextOffset != 8 || rest.Data.Truncated {
 		t.Fatalf("read to end: %+v %v", rest, err)
 	}
 }
@@ -295,7 +295,7 @@ func TestManagedFilesHaveNoTwoMiBSizeLimit(t *testing.T) {
 	if err != nil || read.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if read.Data.Content != content || read.Data.Truncated {
+	if string(read.Data.Content) != content || read.Data.Truncated {
 		t.Fatal("large file was truncated")
 	}
 	updated, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "large/SKILL.md", Content: content + "updated", ExpectedRevision: created.Data.Revision})
@@ -318,7 +318,7 @@ func TestLogReadCanRequestMoreThanTwoMiB(t *testing.T) {
 	if err != nil || read.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if read.Data.Content != content || read.Data.Truncated {
+	if string(read.Data.Content) != content || read.Data.Truncated {
 		t.Fatal("large log request was capped or overflowed")
 	}
 }

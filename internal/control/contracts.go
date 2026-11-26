@@ -77,13 +77,11 @@ type CleanSessionsRequest struct {
 }
 type ResumeSessionRequest struct {
 	SessionID    string `json:"session_id"`
-	MessageLimit int    `json:"message_limit"` // 返回最近消息的数量；0 不查询。
 	AllPlatforms bool   `json:"all_platforms"` // 仅 last 查询可使用，超管显式查询所有平台。
 }
 type ForkSessionRequest struct {
-	SessionID    string `json:"session_id"`
-	MessageID    string `json:"message_id"`
-	MessageLimit int    `json:"message_limit"` // 返回最近消息的数量；0 不查询。
+	SessionID string `json:"session_id"`
+	MessageID string `json:"message_id"`
 }
 type CompactSessionRequest struct {
 	SessionID string `json:"session_id"`
@@ -101,10 +99,10 @@ type Continuation struct {
 	Text      string // 保留原始输入，不 TrimSpace。
 }
 type SessionChangeResult struct {
-	Messages         []MessageData `json:"messages"` // 按调用方选择读取的完整原始消息。
+	Messages         []MessageData `json:"messages,omitempty"` // 命令出口按需查询的预览；变更回执不查询历史。
 	Session          *SessionData  `json:"session"`
 	SessionID        string        `json:"session_id"`
-	CurrentSessionID string        `json:"current_session_id"`
+	CurrentSessionID string        `json:"current_session_id,omitempty"` // 仅在本操作激活会话时返回。
 	AffectedCount    int           `json:"affected_count"`
 	Unchanged        bool          `json:"unchanged"`
 	Continuation     *Continuation `json:"-"`
@@ -365,8 +363,8 @@ type ReadFileRequest struct {
 type ReadFileResult struct {
 	Root       string `json:"root"`
 	Path       string `json:"path"`
-	Content    string `json:"content"`  // 原始字节片段，文本解码由调用方负责。
-	Revision   string `json:"revision"` // 本次读取内容的 revision；覆盖保存应使用全文读取的 revision。
+	Content    []byte `json:"content_base64"` // JSON 以 Base64 交付原始字节片段。
+	Revision   string `json:"revision"`       // 本次读取内容的 revision；覆盖保存应使用全文读取的 revision。
 	Size       int64  `json:"size"`
 	Offset     int64  `json:"offset"`
 	NextOffset int64  `json:"next_offset"`

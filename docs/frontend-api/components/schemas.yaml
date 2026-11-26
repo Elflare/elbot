@@ -131,13 +131,12 @@ schemas:
     SessionChange:
       type: object
       properties:
-        messages: { type: array, items: { $ref: '#/schemas/Message' } }
         session: { oneOf: [{ $ref: '#/schemas/Session' }, { type: 'null' }] }
         session_id: { type: string }
-        current_session_id: { type: string }
+        current_session_id: { type: string, description: Session activated by this operation; omitted for management-only changes. }
         affected_count: { type: integer }
         unchanged: { type: boolean }
-      required: [messages, session, session_id, current_session_id, affected_count, unchanged]
+      required: [session, session_id, affected_count, unchanged]
     Model:
       type: object
       properties:
@@ -587,13 +586,13 @@ schemas:
       properties:
         root: { type: string }
         path: { type: string }
-        content: { type: string, description: Raw byte range represented as a JSON string. }
+        content_base64: { type: string, contentEncoding: base64, description: Exact bytes from offset through next_offset (exclusive). }
         revision: { type: string }
         size: { type: integer, format: int64 }
         offset: { type: integer, format: int64 }
         next_offset: { type: integer, format: int64 }
         truncated: { type: boolean }
-      required: [root, path, content, revision, size, offset, next_offset, truncated]
+      required: [root, path, content_base64, revision, size, offset, next_offset, truncated]
     WriteFileRequest:
       type: object
       additionalProperties: false

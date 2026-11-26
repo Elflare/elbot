@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -188,7 +189,7 @@ func (m *Supervisor) ReadFile(ctx context.Context, req ReadFileRequest) (operati
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[ReadFileResult]{}, err
 	}
-	result.Content = string(data)
+	result.Content = data
 	result.Revision = fileRevision(data)
 	result.Size = info.Size()
 	result.Offset = req.Offset
@@ -244,28 +245,25 @@ func (m *Supervisor) WriteFile(ctx context.Context, req WriteFileRequest) (opera
 	if !req.Create && created {
 		return operationresult.Result[WriteFileResult]{Status: operationresult.NotFound, Message: "目标文件不存在"}, nil
 	}
-	if !created {
-		if !info.Mode().IsRegular() {
-			return operationresult.Result[WriteFileResult]{Status: operationresult.InvalidTarget, Message: "目标不是普通文件"}, nil
-		}
-		data, err := root.ReadFile(name)
-		if err != nil {
+	if !created && !info.Mode().IsRegular() {
+		return operationresult.Result[WriteFileResult]{Status: operationresult.InvalidTarget, Message: "目标不是普通文件"}, nil
+	}
+	if created {
+		if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 			return operationresult.Result[WriteFileResult]{}, err
 		}
-		if fileRevision(data) != req.ExpectedRevision {
-			return operationresult.Result[WriteFileResult]{Status: operationresult.Conflict, Message: "文件已经改变，请重新读取"}, nil
-		}
-	} else if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+	}
+	base, err := filepath.EvalSymlinks(root.Name())
+	if err != nil {
 		return operationresult.Result[WriteFileResult]{}, err
 	}
-	// 日志只读约束作用于实际目标，也覆盖来自其他逻辑根的路径或符号链接。
-	target := filepath.Join(root.Name(), name)
+	target := filepath.Join(base, name)
 	if created {
-		parent, err := filepath.EvalSymlinks(filepath.Dir(target))
+		dir, err := filepath.EvalSymlinks(filepath.Dir(target))
 		if err != nil {
 			return operationresult.Result[WriteFileResult]{}, err
 		}
-		target = filepath.Join(parent, filepath.Base(target))
+		target = filepath.Join(dir, filepath.Base(target))
 	} else {
 		target, err = filepath.EvalSymlinks(target)
 		if err != nil {
@@ -275,28 +273,79 @@ func (m *Supervisor) WriteFile(ctx context.Context, req WriteFileRequest) (opera
 	if m.isLogTarget(target) {
 		return operationresult.Result[WriteFileResult]{Status: operationresult.Forbidden, Message: "日志文件只读"}, nil
 	}
-	flags := os.O_WRONLY | os.O_TRUNC
-	if created {
-		flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return operationresult.Result[WriteFileResult]{}, err
 	}
-	file, err := root.OpenFile(name, flags, 0o600)
+	parent, err := root.OpenRoot(filepath.Dir(rel))
+	if err != nil {
+		return operationresult.Result[WriteFileResult]{}, err
+	}
+	defer parent.Close()
+	name = filepath.Base(rel)
+	mode := fs.FileMode(0o600)
+	if !created {
+		// 检查原文件的写权限和 revision，但不截断它。
+		old, err := parent.OpenFile(name, os.O_RDWR, 0)
+		if err != nil {
+			return operationresult.Result[WriteFileResult]{}, err
+		}
+		opened, err := old.Stat()
+		if err != nil {
+			old.Close()
+			return operationresult.Result[WriteFileResult]{}, err
+		}
+		if !os.SameFile(info, opened) {
+			old.Close()
+			return operationresult.Result[WriteFileResult]{Status: operationresult.Conflict, Message: "文件已经改变，请重新读取"}, nil
+		}
+		data, err := io.ReadAll(old)
+		old.Close()
+		if err != nil {
+			return operationresult.Result[WriteFileResult]{}, err
+		}
+		if fileRevision(data) != req.ExpectedRevision {
+			return operationresult.Result[WriteFileResult]{Status: operationresult.Conflict, Message: "文件已经改变，请重新读取"}, nil
+		}
+		mode = opened.Mode().Perm()
+	}
+	err = atomicReplace(ctx, parent, name, strings.NewReader(req.Content), mode, created)
 	if created && errors.Is(err, fs.ErrExist) {
 		return operationresult.Result[WriteFileResult]{Status: operationresult.Conflict, Message: "目标文件已存在"}, nil
 	}
 	if err != nil {
 		return operationresult.Result[WriteFileResult]{}, err
 	}
-	_, writeErr := io.WriteString(file, req.Content)
-	closeErr := file.Close()
-	if writeErr != nil {
-		return operationresult.Result[WriteFileResult]{}, writeErr
-	}
-	if closeErr != nil {
-		return operationresult.Result[WriteFileResult]{}, closeErr
-	}
 	result.Created = created
 	result.Revision = fileRevision([]byte(req.Content))
 	return operationresult.Result[WriteFileResult]{Status: operationresult.Success, Data: result}, nil
+}
+
+// atomicReplace 在已打开的目标目录内发布完整文件。创建用 Link 保证不覆盖并发创建者。
+func atomicReplace(ctx context.Context, parent *os.Root, name string, data io.Reader, mode fs.FileMode, create bool) error {
+	tmp := ".elbot-" + rand.Text() + ".tmp"
+	f, err := parent.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer parent.Remove(tmp)
+	_, err = io.Copy(f, data)
+	if err == nil {
+		err = f.Chmod(mode)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if create {
+		return parent.Link(tmp, name)
+	}
+	return parent.Rename(tmp, name)
 }
 
 func fileRevision(data []byte) string {

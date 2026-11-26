@@ -57,11 +57,11 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (command
 	if all && target != "last" {
 		return command.TextResult(operationresult.InvalidArguments, "-a/--all is only valid for the resume list or last"), nil
 	}
-	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, MessageLimit: resumeHistoryTurns * 2, AllPlatforms: all})
+	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, AllPlatforms: all})
 	if err != nil {
 		return command.Result{}, err
 	}
-	return sessionChange(req.Name, data), nil
+	return sessionPreview(ctx, deps, req.Name, data), nil
 }
 
 func resumePage(ctx context.Context, deps Deps, page int, all bool) (command.Result, error) {
@@ -189,10 +189,10 @@ func NewFork(deps Deps) command.Handler {
 		if messageID == "" {
 			return command.TextResult(operationresult.InvalidArguments, fmt.Sprintf("usage: %s", deps.CommandText("fork", "<message_id>"))), nil
 		}
-		data, err := deps.Control.ForkSession(ctx, control.ForkSessionRequest{MessageID: messageID, MessageLimit: resumeHistoryTurns * 2})
+		data, err := deps.Control.ForkSession(ctx, control.ForkSessionRequest{MessageID: messageID})
 		if err != nil {
 			return command.Result{}, err
 		}
-		return sessionChange(req.Name, data), nil
+		return sessionPreview(ctx, deps, req.Name, data), nil
 	})
 }

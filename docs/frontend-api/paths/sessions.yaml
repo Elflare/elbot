@@ -193,19 +193,9 @@
       summary: Resume a session and bind it as current
       parameters:
         - $ref: '../components/transport.yaml#/parameters/sessionID'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                message_limit: { type: integer, minimum: 0, default: 0 }
-            example: { message_limit: 20 }
       responses:
         '200':
-          description: Resume result. The internal continuation field is omitted from JSON.
+          description: Committed resume receipt. Fetch optional history from the messages endpoint.
           content:
             application/json:
               schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
@@ -225,12 +215,11 @@
               additionalProperties: false
               properties:
                 message_id: { type: string }
-                message_limit: { type: integer, minimum: 0, default: 0 }
               required: [message_id]
-            example: { message_id: msg-123, message_limit: 20 }
+            example: { message_id: msg-123 }
       responses:
         '200':
-          description: Fork result. The internal continuation field is omitted from JSON.
+          description: Committed fork receipt. Use the returned session ID to fetch optional history.
           content:
             application/json:
               schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }

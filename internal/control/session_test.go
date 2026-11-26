@@ -351,13 +351,13 @@ func TestSessionListRequiresSuperadminForAllPlatforms(t *testing.T) {
 	}
 }
 
-func TestResumeAndForkAuthorizeBeforeMessageLimitValidation(t *testing.T) {
+func TestResumeAndForkRequireActor(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
-	resumed, err := m.ResumeSession(context.Background(), ResumeSessionRequest{MessageLimit: -1})
+	resumed, err := m.ResumeSession(context.Background(), ResumeSessionRequest{})
 	if err != nil || resumed.Status != operationresult.Forbidden {
 		t.Fatalf("resume result=%+v err=%v", resumed, err)
 	}
-	forked, err := m.ForkSession(context.Background(), ForkSessionRequest{MessageLimit: -1})
+	forked, err := m.ForkSession(context.Background(), ForkSessionRequest{})
 	if err != nil || forked.Status != operationresult.Forbidden {
 		t.Fatalf("fork result=%+v err=%v", forked, err)
 	}
