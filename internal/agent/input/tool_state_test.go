@@ -161,7 +161,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if !strings.Contains(row.Metadata, "9007199254740993") {
 		t.Fatal("lost unknown field")
 	}
-	if !skills.NeedsElyphRules || !strings.Contains(skills.Text, "# Guide") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
+	if skills.NeedsElyphRules || !strings.Contains(skills.Text, "# Guide") || strings.Contains(skills.Text, "@skill:") || strings.Contains(skills.Text, "@tool:") {
 		t.Fatalf("text=%s", skills.Text)
 	}
 }

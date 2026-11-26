@@ -98,7 +98,7 @@ input = "--input"
 				t.Fatalf("catalog: %+v %v", listed, err)
 			}
 			detail, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docs"}`)})
-			if err != nil || detail.Status != operationresult.Success || !detail.Data.NeedsElyphRules {
+			if err != nil || detail.Status != operationresult.Success || detail.Data.NeedsElyphRules {
 				t.Fatalf("detail: %+v %v", detail, err)
 			}
 		})

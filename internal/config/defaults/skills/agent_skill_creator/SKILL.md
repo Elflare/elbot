@@ -3,7 +3,9 @@ name: agent_skill_creator
 description: 编写 AgentSkill 说明，按需用 ELBOT_SKILL.toml 注册命令。
 ---
 
-在配置目录的 `skills/<name>/` 写 `SKILL.elyph` 或 `SKILL.md`；两者都存在时，优先加载 `SKILL.elyph`。
+创建 AgentSkill 时，建议用 SKILL.elyph 描述流程，也可以用 SKILL.md 写自然语言说明。
+
+技能文件放在配置目录的 `skills/<name>/` 下。两者都存在时，优先加载 `SKILL.elyph`。
 
 纯文档不需要命令。要把脚本或可执行文件注册成工具，在同一目录写 `ELBOT_SKILL.toml`，用 `command` 指定程序和固定参数，例如 `["uv", "run", "main.py"]`、`["python3", "main.py"]` 或 `["./mytool"]`。创建或编辑完文件后，用 `/tools reload` 检查并加载；已加载的 Skill 也可以用 `agent_skill` 读写其 TOML。
 
