@@ -129,7 +129,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态适配。
 - `internal/tool/execution/`：`runner.go` 批次协调；`runner_call.go` 单次调用准备与启动；`runner_commit.go` 结果提交；`manager.go` 直接调用；`prepared.go` 准备；`executor.go` 原生执行；`elwisp_exec.go` 远端执行；`schema.go` 工具声明。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：结果提交、原生持久化。
-- `internal/storage/dialogue.go`、`internal/storage/tool_batch.go`：批次契约、批次存储。
+- `internal/storage/dialogue.go`、`internal/storage/maindb/tool_batch.go`：批次契约、批次存储。
 - `internal/tool/logging.go`：工具日志发布。
 
 <!-- locator:skill -->
@@ -197,7 +197,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `branch/`：`service.go` 材料准备；`fork.go` 分支；`copy.go` 副本；`compact.go` 压缩派生。
 - `naming/`：`service.go` 任务；`naming.go` 流程；`title.go` 标题；`signals.go` 事件。
 - `share/`：`session.go` 会话事实；`binding.go` 绑定；`origin.go` 归属；`id.go` 来源与前缀。
-- `internal/storage/session_repository.go`：会话存储。
+- `internal/storage/maindb/session_repository.go`：会话存储。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
@@ -222,9 +222,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Storage 与 SQLite
 
 - `internal/storage/`：`session.go` 会话；`message.go` 消息；`dialogue.go` 对话提交；`cron.go`、`elnis.go`、`media.go`、`chat_history.go` 各领域存储契约。
-- `internal/storage/`：`supervisor.go` 双库启闭；`db_init.go` 建库；`migrations.go` 迁移；`id.go` 序号。
-- `internal/storage/`：`session_repository.go` 会话；`dialogue_repository.go` 对话事务；`tool_call_repository.go` 工具统计；`chat_history_repository.go` 平台历史。
-- `internal/storage/`：`native_snapshot.go` 原生快照；`native_material.go` 窗口材料；`media_history.go` 历史媒体；`media_lifecycle.go` 回收。
+- `internal/storage/supervisor.go`：双库装配与关闭。
+- `internal/storage/maindb/`：`db_init.go` 建库快照；`migrations.go` 执行迁移；`migration_versions.go` 版本表；`id.go` 序号。
+- `internal/storage/maindb/`：`session_repository.go` 会话写入；`session_list.go` 会话列表；`dialogue_repository.go` 对话事务；`tool_call_repository.go` 工具统计。
+- `internal/storage/historydb/`：`chat_history_repository.go` 平台历史；`schema.go` 建库与升级。
+- `internal/storage/share/`：`sqlite.go` 连接配置；`migration_identity.go` 两库共用的旧会话身份转换。
+- `internal/storage/maindb/`：`native_snapshot.go` 原生快照；`native_material.go` 窗口材料；`media_history.go` 历史媒体；`media_lifecycle.go` 回收。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
@@ -233,7 +236,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/background/elnis/`：`http.go` HTTP；`auth.go` 鉴权；`prepare.go` 输入；`targets.go` 目标；`types.go` 内部事件。
 - `internal/background/elnis/`：`lifecycle.go` 启停；`service.go` 分发与恢复；`direct.go` 直接调用；`llm.go` 模型流程；`store.go` 状态。
 - `internal/background/elnis/`：`repository.go` 存储契约；`outbox.go` 报告投递；`media.go` 媒体。
-- `internal/storage/elnis_event_repository.go`：事件与报告事务。
+- `internal/storage/maindb/`：`elnis_event_repository.go` 事件存储；`elnis_report_repository.go` 报告投递事务。
 - [架构](architecture.md#elnis--elvena--elwisp)、[功能](../docs/elnis.md)、[配置与协议](../docs/elnis-usage.md)。
 
 <!-- locator:media -->
@@ -244,7 +247,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/media/transfer/`：`manager.go` 交付；`usage.go` 使用记录；`request.go` 模型交付；`output.go` 发送准备；`platform.go` 平台获取。
 - `internal/media/backend/`：`local.go` 本地；`s3.go` S3；`remote.go` 后端构造。
 - `internal/media/share/`：`types.go` 内部类型；`contracts.go` 组件契约。
-- `internal/storage/media_repository.go`、`internal/storage/media_lifecycle.go`：媒体存储、回收。
+- `internal/storage/maindb/media_repository.go`、`internal/storage/maindb/media_lifecycle.go`：媒体存储、回收。
 
 <!-- locator:cron -->
 ## Cron 与维护
@@ -255,7 +258,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/background/execution/runner.go`：后台输入与 Agent 转接。
 - `internal/background/share/`：`result.go` 报告解析；`report.go` 附件与回执；`takeover.go` 接管契约。
 - `internal/background/maintenance/maintenance.go`、`internal/background/cron/maintenance.go`：维护任务、Cron 适配。
-- `internal/tool/builtin/cron.go`、`internal/storage/cron_job_repository.go`：任务工具、任务存储。
+- `internal/tool/builtin/cron.go`、`internal/storage/maindb/cron_job_repository.go`：任务工具、任务存储。
 
 <!-- locator:docs -->
 ## 文档

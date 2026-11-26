@@ -3,38 +3,15 @@ package storage
 import (
 	"context"
 	"time"
+
+	"elbot/internal/storage/maindb"
 )
 
-type CronJob struct {
-	ID            string
-	Name          string
-	Handler       string
-	Schedule      string
-	Enabled       bool
-	Metadata      string
-	DeliveryState string
-	DeliveryToken string
-	LastRunAt     *time.Time
-	NextRunAt     *time.Time
-	RunCount      int
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-}
-
-type CronJobRunState struct {
-	LastRunAt time.Time // 本次执行开始时间，执行结束后记录。
-	UpdatedAt time.Time // 本次运行事实的记录时间；次数由仓库原子递增。
-}
-
-type UpsertCronJobRequest struct {
-	Name          string
-	Handler       string
-	Schedule      string
-	Enabled       bool
-	Metadata      string
-	NextRunAt     *time.Time
-	ResetDelivery bool
-}
+type (
+	CronJob              = maindb.CronJob
+	CronJobRunState      = maindb.CronJobRunState
+	UpsertCronJobRequest = maindb.UpsertCronJobRequest
+)
 
 type CronJobRepository interface {
 	UpsertCronJob(ctx context.Context, req UpsertCronJobRequest) (*CronJob, error)

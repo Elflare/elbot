@@ -1,29 +1,15 @@
 package storage
 
-import "time"
+import (
+	"time"
+
+	"elbot/internal/storage/share"
+)
 
 func Now() time.Time {
 	return time.Now()
 }
 
-func FormatTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format(time.RFC3339Nano)
-}
-
-func ParseTime(s string) (time.Time, error) {
-	return time.Parse(time.RFC3339Nano, s)
-}
-
-func ParseOptionalTime(s string) (*time.Time, error) {
-	if s == "" {
-		return nil, nil
-	}
-	t, err := ParseTime(s)
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
+func FormatTime(t time.Time) string                  { return share.FormatTime(t) }
+func ParseTime(s string) (time.Time, error)          { return share.ParseTime(s) }
+func ParseOptionalTime(s string) (*time.Time, error) { return share.ParseOptionalTime(s) }

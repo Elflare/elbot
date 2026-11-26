@@ -2,101 +2,24 @@ package storage
 
 import (
 	"context"
-	"time"
+
+	"elbot/internal/storage/maindb"
 )
 
-type ElnisEvent struct {
-	ID               string
-	EventKey         string
-	OriginKind       string // 已认证来源类型。
-	OriginName       string // 已认证来源名称。
-	ElwispName       string
-	Source           string
-	SourceID         string
-	Tags             string
-	Mode             string
-	ModelSlot        string
-	ContentHash      string
-	ToolDeclarations string
-	ToolHash         string
-	RequestedTargets string
-	ResolvedTargets  string
-	Status           string
-	SessionID        string
-	Result           string
-	Error            string
-	ReceivedAt       time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-}
-
-type ElnisReportDelivery struct {
-	ID        string
-	EventID   string
-	Ordinal   int
-	Target    string
-	Output    string
-	MessageID string
-	Status    string
-	Receipt   string
-	Error     string
-	Attempts  int
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
+type (
+	ElnisEvent                       = maindb.ElnisEvent
+	ElnisReportDelivery              = maindb.ElnisReportDelivery
+	CreateElnisEventRequest          = maindb.CreateElnisEventRequest
+	UpdateElnisEventRequest          = maindb.UpdateElnisEventRequest
+	CreateElnisReportDeliveryRequest = maindb.CreateElnisReportDeliveryRequest
+	PrepareElnisReportRequest        = maindb.PrepareElnisReportRequest
+)
 
 const (
-	ElnisReportDeliveryPending   = "pending"
-	ElnisReportDeliveryFailed    = "failed"
-	ElnisReportDeliveryDelivered = "delivered"
+	ElnisReportDeliveryPending   = maindb.ElnisReportDeliveryPending
+	ElnisReportDeliveryFailed    = maindb.ElnisReportDeliveryFailed
+	ElnisReportDeliveryDelivered = maindb.ElnisReportDeliveryDelivered
 )
-
-type CreateElnisEventRequest struct {
-	ID               string // Background 预分配的事件 ID。
-	MediaIDs         []string
-	EventKey         string
-	OriginKind       string // 已认证来源类型。
-	OriginName       string // 已认证来源名称。
-	ElwispName       string
-	Source           string
-	SourceID         string
-	Tags             string
-	Mode             string
-	ModelSlot        string
-	ContentHash      string
-	ToolDeclarations string
-	ToolHash         string
-	RequestedTargets string
-	ResolvedTargets  string
-	Status           string
-	ReceivedAt       time.Time
-	CreatedAt        time.Time
-}
-
-type UpdateElnisEventRequest struct {
-	ReleaseMediaReferences bool // 与事件更新一并释放事件及其报告的媒体引用。
-	ID                     string
-	ResolvedTargets        string
-	Status                 string
-	SessionID              string
-	Result                 string
-	Error                  string
-}
-
-type CreateElnisReportDeliveryRequest struct {
-	Target    string
-	Output    string
-	MessageID string
-}
-
-type PrepareElnisReportRequest struct {
-	EventID           string
-	ResolvedTargets   string
-	SessionID         string
-	Result            string
-	Deliveries        []CreateElnisReportDeliveryRequest
-	ResultReadyStatus string
-}
 
 type ElnisEventRepository interface {
 	// FailInterrupted applies the caller's recovery policy and releases event references atomically.

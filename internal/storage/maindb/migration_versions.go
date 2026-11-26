@@ -1,0 +1,719 @@
+package maindb
+
+var migrations = []migration{
+	{
+		version: 1,
+		name:    "create_sessions_messages",
+		sql: `
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    parent_session_id TEXT NULL,
+    fork_from_message_id TEXT NULL,
+    owner_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    platform_scope_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    title TEXT NULL,
+    status TEXT NOT NULL,
+    metadata TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived_at TEXT NULL,
+    pinned_at TEXT NULL,
+    FOREIGN KEY(parent_session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_sessions_scope_updated_at
+ON sessions(owner_id, platform, platform_scope_id, updated_at);
+
+CREATE INDEX idx_sessions_parent
+ON sessions(parent_session_id);
+
+CREATE INDEX idx_sessions_fork_from
+ON sessions(fork_from_message_id);
+
+CREATE TABLE messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    parent_message_id TEXT NULL,
+    reply_to_platform_message_id TEXT NULL,
+    reply_to_message_id TEXT NULL,
+    tool_call_id TEXT NULL,
+    metadata TEXT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(parent_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    FOREIGN KEY(reply_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_messages_session_created_at
+ON messages(session_id, created_at);
+
+CREATE TABLE platform_message_map (
+    id TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    platform_scope_id TEXT NOT NULL,
+    platform_message_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    UNIQUE(platform, platform_scope_id, platform_message_id)
+);
+`,
+	},
+	{
+		version: 2,
+		name:    "create_context_summaries",
+		sql: `
+CREATE TABLE context_summaries (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    from_message_id TEXT NULL,
+    to_message_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    source_tokens INTEGER NOT NULL,
+    summary_tokens INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    cache_hit_tokens INTEGER NOT NULL,
+    trigger_reason TEXT NOT NULL,
+    metadata TEXT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(from_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    FOREIGN KEY(to_message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_context_summaries_session_created_at
+ON context_summaries(session_id, created_at);
+
+CREATE INDEX idx_context_summaries_to_message
+ON context_summaries(to_message_id);
+`,
+	},
+	{
+		version: 3,
+		name:    "add_fork_session_indexes",
+		sql: `
+CREATE INDEX IF NOT EXISTS idx_sessions_parent
+ON sessions(parent_session_id);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_fork_from
+ON sessions(fork_from_message_id);
+`,
+	},
+	{
+		version: 4,
+		name:    "create_tool_call_records",
+		sql: `
+CREATE TABLE tool_call_records (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    tool_call_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    error TEXT NULL,
+    result_preview TEXT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_tool_call_records_session_tool
+ON tool_call_records(session_id, tool_name);
+
+CREATE INDEX idx_tool_call_records_session_created_at
+ON tool_call_records(session_id, created_at);
+`,
+	},
+	{
+		version: 5,
+		name:    "create_cron_jobs",
+		sql: `
+CREATE TABLE cron_jobs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    handler TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    enabled INTEGER NOT NULL,
+    metadata TEXT NULL,
+    last_run_at TEXT NULL,
+    next_run_at TEXT NULL,
+    run_count INTEGER NOT NULL,
+    last_error TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_cron_jobs_enabled_next_run
+ON cron_jobs(enabled, next_run_at);
+`,
+	},
+	{
+		version: 6,
+		name:    "rename_qq_platform_to_qqonebot",
+		sql: `
+UPDATE sessions
+SET platform = 'qqonebot'
+WHERE platform = 'qq';
+
+UPDATE sessions
+SET owner_id = 'qqonebot:' || substr(owner_id, 4)
+WHERE owner_id LIKE 'qq:%';
+
+UPDATE platform_message_map
+SET platform = 'qqonebot'
+WHERE platform = 'qq';
+`,
+	},
+	{
+		version: 7,
+		name:    "create_elnis_events",
+		sql: `
+CREATE TABLE elnis_events (
+    id TEXT PRIMARY KEY,
+    event_key TEXT NOT NULL,
+    token_name TEXT NOT NULL,
+    elwisp_name TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    tags TEXT NULL,
+    mode TEXT NOT NULL,
+    model_slot TEXT NULL,
+    content_hash TEXT NOT NULL,
+    requested_targets TEXT NULL,
+    resolved_targets TEXT NULL,
+    status TEXT NOT NULL,
+    session_id TEXT NULL,
+    result TEXT NULL,
+    error TEXT NULL,
+    received_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(elwisp_name, source, source_id)
+);
+
+CREATE INDEX idx_elnis_events_status_updated_at
+ON elnis_events(status, updated_at);
+
+CREATE INDEX idx_elnis_events_elwisp_received_at
+ON elnis_events(elwisp_name, received_at);
+`,
+	},
+	{
+		version: 8,
+		name:    "add_elnis_tool_declarations",
+		sql: `
+ALTER TABLE elnis_events ADD COLUMN tool_declarations TEXT NULL;
+ALTER TABLE elnis_events ADD COLUMN tool_hash TEXT NULL;
+`,
+	},
+	{
+		version: 9,
+		name:    "create_elnis_report_deliveries",
+		sql: `
+CREATE TABLE elnis_report_deliveries (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    target TEXT NOT NULL,
+    output TEXT NOT NULL,
+    message_id TEXT NULL,
+    status TEXT NOT NULL,
+    receipt TEXT NULL,
+    error TEXT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(event_id) REFERENCES elnis_events(id) ON DELETE CASCADE,
+    UNIQUE(event_id, ordinal)
+);
+
+CREATE INDEX idx_elnis_report_deliveries_event_status_ordinal
+ON elnis_report_deliveries(event_id, status, ordinal);
+`,
+	},
+	{
+		version: 10,
+		name:    "add_cron_delivery_state",
+		sql: `
+ALTER TABLE cron_jobs ADD COLUMN delivery_state TEXT NULL;
+ALTER TABLE cron_jobs ADD COLUMN delivery_token TEXT NULL;
+`,
+	},
+	{
+		version: 11,
+		name:    "add_message_segments",
+		sql: `
+ALTER TABLE messages ADD COLUMN segments TEXT NULL;
+
+UPDATE messages
+SET segments = json_extract(metadata, '$.segments'),
+    metadata = NULLIF(json_remove(metadata, '$.segments'), '{}')
+WHERE role = 'user'
+  AND metadata IS NOT NULL
+  AND json_valid(metadata)
+  AND json_type(CASE WHEN json_valid(metadata) THEN metadata END, '$.segments') = 'array';
+`,
+	},
+	{
+		version: 12,
+		name:    "create_media_and_references",
+		sql: `
+CREATE TABLE media (
+    id TEXT PRIMARY KEY,
+    name TEXT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    local_path TEXT NULL,
+    backend TEXT NOT NULL,
+    object_key TEXT NULL,
+    source_platform TEXT NULL,
+    source_url TEXT NULL,
+    source_file_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    last_accessed_at TEXT NOT NULL,
+    expires_at TEXT NULL
+);
+
+CREATE TABLE media_references (
+    media_id TEXT NOT NULL,
+    owner_type TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    session_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(media_id, owner_type, owner_id, purpose),
+    FOREIGN KEY(media_id) REFERENCES media(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_media_references_owner ON media_references(owner_type, owner_id);
+CREATE INDEX idx_media_references_session ON media_references(session_id);
+`,
+	},
+	{
+		version: 13,
+		name:    "release_message_media_references",
+		sql: `
+CREATE TRIGGER release_message_media_references AFTER DELETE ON messages BEGIN
+    DELETE FROM media_references WHERE owner_id = OLD.id AND owner_type IN ('message', 'tool_result');
+END;
+CREATE TRIGGER release_session_media_references AFTER DELETE ON sessions BEGIN
+    DELETE FROM media_references WHERE session_id = OLD.id;
+END;
+`,
+	},
+	{version: 14, name: "media_lifecycle", sql: `
+ALTER TABLE media ADD COLUMN orphaned_at TEXT NULL;
+ALTER TABLE media ADD COLUMN deleting INTEGER NOT NULL DEFAULT 0;
+UPDATE media SET orphaned_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ WHERE NOT EXISTS (SELECT 1 FROM media_references WHERE media_id=media.id);
+CREATE TRIGGER media_initial_orphan AFTER INSERT ON media BEGIN
+ UPDATE media SET orphaned_at=NEW.created_at WHERE id=NEW.id;
+END;
+CREATE TRIGGER media_reference_guard BEFORE INSERT ON media_references BEGIN
+ SELECT RAISE(ABORT,'media is being deleted') WHERE EXISTS(SELECT 1 FROM media WHERE id=NEW.media_id AND deleting=1);
+END;
+CREATE TRIGGER media_reference_added AFTER INSERT ON media_references BEGIN
+ UPDATE media SET orphaned_at=NULL WHERE id=NEW.media_id;
+END;
+CREATE TRIGGER media_reference_removed AFTER DELETE ON media_references BEGIN
+ UPDATE media SET orphaned_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=OLD.media_id
+ AND NOT EXISTS(SELECT 1 FROM media_references WHERE media_id=OLD.media_id);
+END;
+CREATE TRIGGER media_message_updated AFTER UPDATE OF segments ON messages BEGIN
+ DELETE FROM media_references WHERE owner_type IN ('message','tool_result') AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at)
+ SELECT json_extract(value,'$.media'),CASE WHEN NEW.role='tool' THEN 'tool_result' ELSE 'message' END,NEW.id,'content',NEW.session_id,NEW.created_at
+ FROM json_each(COALESCE(NEW.segments,'[]')) WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE VIEW media_fork_history AS
+ SELECT DISTINCT s.id AS session_id,r.media_id FROM sessions s
+ JOIN messages checkpoint ON checkpoint.id=s.fork_from_message_id AND checkpoint.session_id=s.parent_session_id
+ JOIN media_references r ON r.session_id=s.parent_session_id
+ LEFT JOIN messages m ON m.id=r.owner_id AND m.session_id=s.parent_session_id
+ WHERE (r.owner_type='session_fork' AND r.owner_id=s.parent_session_id)
+ OR (r.owner_type=CASE WHEN m.role='tool' THEN 'tool_result' ELSE 'message' END
+ AND (m.created_at<checkpoint.created_at OR (m.created_at=checkpoint.created_at AND m.rowid<=checkpoint.rowid)));
+CREATE TRIGGER media_fork_created AFTER INSERT ON sessions WHEN NEW.parent_session_id IS NOT NULL BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,session_id,created_at)
+ SELECT media_id,'session_fork',NEW.id,'history',NEW.id,NEW.created_at FROM media_fork_history WHERE session_id=NEW.id;
+END;
+CREATE TRIGGER media_cron_insert AFTER INSERT ON cron_jobs BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_delete AFTER DELETE ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=OLD.id;
+END;
+CREATE TABLE media_outputs (
+ platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ PRIMARY KEY(platform,scope_id,message_id,media_id)
+);
+CREATE INDEX idx_media_outputs_expiry ON media_outputs(expires_at);
+CREATE TRIGGER media_output_added AFTER INSERT ON media_outputs BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'output',NEW.owner_id,'cache',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_output_removed AFTER DELETE ON media_outputs BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='output' AND owner_id=OLD.owner_id AND purpose='cache';
+END;
+CREATE TRIGGER media_report_added AFTER INSERT ON elnis_report_deliveries
+ WHEN COALESCE(json_extract(NEW.output,'$.Source.media'),'')<>'' BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(json_extract(NEW.output,'$.Source.media'),'elnis_report',NEW.id,'delivery',NEW.created_at);
+END;
+CREATE TRIGGER media_report_deleted AFTER DELETE ON elnis_report_deliveries BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_report' AND owner_id=OLD.id;
+END;
+CREATE TRIGGER media_report_completed AFTER UPDATE OF status ON elnis_events WHEN NEW.status='completed' BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_report' AND owner_id IN(SELECT id FROM elnis_report_deliveries WHERE event_id=NEW.id);
+END;
+CREATE TRIGGER media_event_finished AFTER UPDATE OF status ON elnis_events WHEN NEW.status IN ('completed','failed','result_ready') BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_event' AND owner_id=NEW.id;
+END;
+CREATE TRIGGER media_event_deleted AFTER DELETE ON elnis_events BEGIN
+ DELETE FROM media_references WHERE owner_type='elnis_event' AND owner_id=OLD.id;
+END;
+`},
+	{
+		version: 15,
+		name:    "ordered_media_outputs",
+		sql: `
+DELETE FROM media_references WHERE owner_type='output';
+DROP TRIGGER media_output_added;
+DROP TRIGGER media_output_removed;
+DROP TABLE media_outputs;
+CREATE TABLE media_outputs (
+ platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ segment_index INTEGER NOT NULL, kind TEXT NOT NULL,
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ PRIMARY KEY(platform,scope_id,message_id,segment_index)
+);
+CREATE INDEX idx_media_outputs_expiry ON media_outputs(expires_at);
+CREATE TRIGGER media_output_added AFTER INSERT ON media_outputs BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'output',NEW.owner_id,'cache',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_output_removed AFTER DELETE ON media_outputs BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='output' AND owner_id=OLD.owner_id AND purpose='cache';
+END;
+`,
+	},
+	{
+		version: 16,
+		name:    "chat_history_media_references",
+		sql: `
+CREATE TABLE media_history (
+ history_id TEXT NOT NULL, platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ media_index INTEGER NOT NULL CHECK(media_index>0), kind TEXT NOT NULL CHECK(kind IN ('image','file','record')),
+ media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL UNIQUE,
+ PRIMARY KEY(platform,scope_id,message_id,media_index)
+);
+CREATE TRIGGER media_history_added AFTER INSERT ON media_history BEGIN
+ INSERT INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ VALUES(NEW.media_id,'chat_history',NEW.owner_id,'content',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+END;
+CREATE TRIGGER media_history_removed AFTER DELETE ON media_history BEGIN
+ DELETE FROM media_references WHERE media_id=OLD.media_id AND owner_type='chat_history' AND owner_id=OLD.owner_id AND purpose='content';
+END;
+`,
+	},
+	{
+		version: 17,
+		name:    "session_tool_media_references",
+		sql: `
+DROP VIEW media_fork_history;
+CREATE VIEW media_fork_history AS
+ SELECT DISTINCT s.id AS session_id,r.media_id FROM sessions s
+ JOIN messages checkpoint ON checkpoint.id=s.fork_from_message_id AND checkpoint.session_id=s.parent_session_id
+ JOIN media_references r ON r.session_id=s.parent_session_id
+ LEFT JOIN messages m ON m.id=r.owner_id AND m.session_id=s.parent_session_id
+ WHERE (r.owner_type='session_fork' AND r.owner_id=s.parent_session_id)
+ OR (r.owner_type='session_tool' AND r.owner_id=s.parent_session_id AND r.created_at<=checkpoint.created_at)
+ OR (r.owner_type=CASE WHEN m.role='tool' THEN 'tool_result' ELSE 'message' END
+ AND (m.created_at<checkpoint.created_at OR (m.created_at=checkpoint.created_at AND m.rowid<=checkpoint.rowid)));
+`,
+	},
+	{
+		version: 18,
+		name:    "session_llm_origin",
+		sql: `
+UPDATE sessions SET metadata = json_set(
+ CASE
+  WHEN metadata IS NULL OR trim(metadata,char(9)||char(10)||char(13)||' ')='' THEN '{}'
+  WHEN json_type(metadata)='object' THEN metadata
+  ELSE json('invalid-session-metadata')
+ END,
+ '$.llm_origin', json('{"protocol":"chat"}')
+)
+WHERE json_type(
+ CASE WHEN metadata IS NULL OR trim(metadata,char(9)||char(10)||char(13)||' ')='' THEN '{}' ELSE metadata END,
+ '$.llm_origin'
+) IS NULL;
+`,
+	},
+	{
+		version: 19,
+		name:    "native_dialogue",
+		sql: `
+CREATE TABLE native_exchanges (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ protocol TEXT NOT NULL, provider TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT NOT NULL,
+ request_id TEXT NOT NULL, run_id TEXT NOT NULL, attempt TEXT NOT NULL, previous_checkpoint_id TEXT NOT NULL,
+ request_json TEXT NOT NULL, response_json TEXT NOT NULL DEFAULT '', items_json TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_exchanges_session ON native_exchanges(session_id, created_at);
+CREATE TABLE native_inputs (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ message_id TEXT NOT NULL, exchange_id TEXT NOT NULL, call_id TEXT NOT NULL,
+ item_json TEXT NOT NULL, media_json TEXT NOT NULL, consumed_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_inputs_pending ON native_inputs(session_id, consumed_by, created_at);
+CREATE TABLE native_calls (
+ exchange_id TEXT NOT NULL REFERENCES native_exchanges(id) ON DELETE CASCADE,
+ call_id TEXT NOT NULL, ordinal INTEGER NOT NULL, name TEXT NOT NULL, arguments TEXT NOT NULL,
+ status TEXT NOT NULL, result_input_id TEXT NOT NULL DEFAULT '', PRIMARY KEY(exchange_id,call_id)
+);
+CREATE TABLE native_checkpoints (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ parent_id TEXT NOT NULL, exchange_id TEXT NOT NULL REFERENCES native_exchanges(id) ON DELETE CASCADE,
+ response_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_native_checkpoints_message ON native_checkpoints(session_id, message_id);
+`,
+	},
+	{
+		version: 20,
+		name:    "native_material_roots",
+		sql: `
+ALTER TABLE native_exchanges ADD COLUMN input_ids_json TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_checkpoints ADD COLUMN seed_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE native_checkpoints ADD COLUMN calls_json TEXT NOT NULL DEFAULT '';
+CREATE TABLE native_seeds (
+ id TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+ protocol TEXT NOT NULL, provider TEXT NOT NULL, base_url TEXT NOT NULL,
+ response_id TEXT NOT NULL, source_checkpoint_id TEXT NOT NULL,
+ items_json TEXT NOT NULL, materials_json TEXT NOT NULL, continuation_json TEXT NOT NULL,
+ calls_json TEXT NOT NULL, media_ids_json TEXT NOT NULL,
+ consumed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+);
+CREATE TRIGGER release_native_input_media AFTER DELETE ON native_inputs BEGIN
+ DELETE FROM media_references WHERE owner_type='native_input' AND owner_id=OLD.id;
+END;
+CREATE TRIGGER release_native_seed_media AFTER DELETE ON native_seeds BEGIN
+ DELETE FROM media_references WHERE owner_type='native_seed' AND owner_id=OLD.id;
+END;
+`,
+	},
+	{
+		version: 21,
+		name:    "nullable_context_summary_tokens",
+		sql: `
+CREATE TABLE context_summaries_new (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    from_message_id TEXT NULL,
+    to_message_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    source_tokens INTEGER NULL,
+    summary_tokens INTEGER NULL,
+    total_tokens INTEGER NULL,
+    cache_hit_tokens INTEGER NULL,
+    trigger_reason TEXT NOT NULL,
+    metadata TEXT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY(from_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    FOREIGN KEY(to_message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+INSERT INTO context_summaries_new (
+    id, session_id, from_message_id, to_message_id, summary, provider, model,
+    source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+    trigger_reason, metadata, created_at
+) SELECT id, session_id, from_message_id, to_message_id, summary, provider, model,
+    source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+    trigger_reason, metadata, created_at
+FROM context_summaries;
+DROP TABLE context_summaries;
+ALTER TABLE context_summaries_new RENAME TO context_summaries;
+CREATE INDEX idx_context_summaries_session_created_at
+ON context_summaries(session_id, created_at);
+CREATE INDEX idx_context_summaries_to_message
+ON context_summaries(to_message_id);
+`,
+	},
+	{
+		version: 22,
+		name:    "remove_cron_last_error",
+		sql:     `ALTER TABLE cron_jobs DROP COLUMN last_error;`,
+	},
+	{
+		version: 23,
+		name:    "normalize_native_seed_media_ids",
+		sql:     `UPDATE native_seeds SET media_ids_json='[]' WHERE media_ids_json='null';`,
+	},
+	{
+		version: 24,
+		name:    "remove_tool_result_preview",
+		sql:     `ALTER TABLE tool_call_records DROP COLUMN result_preview;`,
+	},
+	{
+		version: 25,
+		name:    "create_media_signed_urls",
+		sql: `
+CREATE TABLE media_signed_urls (
+    media_id TEXT PRIMARY KEY NOT NULL,
+    url TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY(media_id) REFERENCES media(id) ON DELETE CASCADE
+);
+`,
+	},
+	{
+		version: 26,
+		name:    "cron_report_sources",
+		sql: `
+DROP TRIGGER media_cron_insert;
+DROP TRIGGER media_cron_update;
+CREATE TRIGGER media_cron_insert AFTER INSERT ON cron_jobs BEGIN
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
+END;
+CREATE TRIGGER media_cron_update AFTER UPDATE OF delivery_state ON cron_jobs BEGIN
+ DELETE FROM media_references WHERE owner_type='cron' AND owner_id=NEW.id;
+ INSERT OR IGNORE INTO media_references(media_id,owner_type,owner_id,purpose,created_at)
+ SELECT json_extract(value,'$.Source.media'),'cron',NEW.id,'report',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+ FROM json_each(CASE WHEN json_valid(NEW.delivery_state) THEN NEW.delivery_state ELSE '{}' END,'$.report_segments') WHERE COALESCE(json_extract(value,'$.Source.media'),'')<>'';
+END;
+`,
+	},
+	{
+		version: 27,
+		name:    "migrate_discovered_tool_snapshots",
+		sql: `
+-- v0.6 stored names in discovered_tools and complete declarations in tool_cache.
+-- Validate the legacy containers once, then move snapshots without rebuilding schemas.
+UPDATE sessions SET metadata = CASE
+ WHEN json_type(metadata)<>'object' THEN json('invalid-session-metadata')
+ WHEN json_type(metadata,'$.discovered_tools') IS NULL
+  AND json_type(metadata,'$.tool_cache') IS NULL THEN metadata
+ WHEN COALESCE(json_type(metadata,'$.discovered_tools'),'null') NOT IN ('array','null')
+  OR COALESCE(json_type(metadata,'$.tool_cache'),'null') NOT IN ('array','null')
+  THEN json('invalid-tool-metadata')
+ WHEN EXISTS (SELECT 1 FROM json_each(json_extract(metadata,'$.discovered_tools')) WHERE type NOT IN ('text','object'))
+  OR (SELECT count(DISTINCT type) FROM json_each(json_extract(metadata,'$.discovered_tools')))>1
+  OR EXISTS (SELECT 1 FROM json_each(json_extract(metadata,'$.tool_cache')) WHERE type<>'object')
+  THEN json('invalid-tool-metadata')
+ WHEN json_type(metadata,'$.discovered_tools[0]')='object'
+  THEN json_remove(metadata,'$.tool_cache')
+ WHEN json_array_length(metadata,'$.tool_cache')>0
+  THEN json_remove(json_set(metadata,'$.discovered_tools',json_extract(metadata,'$.tool_cache')),'$.tool_cache')
+ ELSE json_remove(metadata,'$.discovered_tools','$.tool_cache')
+END
+WHERE metadata IS NOT NULL AND trim(metadata,char(9)||char(10)||char(13)||' ')<>'';
+`,
+	},
+	{
+		version: 28,
+		name:    "session_sequence",
+		sql: `
+-- 单行计数器保存最后已分配的 Session 序号，独立于会话记录的生命周期。
+CREATE TABLE session_sequence (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL CHECK (typeof(value) = 'integer' AND value >= 0)
+);
+INSERT INTO session_sequence(id, value) VALUES (1, 0);
+`,
+	},
+	{
+		version: 29,
+		name:    "shared_id_sequences",
+		sql: `CREATE TABLE id_sequences (
+ name TEXT PRIMARY KEY,
+ value INTEGER NOT NULL CHECK(typeof(value)='integer' AND value>=0),
+ reserved INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO id_sequences(name,value) SELECT 'session',value FROM session_sequence;
+INSERT INTO id_sequences(name,value) VALUES('general',0);
+DROP TABLE session_sequence;`,
+	},
+	{version: 30, name: "remove_unused_record_ids", sql: `
+ALTER TABLE platform_message_map RENAME TO old_platform_message_map;
+CREATE TABLE platform_message_map (
+    platform TEXT NOT NULL,
+    platform_scope_id TEXT NOT NULL,
+    platform_message_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    PRIMARY KEY(platform, platform_scope_id, platform_message_id)
+);
+INSERT INTO platform_message_map SELECT platform,platform_scope_id,platform_message_id,message_id,session_id,created_at FROM old_platform_message_map;
+DROP TABLE old_platform_message_map;
+ALTER TABLE tool_call_records RENAME TO old_tool_call_records;
+CREATE TABLE tool_call_records (
+    session_id TEXT NOT NULL,
+    tool_call_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    error TEXT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+INSERT INTO tool_call_records SELECT session_id,tool_call_id,tool_name,actor_id,risk_level,success,error,started_at,finished_at,created_at FROM old_tool_call_records;
+DROP TABLE old_tool_call_records;
+CREATE INDEX idx_tool_call_records_session_tool ON tool_call_records(session_id, tool_name);
+CREATE INDEX idx_tool_call_records_session_created_at ON tool_call_records(session_id, created_at);
+`},
+	{version: 31, name: "structured_identity", apply: migrateStructuredIdentity},
+	{version: 32, name: "structured_message_content", sql: `
+ALTER TABLE messages ADD COLUMN source_content TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN reasoning_content TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE messages ADD COLUMN tool_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_batch_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_result_status TEXT NOT NULL DEFAULT '';
+
+UPDATE messages SET
+ source_content=CASE WHEN role='assistant' AND json_type(metadata,'$.raw_text')='text' THEN json_extract(metadata,'$.raw_text') ELSE '' END,
+ tool_calls=CASE WHEN role='assistant' AND json_type(metadata,'$.tool_calls')='array' THEN json_extract(metadata,'$.tool_calls') ELSE '[]' END,
+ tool_name=CASE WHEN role='tool' AND json_type(metadata,'$.name')='text' THEN json_extract(metadata,'$.name') ELSE '' END,
+ tool_batch_status=CASE WHEN role='assistant' AND json_type(metadata,'$.tool_batch_status')='text' THEN json_extract(metadata,'$.tool_batch_status') ELSE '' END,
+ tool_result_status=CASE WHEN role='tool' AND json_type(metadata,'$.tool_result_status')='text' THEN json_extract(metadata,'$.tool_result_status') ELSE '' END,
+ metadata=CASE role
+  WHEN 'assistant' THEN NULLIF(json_remove(metadata,'$.raw_text','$.tool_calls','$.tool_batch_status'),'{}')
+  WHEN 'tool' THEN NULLIF(json_remove(metadata,'$.name','$.tool_result_status'),'{}')
+  ELSE metadata
+ END
+WHERE CASE WHEN json_valid(metadata) THEN json_type(metadata)='object' ELSE 0 END;
+`},
+}

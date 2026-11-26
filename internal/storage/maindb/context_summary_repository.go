@@ -1,0 +1,127 @@
+package maindb
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"elbot/internal/storage/share"
+)
+
+func (r *Store) CreateContextSummary(ctx context.Context, summary *ContextSummary) error {
+	if summary.ID == "" {
+		summary.ID = share.NewID()
+	}
+	if summary.CreatedAt.IsZero() {
+		summary.CreatedAt = time.Now()
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO context_summaries (
+    id, session_id, from_message_id, to_message_id, summary, provider, model,
+    source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+    trigger_reason, metadata, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		summary.ID,
+		summary.SessionID,
+		share.NullString(summary.FromMessageID),
+		summary.ToMessageID,
+		summary.Summary,
+		summary.Provider,
+		summary.Model,
+		summary.SourceTokens,
+		summary.SummaryTokens,
+		summary.TotalTokens,
+		summary.CacheHitTokens,
+		summary.TriggerReason,
+		share.NullString(summary.Metadata),
+		share.FormatTime(summary.CreatedAt),
+	)
+	if err != nil {
+		return fmt.Errorf("create context summary: %w", err)
+	}
+	return nil
+}
+
+func (r *Store) LatestBySession(ctx context.Context, sessionID string) (*ContextSummary, error) {
+	row := r.db.QueryRowContext(ctx, `
+SELECT id, session_id, from_message_id, to_message_id, summary, provider, model,
+       source_tokens, summary_tokens, total_tokens, cache_hit_tokens,
+       trigger_reason, metadata, created_at
+FROM context_summaries
+WHERE session_id = ?
+ORDER BY created_at DESC, id DESC
+LIMIT 1`, sessionID)
+
+	summary, err := scanContextSummary(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, share.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("latest context summary: %w", err)
+	}
+	return summary, nil
+}
+
+func (r *Store) LatestBySessionUpTo(ctx context.Context, sessionID, toMessageID string) (*ContextSummary, error) {
+	var toCreatedAt string
+	if err := r.db.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ? AND session_id = ?`, toMessageID, sessionID).Scan(&toCreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, share.ErrNotFound
+		}
+		return nil, fmt.Errorf("get checkpoint message: %w", err)
+	}
+	row := r.db.QueryRowContext(ctx, `
+SELECT cs.id, cs.session_id, cs.from_message_id, cs.to_message_id, cs.summary, cs.provider, cs.model,
+       cs.source_tokens, cs.summary_tokens, cs.total_tokens, cs.cache_hit_tokens,
+       cs.trigger_reason, cs.metadata, cs.created_at
+FROM context_summaries cs
+JOIN messages m ON m.id = cs.to_message_id AND m.session_id = cs.session_id
+WHERE cs.session_id = ? AND (m.created_at < ? OR (m.created_at = ? AND m.id <= ?))
+ORDER BY m.created_at DESC, m.id DESC, cs.created_at DESC, cs.id DESC
+LIMIT 1`, sessionID, toCreatedAt, toCreatedAt, toMessageID)
+
+	summary, err := scanContextSummary(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, share.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("latest context summary up to message: %w", err)
+	}
+	return summary, nil
+}
+
+func scanContextSummary(row interface{ Scan(dest ...any) error }) (*ContextSummary, error) {
+	var summary ContextSummary
+	var fromMessageID, metadata sql.NullString
+	var createdAt string
+	if err := row.Scan(
+		&summary.ID,
+		&summary.SessionID,
+		&fromMessageID,
+		&summary.ToMessageID,
+		&summary.Summary,
+		&summary.Provider,
+		&summary.Model,
+		&summary.SourceTokens,
+		&summary.SummaryTokens,
+		&summary.TotalTokens,
+		&summary.CacheHitTokens,
+		&summary.TriggerReason,
+		&metadata,
+		&createdAt,
+	); err != nil {
+		return nil, err
+	}
+
+	summary.FromMessageID = fromMessageID.String
+	summary.Metadata = metadata.String
+	parsedCreatedAt, err := share.ParseTime(createdAt)
+	if err != nil {
+		return nil, err
+	}
+	summary.CreatedAt = parsedCreatedAt
+	return &summary, nil
+}

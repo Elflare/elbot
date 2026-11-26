@@ -9,64 +9,15 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/storage/historydb"
 )
 
-// PlatformMessageAlias associates a platform reference index with its message ID.
-type PlatformMessageAlias struct {
-	Platform          string               // Platform owning the reference index.
-	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID            string               // Conversation in which the index is valid.
-	Alias             string               // Platform reference index, not a message ID.
-	PlatformMessageID string               // Actual message ID used by history and output mappings.
-	SenderID          string               // 被索引消息的发送者 ID；机器人输出使用机器人自身的 ID。
-	CreatedAt         time.Time            // Registration time used by chat history retention.
-}
-
-type ChatMessage struct {
-	IsAssistant bool // 平台确认由本助手发出的消息。
-
-	ReferenceIndex           string // QQ 官方群聊发送原生引用时使用的目标索引。
-	SenderAvatarURL          string // 写入时为事件头像；历史查询开启头像时为会话内最新值。
-	Seq                      int64
-	ID                       string
-	Platform                 string
-	ChatID                   string
-	ChatType                 contextinfo.ChatType
-	PlatformMessageID        string
-	SenderID                 string
-	SenderName               string
-	Text                     string
-	Raw                      string
-	Segments                 string
-	ReplyToPlatformMessageID string
-	Metadata                 string
-	CreatedAt                time.Time
-}
-
-type ChatHistorySearchRequest struct {
-	IncludeAssistant bool // 是否包含助手出站消息。
-	IncludeAvatar    bool // 请求时附带同一会话中发送者最新的非空头像。
-	Platform         string
-	ChatType         contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID           string
-	QueryTerms       []string
-	QueryMode        string
-	SenderQuery      string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
-	Since            *time.Time
-	Until            *time.Time
-	Limit            int
-}
-
-type ChatHistoryAroundRequest struct {
-	IncludeAssistant bool  // 是否包含助手出站消息（含目标行）。
-	Seq              int64 // 当前会话内的目标历史序号。
-	IncludeAvatar    bool  // 请求时附带同一会话中发送者最新的非空头像。
-	Platform         string
-	ChatType         contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID           string
-	Before           int
-	After            int
-}
+type (
+	PlatformMessageAlias     = historydb.PlatformMessageAlias
+	ChatMessage              = historydb.ChatMessage
+	ChatHistorySearchRequest = historydb.ChatHistorySearchRequest
+	ChatHistoryAroundRequest = historydb.ChatHistoryAroundRequest
+)
 
 type ChatHistoryRepository interface {
 	GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, includeAlias bool) (*ChatMessage, error)

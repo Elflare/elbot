@@ -2,99 +2,27 @@ package storage
 
 import (
 	"context"
-	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/storage/maindb"
+)
+
+type (
+	Message            = maindb.Message
+	ToolCall           = maindb.ToolCall
+	ContextSummary     = maindb.ContextSummary
+	ToolCallRecord     = maindb.ToolCallRecord
+	ToolUsageSummary   = maindb.ToolUsageSummary
+	PlatformMessageMap = maindb.PlatformMessageMap
+	MessageStats       = maindb.MessageStats
 )
 
 const (
-	RoleSystem    = "system"
-	RoleUser      = "user"
-	RoleAssistant = "assistant"
-	RoleTool      = "tool"
+	RoleSystem    = maindb.RoleSystem
+	RoleUser      = maindb.RoleUser
+	RoleAssistant = maindb.RoleAssistant
+	RoleTool      = maindb.RoleTool
 )
-
-type Message struct {
-	ID                       string
-	SessionID                string
-	Role                     string
-	Content                  string
-	SourceContent            string
-	ReasoningContent         string
-	ParentMessageID          string
-	ReplyToPlatformMessageID string
-	ReplyToMessageID         string
-	ToolCallID               string
-	ToolCalls                []ToolCall
-	ToolName                 string
-	ToolBatchStatus          string
-	ToolResultStatus         string
-	Segments                 string
-	Metadata                 string
-	CreatedAt                time.Time
-}
-
-type ToolCall struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type ContextSummary struct {
-	ID            string
-	SessionID     string
-	FromMessageID string
-	ToMessageID   string
-	Summary       string
-	Provider      string
-	Model         string
-	// SourceTokens is supplied by the compactor; nil persists as SQL NULL (unknown).
-	SourceTokens *int64
-	// SummaryTokens is the reported output count; non-nil zero is an explicit zero.
-	SummaryTokens *int64
-	// TotalTokens is the reported total; nil is unknown and is never inferred.
-	TotalTokens *int64
-	// CacheHitTokens is the reported cache count; nil persists as SQL NULL.
-	CacheHitTokens *int64
-	TriggerReason  string
-	Metadata       string
-	CreatedAt      time.Time
-}
-
-type ToolCallRecord struct {
-	SessionID  string
-	ToolCallID string
-	ToolName   string
-	Actor      contextinfo.ActorIdentity
-	RiskLevel  string
-	Success    bool
-	Error      string
-	StartedAt  time.Time
-	FinishedAt time.Time
-	CreatedAt  time.Time
-}
-
-type ToolUsageSummary struct {
-	ToolName string
-	Count    int
-}
-
-type PlatformMessageMap struct {
-	Platform          string
-	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID            string
-	PlatformMessageID string
-	MessageID         string
-	SessionID         string
-	CreatedAt         time.Time
-}
-
-// MessageStats 只读取会话消息计数和最近正文，不加载完整历史。
-type MessageStats struct {
-	Count                int    // 会话自己的持久化消息数量。
-	LastUserContent      string // 最近一条非空用户正文。
-	LastAssistantContent string // 最近一条非空助手正文。
-}
 
 type MessageRepository interface {
 	MessageStats(context.Context, string) (MessageStats, error)

@@ -4,77 +4,21 @@ import (
 	"context"
 	"time"
 
-	"elbot/internal/contextinfo"
+	"elbot/internal/storage/maindb"
+)
+
+type (
+	Session             = maindb.Session
+	ListSessionsRequest = maindb.ListSessionsRequest
+	SessionSummary      = maindb.SessionSummary
 )
 
 const (
-	SessionModeWork       = "work"
-	SessionModeChat       = "chat"
-	SessionModeBackground = "background"
-
-	SessionStatusActive = "active"
+	SessionModeWork       = maindb.SessionModeWork
+	SessionModeChat       = maindb.SessionModeChat
+	SessionModeBackground = maindb.SessionModeBackground
+	SessionStatusActive   = maindb.SessionStatusActive
 )
-
-type Session struct {
-	TaskType          string // 后台任务类型，与 TaskID 组成任务身份。
-	TaskID            string // 原生任务 ID，独立于聊天地址。
-	TaskName          string // 任务展示名，不参与身份比较。
-	ID                string
-	ParentSessionID   string
-	ForkFromMessageID string
-	Owner             contextinfo.ActorIdentity
-	Platform          string
-	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID            string
-	Mode              string
-	Title             string
-	Status            string
-	Metadata          string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	ArchivedAt        *time.Time
-	PinnedAt          *time.Time
-}
-
-type ListSessionsRequest struct {
-	Owner                         contextinfo.ActorIdentity
-	Platform                      string
-	ChatType                      contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID                        string
-	IncludeAllPlatforms           bool
-	IncludeSamePlatformBackground bool
-	IncludeArchived               bool
-	ArchivedOnly                  bool
-	ExcludeSessionID              string
-	Query                         string
-	Limit                         int
-	Offset                        int
-	RecentFirst                   bool // 忽略置顶，按更新时间倒序查询最近会话。
-	// MessageLimit bounds the ordered, unmodified message excerpts returned per session.
-	MessageLimit int
-}
-
-type SessionSummary struct {
-	ID                   string
-	Owner                contextinfo.ActorIdentity
-	Platform             string
-	ChatType             contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID               string
-	Title                string
-	Mode                 string
-	Status               string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	ArchivedAt           *time.Time
-	PinnedAt             *time.Time
-	ParentSessionID      string // Parent session when this session was derived.
-	ForkFromMessageID    string // Message that anchors this session branch.
-	MessageCount         int
-	LastUserContent      string
-	LastAssistantContent string
-	// Messages contains original role/content excerpts, with no display formatting.
-	Messages []Message
-}
 
 type SessionRepository interface {
 	// NextSequence 原子领取全局 Session 序号；独立于会话事务，已领取的号码不回收。

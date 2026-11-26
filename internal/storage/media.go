@@ -5,65 +5,16 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/storage/maindb"
 )
 
-// MediaSignedURL caches a download URL independently of the media's lifetime.
-type MediaSignedURL struct {
-	MediaID string
-	URL     string
-	// ExpiresAt is the URL's absolute expiry, not the media retention deadline.
-	ExpiresAt time.Time
-}
-
-type Media struct {
-	Deleting       bool
-	ID             string
-	Name           string
-	MIMEType       string
-	Size           int64
-	LocalPath      string
-	Backend        string
-	ObjectKey      string
-	SourcePlatform string
-	SourceURL      string
-	SourceFileID   string
-	CreatedAt      time.Time
-	LastAccessedAt time.Time
-	ExpiresAt      *time.Time
-}
-
-// HistoryMedia associates one ordered media position with an observed chat message.
-type HistoryMedia struct {
-	HistoryID  string
-	Platform   string
-	ChatType   contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID     string
-	MessageID  string
-	MediaIndex int
-	Kind       string
-	MediaID    string
-	OwnerID    string
-}
-type MediaReference struct {
-	MediaID   string
-	OwnerType string
-	OwnerID   string
-	Purpose   string
-	SessionID string
-	CreatedAt time.Time
-}
-
-type MediaOutput struct {
-	Platform     string
-	ChatType     contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
-	ChatID       string
-	MessageID    string
-	SegmentIndex int
-	Kind         string
-	MediaID      string
-	OwnerID      string
-	ExpiresAt    time.Time
-}
+type (
+	MediaSignedURL = maindb.MediaSignedURL
+	Media          = maindb.Media
+	HistoryMedia   = maindb.HistoryMedia
+	MediaReference = maindb.MediaReference
+	MediaOutput    = maindb.MediaOutput
+)
 
 type MediaRepository interface {
 	SaveHistory(ctx context.Context, item HistoryMedia) error
