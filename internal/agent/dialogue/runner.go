@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/turn"
@@ -120,7 +121,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	var result agentshare.TurnResult
 	streamOutput := &attemptOutput{Output: out}
 	out = streamOutput
-	result.StartedAt = storage.Now()
+	result.StartedAt = time.Now()
 	result.Selection = in.Selection
 	defer func() {
 		if result.Outcome != agentshare.Completed {
@@ -188,7 +189,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	requestCtx = r.View.WithModel(requestCtx, result.Selection)
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
-		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
+		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: time.Now()})
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
 		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err

@@ -247,9 +247,9 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 					err = fmt.Errorf("delete: %s", result.Message)
 				}
 			case "cleanup":
-				_, err = store.MutateSession(t.Context(), row.ID, func(row *storage.Session) error { row.UpdatedAt = storage.Now().Add(-2 * time.Hour); return nil })
+				_, err = store.MutateSession(t.Context(), row.ID, func(row *storage.Session) error { row.UpdatedAt = time.Now().Add(-2 * time.Hour); return nil })
 				if err == nil {
-					_, err = s.CleanupExpired(t.Context(), storage.Now().Add(-time.Hour))
+					_, err = s.CleanupExpired(t.Context(), time.Now().Add(-time.Hour))
 				}
 			case "missing":
 				err = store.DeleteSession(t.Context(), row.ID)

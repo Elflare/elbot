@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
@@ -148,7 +149,7 @@ func (c *ExecutionCoordinator) finishAttempt(ctx context.Context, session *stora
 		if errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
 			status = runtimeDoneStatus(status)
 		}
-		status.FinishedAt = storage.Now()
+		status.FinishedAt = time.Now()
 		status.Error = runErr.Error()
 		c.deps.Status.Record(ctx, status)
 		c.deps.Turns.StopAttempt(session.ID, attempt)

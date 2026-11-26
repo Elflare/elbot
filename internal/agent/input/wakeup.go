@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"strings"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -59,6 +60,6 @@ func (h *MessageHandler) isReplyToBot(ctx context.Context, msg agentshare.Messag
 	if err == nil && mapped.Role == storage.RoleAssistant {
 		return true
 	}
-	outputs, err := h.deps.MediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, storage.Now())
+	outputs, err := h.deps.MediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, time.Now())
 	return err == nil && len(outputs) > 0
 }

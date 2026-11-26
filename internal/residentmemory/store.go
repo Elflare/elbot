@@ -18,7 +18,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/storage"
 )
 
 type Limits struct {
@@ -139,7 +138,7 @@ func (s *Store) update(ctx context.Context, owner contextinfo.ActorIdentity, upd
 	if err != nil {
 		return operationresult.Result[struct{}]{}, err
 	}
-	now := storage.FormatTime(storage.Now())
+	now := time.Now().Format(time.RFC3339Nano)
 	memory, exists := file[owner.Platform][owner.ID]
 	before := memory
 	if checked := update(&memory); checked.Status != operationresult.Success {

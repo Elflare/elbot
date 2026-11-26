@@ -77,7 +77,7 @@ func newFixture(t *testing.T, step int, call func(context.Context, llm.TextReque
 
 func (f *fixture) row(t *testing.T, messages ...storage.Message) string {
 	t.Helper()
-	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "user"}, Platform: "test", ChatID: "scope", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"keep":9007199254740993}`, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "user"}, Platform: "test", ChatID: "scope", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"keep":9007199254740993}`, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if err := f.store.CreateSession(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}

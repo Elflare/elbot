@@ -154,7 +154,7 @@ func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	now := storage.Now()
+	now := time.Now()
 
 	olderResult, err := svc.Create(ctx, scope, CreateRequest{Title: "older pinned"})
 	if err != nil || olderResult.Status != operationresult.Success {

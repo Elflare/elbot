@@ -5,6 +5,7 @@ package control
 import (
 	"context"
 	"errors"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/operationresult"
@@ -107,7 +108,7 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 		if unarchive {
 			row.ArchivedAt = nil
 		}
-		row.UpdatedAt = storage.Now()
+		row.UpdatedAt = time.Now()
 		return nil
 	})
 	if errors.Is(err, storage.ErrNotFound) {

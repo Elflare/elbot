@@ -255,7 +255,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		call := calls[index]
 		message := llm.LLMMessage{Role: llm.RoleTool, ToolCallID: call.ID, Name: call.Name, Segments: llm.TextSegments("final " + call.ID)}
 		stored := agentshare.ToolResultStorageMessage(row.ID, message)
-		record := &storage.ToolCallRecord{ToolCallID: call.ID, ToolName: call.Name, Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}
+		record := &storage.ToolCallRecord{ToolCallID: call.ID, ToolName: call.Name, Success: true, StartedAt: time.Now(), FinishedAt: time.Now()}
 		if err := committer.Result(ctx, index, call, message, &storage.ToolResultCommit{Result: &stored, Record: record}); err != nil {
 			t.Fatal(err)
 		}

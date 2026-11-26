@@ -78,7 +78,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		status.Phase = runtimestatus.PhaseDone
 		status.RequestID, status.Kind, status.Label, status.ToolName = "", "", "", ""
 		status.StageStartedAt = status.TurnStartedAt
-		status.FinishedAt = storage.Now()
+		status.FinishedAt = time.Now()
 		status.Error = ""
 		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, context.DeadlineExceeded) {
 			status.Phase, status.Error = runtimestatus.PhaseError, runErr.Error()

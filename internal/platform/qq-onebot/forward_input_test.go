@@ -183,7 +183,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "旧回答", CreatedAt: storage.Now()}
+	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "旧回答", CreatedAt: time.Now()}
 	latest := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "最新回答", CreatedAt: first.CreatedAt.Add(time.Second)}
 	for i, message := range []*storage.Message{first, latest} {
 		if err := store.AppendMessage(ctx, message); err != nil {

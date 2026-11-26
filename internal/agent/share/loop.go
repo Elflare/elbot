@@ -2,6 +2,7 @@ package share
 
 import (
 	"context"
+	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -75,7 +76,7 @@ func (s *LoopState) StartCall(d LoopDeps, out Output) (*PendingInput, delivery.M
 func (s *LoopState) LLMSnapshot(usage *llm.Usage) runtimestatus.Snapshot {
 	return runtimestatus.Snapshot{
 		SessionID: s.Session.ID, Phase: runtimestatus.PhaseLLM, Provider: s.Selection.Provider, Model: s.Selection.Model,
-		Mode: s.Session.Mode, RequestID: s.RequestID, TurnStartedAt: s.StartedAt, StageStartedAt: storage.Now(), Usage: usage,
+		Mode: s.Session.Mode, RequestID: s.RequestID, TurnStartedAt: s.StartedAt, StageStartedAt: time.Now(), Usage: usage,
 	}
 }
 

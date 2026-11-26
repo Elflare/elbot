@@ -28,7 +28,7 @@ func (b *runBatch) startCall(index int) toolshare.RunResult {
 	// Session snapshots keep later handoffs and discovery writes out of workers.
 	snapshot := *b.req.Session
 	task := &b.calls[index]
-	task.startedAt = storage.Now()
+	task.startedAt = time.Now()
 	task.actor = actor
 	call := task.call
 	var err error
@@ -52,7 +52,7 @@ func (b *runBatch) startCall(index int) toolshare.RunResult {
 	}
 	finish := func(result executionResult, audit bool) {
 		task.result = result
-		task.finishedAt = storage.Now()
+		task.finishedAt = time.Now()
 		if audit {
 			b.manager.recordCallCompleted(callCtx, b.sessionID, call, resolved.Data.Source, actor, task.risk, runSource, task.startedAt, result)
 		}
@@ -187,7 +187,7 @@ func (b *runBatch) launch(index int, toolCtx context.Context, snapshot *storage.
 			b.manager.recordCallStarted(runToolCtx, b.sessionID, call, resolvedTool.Source, task.actor, task.risk, runSource)
 		})
 		b.manager.recordCallCompleted(runToolCtx, b.sessionID, call, resolvedTool.Source, task.actor, task.risk, runSource, startedAt, result)
-		task.finishedAt = storage.Now()
+		task.finishedAt = time.Now()
 		done()
 		task.result = result
 		b.ready <- index

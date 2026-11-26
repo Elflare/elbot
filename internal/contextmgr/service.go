@@ -3,6 +3,7 @@ package contextmgr
 import (
 	"context"
 	"sync"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -44,7 +45,7 @@ func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) e
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
 	_, err := s.store.MutateSession(ctx, id, func(row *storage.Session) error {
-		row.UpdatedAt = storage.Now()
+		row.UpdatedAt = time.Now()
 		if usage == nil {
 			return nil
 		}

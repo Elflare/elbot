@@ -182,7 +182,7 @@ func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 	}
 	m.references = store
 	// 释放完成后的正常时间内仍保留宽限期。
-	m.options.Now = storage.Now
+	m.options.Now = time.Now
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}

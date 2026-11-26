@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/storage"
 	"elbot/internal/storage/maindb"
@@ -79,7 +80,7 @@ func TestToolSnapshotMigrationPreservesStateAndRunsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A post-migration legacy row is a sentinel: reopening must not rerun version 27.
-	if _, err := db.Exec(`INSERT INTO sessions(id,owner_platform,owner_id,platform,chat_type,chat_id,mode,status,metadata,created_at,updated_at) VALUES('after','cli','local','cli','private','local','work','active',?,?,?)`, metadata, storage.FormatTime(storage.Now()), storage.FormatTime(storage.Now())); err != nil {
+	if _, err := db.Exec(`INSERT INTO sessions(id,owner_platform,owner_id,platform,chat_type,chat_id,mode,status,metadata,created_at,updated_at) VALUES('after','cli','local','cli','private','local','work','active',?,?,?)`, metadata, time.Now().Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := maindb.Open(t.Context(), path)

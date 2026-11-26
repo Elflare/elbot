@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"sync"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
@@ -167,7 +168,7 @@ func runtimeDoneStatus(base runtimestatus.Snapshot) runtimestatus.Snapshot {
 	base.Label = ""
 	base.ToolName = ""
 	base.StageStartedAt = base.TurnStartedAt
-	base.FinishedAt = storage.Now()
+	base.FinishedAt = time.Now()
 	base.Error = ""
 	return base
 }

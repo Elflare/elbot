@@ -187,7 +187,7 @@ func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, e
 	if err := storage.PrepareMessageID(ctx, allocate, head); err != nil {
 		return nil, err
 	}
-	head.CreatedAt = storage.Now()
+	head.CreatedAt = time.Now()
 	head.ToolBatchStatus = "pending"
 	results := make([]*storage.Message, len(head.ToolCalls))
 	ids := make([]string, len(head.ToolCalls))

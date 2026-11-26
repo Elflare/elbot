@@ -69,7 +69,7 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 		}
 	}
 	auditCtx := context.WithoutCancel(ctx)
-	if err := m.RecordToolCall(auditCtx, result.record(sessionID, call, actor, risk, start, storage.Now())); err != nil {
+	if err := m.RecordToolCall(auditCtx, result.record(sessionID, call, actor, risk, start, time.Now())); err != nil {
 		m.Log(auditCtx, newRunRecord(auditCtx, sessionID, "async_tool_record_failed", err))
 	}
 	report := call

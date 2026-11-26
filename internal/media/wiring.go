@@ -13,7 +13,6 @@ import (
 	"elbot/internal/media/object"
 	"elbot/internal/media/share"
 	"elbot/internal/media/transfer"
-	"elbot/internal/storage"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 )
@@ -48,7 +47,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 	local := &backend.LocalBackend{Root: filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media")}
 	objects, err := object.NewManager(ctx, object.Options{
 		Backend: objectBackend, MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
-		DownloadTimeout: time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second, Media: cfg.Media, Now: storage.Now,
+		DownloadTimeout: time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second, Media: cfg.Media, Now: time.Now,
 	}, object.Deps{
 		Media: deps.Store, References: deps.Store, Local: local, Remote: remote,
 	})

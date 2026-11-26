@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/operationresult"
-	"elbot/internal/storage"
 )
 
 const resumeHistoryTurns = 3
@@ -185,7 +185,7 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (command.
 	if !confirmed {
 		return command.Result{Status: operationresult.Success, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "永久删除过期且未归档、未置顶的会话？"}}, Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}, nil
 	}
-	data, err := c.deps.Control.CleanSessions(ctx, control.CleanSessionsRequest{Confirmed: true, Before: storage.Now().AddDate(0, 0, -cleanupRetentionDays(c.deps))})
+	data, err := c.deps.Control.CleanSessions(ctx, control.CleanSessionsRequest{Confirmed: true, Before: time.Now().AddDate(0, 0, -cleanupRetentionDays(c.deps))})
 	if err != nil {
 		return command.Result{}, err
 	}

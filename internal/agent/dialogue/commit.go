@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"time"
 
 	"context"
 	"fmt"
@@ -131,7 +132,7 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 		previous := media.ArgumentMediaIDs(c.head.ToolCalls[index].Arguments)
 		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
 			if !slices.Contains(previous, id) {
-				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: c.head.SessionID, SessionID: c.head.SessionID, Purpose: "input", CreatedAt: storage.Now()})
+				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: c.head.SessionID, SessionID: c.head.SessionID, Purpose: "input", CreatedAt: time.Now()})
 			}
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
@@ -35,7 +36,7 @@ func (s *Service) Rename(ctx context.Context, scope share.Scope, id, title strin
 		if err != nil {
 			return err
 		}
-		row.Title, row.UpdatedAt = title, storage.Now()
+		row.Title, row.UpdatedAt = title, time.Now()
 		return nil
 	})
 }
@@ -43,7 +44,7 @@ func (s *Service) Rename(ctx context.Context, scope share.Scope, id, title strin
 func (s *Service) Archive(ctx context.Context, scope share.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.mutateTarget(ctx, scope, id, func(row *storage.Session) error {
 		if row.ArchivedAt == nil {
-			now := storage.Now()
+			now := time.Now()
 			row.ArchivedAt, row.UpdatedAt = &now, now
 		}
 		return nil
@@ -57,7 +58,7 @@ func (s *Service) Unarchive(ctx context.Context, scope share.Scope, id string) (
 func (s *Service) Pin(ctx context.Context, scope share.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.mutateTarget(ctx, scope, id, func(row *storage.Session) error {
 		if row.PinnedAt == nil {
-			now := storage.Now()
+			now := time.Now()
 			row.PinnedAt, row.UpdatedAt = &now, now
 		}
 		return nil
@@ -67,7 +68,7 @@ func (s *Service) Pin(ctx context.Context, scope share.Scope, id string) (operat
 func (s *Service) Unpin(ctx context.Context, scope share.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.mutateTarget(ctx, scope, id, func(row *storage.Session) error {
 		if row.PinnedAt != nil {
-			row.PinnedAt, row.UpdatedAt = nil, storage.Now()
+			row.PinnedAt, row.UpdatedAt = nil, time.Now()
 		}
 		return nil
 	})

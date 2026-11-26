@@ -148,7 +148,7 @@ func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	otherScope := scope
 	otherScope.Owner.ID = "other"
 	f.create(t, otherScope, "foreign")
-	now := storage.Now()
+	now := time.Now()
 	for i, row := range []*storage.Session{pinned, recent} {
 		if _, err := f.store.MutateSession(ctx, row.ID, func(row *storage.Session) error {
 			row.UpdatedAt = now.Add(time.Duration(i-3) * time.Hour)

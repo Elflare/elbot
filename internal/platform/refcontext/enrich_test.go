@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
@@ -20,7 +21,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 	}
 	defer history.Close()
 	original := []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}, {Type: share.SegmentImage, PlatformFileID: "outside-image"}}
-	row := &storage.ChatMessage{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "123", SenderID: "1", SenderName: "小明", Text: "[forward]", Segments: encodeReferenceSegments(original), CreatedAt: storage.Now()}
+	row := &storage.ChatMessage{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "123", SenderID: "1", SenderName: "小明", Text: "[forward]", Segments: encodeReferenceSegments(original), CreatedAt: time.Now()}
 	if err := history.AppendChatMessage(ctx, row); err != nil {
 		t.Fatal(err)
 	}

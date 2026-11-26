@@ -5,6 +5,7 @@ package control
 import (
 	"context"
 	"strings"
+	"time"
 
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
@@ -95,7 +96,7 @@ func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*wor
 	_, err = s.deps.Sessions.MutateSession(ctx, id, func(row *storage.Session) error {
 		encoded := workspace.UpdateState(row.Metadata, update)
 		if row.Metadata != encoded {
-			row.Metadata, row.UpdatedAt = encoded, storage.Now()
+			row.Metadata, row.UpdatedAt = encoded, time.Now()
 		}
 		return nil
 	})

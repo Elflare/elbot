@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"time"
 
 	"context"
 	"errors"
@@ -31,7 +32,7 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 					continue
 				}
 				seen[id] = true
-				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: commit.SessionID, SessionID: commit.SessionID, Purpose: "input", CreatedAt: storage.Now()})
+				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: commit.SessionID, SessionID: commit.SessionID, Purpose: "input", CreatedAt: time.Now()})
 			}
 		}
 	}

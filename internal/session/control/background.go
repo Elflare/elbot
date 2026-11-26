@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
@@ -27,7 +28,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			if err != nil {
 				return err
 			}
-			row.Metadata, row.UpdatedAt = metadata, storage.Now()
+			row.Metadata, row.UpdatedAt = metadata, time.Now()
 			return nil
 		})
 		if errors.Is(err, storage.ErrNotFound) {

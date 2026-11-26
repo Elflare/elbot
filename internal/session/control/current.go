@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"elbot/internal/operationresult"
@@ -212,7 +213,7 @@ func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req Activ
 		}
 	}
 	row, err = s.deps.Sessions.MutateSession(locked, row.ID, func(row *storage.Session) error {
-		row.Mode, row.UpdatedAt = req.Mode, storage.Now()
+		row.Mode, row.UpdatedAt = req.Mode, time.Now()
 		return nil
 	})
 	if err != nil {

@@ -5,6 +5,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
@@ -49,7 +50,7 @@ func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Orig
 		if err != nil {
 			return err
 		}
-		row.UpdatedAt = storage.Now()
+		row.UpdatedAt = time.Now()
 		return nil
 	})
 	if err != nil {

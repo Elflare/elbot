@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"time"
 
 	"elbot/internal/storage"
 	toolshare "elbot/internal/tool/share"
@@ -145,7 +146,7 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		}
 		if metadata != row.Metadata {
 			row.Metadata = metadata
-			row.UpdatedAt = storage.Now()
+			row.UpdatedAt = time.Now()
 		}
 		result.DiscoveredTools = state.DiscoveredTools
 		result.Injected, result.Existing = uniqueNames(injected), uniqueNames(existing)

@@ -2,6 +2,7 @@ package responses
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"time"
 
 	"context"
 	"encoding/json"
@@ -207,7 +208,7 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context, messages []storag
 		}
 		head.ToolBatchStatus = "interrupted"
 		snapshot := *s.checkpoint
-		snapshot.ID, snapshot.CreatedAt = storage.NewID(), storage.Now()
+		snapshot.ID, snapshot.CreatedAt = storage.NewID(), time.Now()
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Calls: pending, Snapshot: &snapshot}
 		err = s.commit(ctx, storage.DialogueCommit{SessionID: s.Session.ID, ToolResult: &storage.ToolResultCommit{Call: head}, Native: &native}, "close_interrupted_native_tool")
 		return err

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -24,7 +25,7 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, id string) {
 	if model, ok := contextinfo.ModelFromContext(ctx); ok {
 		worker = contextinfo.WithModel(worker, model)
 	}
-	event := NamingCompletedEvent{Identity: events.LogIdentityFromContext(worker), TriggeredAt: storage.Now(), MaxFailures: maxNamingFailures}
+	event := NamingCompletedEvent{Identity: events.LogIdentityFromContext(worker), TriggeredAt: time.Now(), MaxFailures: maxNamingFailures}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(worker, cancel)
 	defer func() { stop(); cancel() }()
@@ -183,7 +184,7 @@ func (s *Service) saveGeneratedTitle(ctx context.Context, id, title, source stri
 		if err != nil {
 			return err
 		}
-		row.Title, row.Metadata, row.UpdatedAt = title, metadata, storage.Now()
+		row.Title, row.Metadata, row.UpdatedAt = title, metadata, time.Now()
 		applied = true
 		return nil
 	})
@@ -211,7 +212,7 @@ func resultStatus(err error) events.ResultStatus {
 }
 
 func (s *Service) completeNaming(ctx context.Context, state *namingState, event NamingCompletedEvent) {
-	event.CompletedAt = storage.Now()
+	event.CompletedAt = time.Now()
 	event.FailureCount = state.failures
 	s.notifyNamingCompleted(ctx, event)
 }

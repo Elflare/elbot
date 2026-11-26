@@ -85,7 +85,7 @@ func newTestManager(t *testing.T) (*Manager, *storage.Supervisor, *testBackend) 
 	cfg := config.Default()
 	m, err := NewManager(t.Context(), Options{
 		Backend: "local", MaxImportBytes: 1 << 20, DownloadTimeout: time.Second,
-		Media: cfg.Media, Now: storage.Now,
+		Media: cfg.Media, Now: time.Now,
 	}, Deps{Media: store, References: store, Local: backend})
 	if err != nil {
 		t.Fatal(err)
