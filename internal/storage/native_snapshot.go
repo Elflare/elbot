@@ -29,29 +29,19 @@ func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit DialogueCommit
 	if owner != commit.SessionID || snapshot.ParentID != parent || snapshot.ExchangeID != exchange || snapshot.ResponseID != response || snapshot.SeedID != seed {
 		return fmt.Errorf("native snapshot does not match current checkpoint")
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT exchange_id,call_id,ordinal,name,arguments,status,result_input_id FROM native_calls WHERE exchange_id=? ORDER BY ordinal`, exchange)
+	calls, err := readNativeCalls(ctx, tx.QueryContext, exchange)
 	if err != nil {
 		return err
 	}
-	var calls []NativeCall
-	for rows.Next() {
-		var call NativeCall
-		if err := rows.Scan(&call.ExchangeID, &call.CallID, &call.Ordinal, &call.Name, &call.Arguments, &call.Status, &call.ResultInputID); err != nil {
-			rows.Close()
-			return err
-		}
-		calls = append(calls, call)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	raw, _ := json.Marshal(calls)
-	snapshot.CallsJSON = string(raw)
 	if snapshot.CreatedAt.IsZero() {
 		snapshot.CreatedAt = Now()
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, snapshot.ID, snapshot.SessionID, snapshot.ParentID, snapshot.ExchangeID, snapshot.ResponseID, snapshot.MessageID, snapshot.SeedID, snapshot.CallsJSON, FormatTime(snapshot.CreatedAt))
+	return insertCheckpoint(ctx, tx, snapshot, calls)
+}
+
+func insertCheckpoint(ctx context.Context, tx *sql.Tx, cp *NativeCheckpoint, calls []NativeCall) error {
+	raw, _ := json.Marshal(calls)
+	cp.CallsJSON = string(raw)
+	_, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(`+checkpointColumns+`) VALUES(?,?,?,?,?,?,?,?,?)`, cp.ID, cp.SessionID, cp.ParentID, cp.ExchangeID, cp.ResponseID, cp.MessageID, cp.SeedID, cp.CallsJSON, FormatTime(cp.CreatedAt))
 	return err
 }

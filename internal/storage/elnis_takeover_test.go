@@ -75,7 +75,7 @@ func TestTakenOverEventReleasesEventAndOutboxMedia(t *testing.T) {
 	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM media_references WHERE media_id='attachment'").Scan(&count); err != nil || count != 2 {
 		t.Fatalf("references before takeover: %d %v", count, err)
 	}
-	if err := store.UpdateElnisEvent(ctx, UpdateElnisEventRequest{ID: event.ID, Status: "taken_over"}); err != nil {
+	if err := store.UpdateElnisEvent(ctx, UpdateElnisEventRequest{ID: event.ID, Status: "taken_over", ReleaseMediaReferences: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.db.QueryRowContext(ctx, "SELECT count(*) FROM media_references WHERE media_id='attachment'").Scan(&count); err != nil || count != 0 {

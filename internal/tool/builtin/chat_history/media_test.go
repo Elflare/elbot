@@ -19,9 +19,9 @@ type countedHistory struct {
 	reads int
 }
 
-func (r *countedHistory) GetBySeq(ctx context.Context, platform string, kind contextinfo.ChatType, id string, seq int64, reply bool) (*storage.ChatMessage, error) {
+func (r *countedHistory) GetBySeq(ctx context.Context, platform string, kind contextinfo.ChatType, id string, seq int64, includeAlias bool) (*storage.ChatMessage, error) {
 	r.reads++
-	return r.ChatHistoryRepository.GetBySeq(ctx, platform, kind, id, seq, reply)
+	return r.ChatHistoryRepository.GetBySeq(ctx, platform, kind, id, seq, includeAlias)
 }
 
 type mediaProbe struct {

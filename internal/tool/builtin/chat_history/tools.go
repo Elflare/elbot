@@ -151,8 +151,8 @@ func (b Deps) historyRows(ctx context.Context, rows []storage.ChatMessage, err e
 }
 
 // getMessage 只定位本会话内的原始记录，由调用方按用途读取。
-func (d Deps) getMessage(ctx context.Context, chat contextinfo.Source, seq int64, reply bool) (operationresult.Result[*storage.ChatMessage], error) {
-	row, err := d.Repository.GetBySeq(ctx, chat.Platform, chat.ChatType, chat.ChatID, seq, reply)
+func (d Deps) getMessage(ctx context.Context, chat contextinfo.Source, seq int64, includeAlias bool) (operationresult.Result[*storage.ChatMessage], error) {
+	row, err := d.Repository.GetBySeq(ctx, chat.Platform, chat.ChatType, chat.ChatID, seq, includeAlias)
 	if errors.Is(err, storage.ErrNotFound) {
 		return operationresult.Result[*storage.ChatMessage]{Status: operationresult.NotFound, Message: "当前聊天没有该消息。"}, nil
 	}

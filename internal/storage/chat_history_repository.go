@@ -261,9 +261,9 @@ func (r *Supervisor) GetByPlatformMessages(ctx context.Context, platform string,
 	}
 	return scanChatMessages(rows)
 }
-func (r *Supervisor) GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, reply bool) (*ChatMessage, error) {
+func (r *Supervisor) GetBySeq(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, seq int64, includeAlias bool) (*ChatMessage, error) {
 	selection := chatMessageSelect
-	if reply && platform == "qqofficial" && conversationKind == "group" {
+	if includeAlias {
 		selection = replyMessageSelect
 	}
 	return r.getMessage(ctx, platform, conversationKind, scopeID, selection, "seq", seq)

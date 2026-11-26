@@ -184,6 +184,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	ids, _ := json.Marshal(consumed)
 	exchange := &storage.NativeExchange{
+		ID: storage.NewID(), Status: "pending",
 		SessionID:            s.Session.ID,
 		APIType:              string(origin.APIType),
 		Provider:             origin.Provider,

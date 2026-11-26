@@ -58,13 +58,7 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			return operationresult.Result[*toolshare.Result]{Status: target.Status, Message: target.Message}, target.Message, nil
 		}
 		out := delivery.Reply(target.Data.PlatformMessageID, replyText)
-		if target.Data.Platform == "qqofficial" && target.Data.ChatType == "group" {
-			if target.Data.ReferenceIndex == "" {
-				const msg = "该 QQ 群消息缺少引用索引，无法原生引用。"
-				return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: msg}, msg, nil
-			}
-			out.ReplyReferenceIndex = target.Data.ReferenceIndex
-		}
+		out.ReplyReferenceIndex = target.Data.ReferenceIndex
 		result := &toolshare.Result{
 			Content: fmt.Sprintf("已引用回复 [h%d] %s(%s): %s\n回复内容已发送，勿重复发送。", target.Data.Seq, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false)),
 			Outputs: []delivery.Output{out},
@@ -81,5 +75,10 @@ func (m Deps) replyMessage(ctx context.Context, seq int64) (operationresult.Resu
 		return operationresult.Result[*storage.ChatMessage]{Status: chat.Status, Message: chat.Message}, nil
 	}
 
-	return m.getMessage(ctx, chat.Data, seq, true)
+	includeAlias := chat.Data.Platform == "qqofficial" && chat.Data.ChatType == "group"
+	target, err := m.getMessage(ctx, chat.Data, seq, includeAlias)
+	if err == nil && target.Status == operationresult.Success && includeAlias && target.Data.ReferenceIndex == "" {
+		return operationresult.Result[*storage.ChatMessage]{Status: operationresult.InvalidTarget, Message: "该 QQ 群消息缺少引用索引，无法原生引用。"}, nil
+	}
+	return target, err
 }

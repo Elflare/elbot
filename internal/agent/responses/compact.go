@@ -164,6 +164,7 @@ func (c *Compactor) compactOnce(ctx context.Context, row *storage.Session, selec
 	target := selection.Origin
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	exchange := &storage.NativeExchange{
+		ID: storage.NewID(), Status: "pending",
 		SessionID:            row.ID,
 		APIType:              string(target.APIType),
 		Provider:             target.Provider,

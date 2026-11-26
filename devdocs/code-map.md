@@ -129,7 +129,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/agent/tools/toolrun_adapter.go`：Hook、子请求、确认与状态适配。
 - `internal/tool/execution/`：`runner.go` 批次协调；`runner_call.go` 单次调用准备与启动；`runner_commit.go` 结果提交；`manager.go` 直接调用；`prepared.go` 准备；`executor.go` 原生执行；`elwisp_exec.go` 远端执行；`schema.go` 工具声明。
 - `internal/agent/dialogue/commit.go`、`internal/agent/responses/persistence.go`：结果提交、原生持久化。
-- `internal/storage/tool_batch.go`、`internal/storage/sqlite/tool_batch.go`：批次契约、批次存储。
+- `internal/storage/dialogue.go`、`internal/storage/tool_batch.go`：批次契约、批次存储。
 - `internal/tool/logging.go`：工具日志发布。
 
 <!-- locator:skill -->
@@ -197,7 +197,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `branch/`：`service.go` 材料准备；`fork.go` 分支；`copy.go` 副本；`compact.go` 压缩派生。
 - `naming/`：`service.go` 任务；`naming.go` 流程；`title.go` 标题；`signals.go` 事件。
 - `share/`：`session.go` 会话事实；`binding.go` 绑定；`origin.go` 归属；`id.go` 来源与前缀。
-- `internal/storage/sqlite/session_repository.go`：会话存储。
+- `internal/storage/session_repository.go`：会话存储。
 
 <!-- locator:context -->
 ## 上下文、Prompt 与压缩
@@ -221,10 +221,10 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:storage -->
 ## Storage 与 SQLite
 
-- `internal/storage/`：`storage.go` 领域契约；`session_metadata.go` 元数据；`id.go` 发号；`dialogue.go` 对话材料。
-- `internal/storage/sqlite/`：`store.go` 连接；`db_init.go` 建库；`migrations.go` 迁移；`id.go` 序号。
-- `internal/storage/sqlite/`：`session_repository.go` 会话；`dialogue_repository.go` 对话事务；`tool_call_repository.go` 工具统计；`chat_history_repository.go` 平台历史。
-- `internal/storage/sqlite/`：`native_snapshot.go` 原生快照；`native_material.go` 窗口材料；`media_history.go` 历史媒体；`media_lifecycle.go` 回收。
+- `internal/storage/`：`session.go` 会话；`message.go` 消息；`dialogue.go` 对话提交；`cron.go`、`elnis.go`、`media.go`、`chat_history.go` 各领域存储契约。
+- `internal/storage/`：`supervisor.go` 双库启闭；`db_init.go` 建库；`migrations.go` 迁移；`id.go` 序号。
+- `internal/storage/`：`session_repository.go` 会话；`dialogue_repository.go` 对话事务；`tool_call_repository.go` 工具统计；`chat_history_repository.go` 平台历史。
+- `internal/storage/`：`native_snapshot.go` 原生快照；`native_material.go` 窗口材料；`media_history.go` 历史媒体；`media_lifecycle.go` 回收。
 
 <!-- locator:elnis -->
 ## Elnis / Elvena / Elwisp
@@ -233,7 +233,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/background/elnis/`：`http.go` HTTP；`auth.go` 鉴权；`prepare.go` 输入；`targets.go` 目标；`types.go` 内部事件。
 - `internal/background/elnis/`：`lifecycle.go` 启停；`service.go` 分发与恢复；`direct.go` 直接调用；`llm.go` 模型流程；`store.go` 状态。
 - `internal/background/elnis/`：`repository.go` 存储契约；`outbox.go` 报告投递；`media.go` 媒体。
-- `internal/storage/sqlite/elnis_event_repository.go`：事件与报告事务。
+- `internal/storage/elnis_event_repository.go`：事件与报告事务。
 - [架构](architecture.md#elnis--elvena--elwisp)、[功能](../docs/elnis.md)、[配置与协议](../docs/elnis-usage.md)。
 
 <!-- locator:media -->
@@ -244,7 +244,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/media/transfer/`：`manager.go` 交付；`usage.go` 使用记录；`request.go` 模型交付；`output.go` 发送准备；`platform.go` 平台获取。
 - `internal/media/backend/`：`local.go` 本地；`s3.go` S3；`remote.go` 后端构造。
 - `internal/media/share/`：`types.go` 内部类型；`contracts.go` 组件契约。
-- `internal/storage/sqlite/media_repository.go`、`internal/storage/sqlite/media_lifecycle.go`：媒体存储、回收。
+- `internal/storage/media_repository.go`、`internal/storage/media_lifecycle.go`：媒体存储、回收。
 
 <!-- locator:cron -->
 ## Cron 与维护

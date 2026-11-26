@@ -120,7 +120,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if err := store.CreateMaterial(ctx, SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}
-	exchange := &NativeExchange{ID: "child-exchange", SessionID: row.ID, APIType: "response", Provider: "p", RequestJSON: `{"input":[]}`, InputIDsJSON: `[]`}
+	exchange := &NativeExchange{Status: "pending", ID: "child-exchange", SessionID: row.ID, APIType: "response", Provider: "p", RequestJSON: `{"input":[]}`, InputIDsJSON: `[]`}
 	if err := store.CreateExchange(ctx, exchange); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestLoadNativeWindowKeepsTargetAncestryAndSnapshotResults(t *testing.T) {
 	if err := store.CommitDialogue(ctx, DialogueCommit{SessionID: "s", Native: &NativeCommit{ExpectedCheckpointID: "root", Calls: []NativeCall{call}, Inputs: []NativeInput{{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later"}`, MediaJSON: `[]`}}}}); err != nil {
 		t.Fatal(err)
 	}
-	nextExchange := &NativeExchange{ID: "next-exchange", SessionID: "s", APIType: "response", Provider: "p", RequestJSON: `{}`, InputIDsJSON: `[]`, PreviousCheckpointID: "root"}
+	nextExchange := &NativeExchange{Status: "pending", ID: "next-exchange", SessionID: "s", APIType: "response", Provider: "p", RequestJSON: `{}`, InputIDsJSON: `[]`, PreviousCheckpointID: "root"}
 	if err := store.CreateExchange(ctx, nextExchange); err != nil {
 		t.Fatal(err)
 	}

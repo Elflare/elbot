@@ -13,6 +13,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+var ErrNotFound = errors.New("not found")
+
 // Supervisor owns the two independent databases; consumers only borrow persistence operations.
 type Supervisor struct {
 	db      *sql.DB    // Main database for sessions, dialogue, media and background jobs.

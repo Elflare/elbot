@@ -172,7 +172,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 			f.message(t, source.ID, storage.RoleAssistant)
 			input := storage.NativeInput{ID: "input", SessionID: source.ID, ExchangeID: "exchange", CallID: "call", ItemJSON: `{"output":"pending"}`, MediaJSON: `[]`}
 			if change == "pending-content" {
-				if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
+				if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{Status: "pending", ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
 					t.Fatal(err)
 				}
 				err := f.store.CommitDialogue(t.Context(), storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{{ExchangeID: "exchange", CallID: "call", Name: "tool", Arguments: `{}`, Status: "pending", ResultInputID: input.ID}}}})

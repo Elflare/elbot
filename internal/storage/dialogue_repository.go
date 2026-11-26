@@ -156,9 +156,7 @@ func (r *Supervisor) CommitDialogue(ctx context.Context, commit DialogueCommit) 
 			if calls == nil {
 				calls = []NativeCall{}
 			}
-			snapshot, _ := json.Marshal(calls)
-			checkpoint.CallsJSON = string(snapshot)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, checkpoint.SeedID, checkpoint.CallsJSON, FormatTime(checkpoint.CreatedAt)); err != nil {
+			if err := insertCheckpoint(ctx, tx, checkpoint, calls); err != nil {
 				return err
 			}
 			_ = fields.Set("llm_checkpoint", checkpoint.ID)
@@ -225,13 +223,9 @@ func (r *Supervisor) CreateExchange(ctx context.Context, row *NativeExchange) er
 	if row == nil || row.APIType == "" || row.Provider == "" || !json.Valid([]byte(row.RequestJSON)) {
 		return fmt.Errorf("invalid native exchange")
 	}
-	if row.ID == "" {
-		row.ID = NewID()
-	}
 	if row.CreatedAt.IsZero() {
 		row.CreatedAt = Now()
 	}
-	row.Status = "pending"
 	if row.InputIDsJSON != "" && !json.Valid([]byte(row.InputIDsJSON)) {
 		return fmt.Errorf("invalid native input manifest")
 	}
@@ -304,7 +298,11 @@ func (r *Supervisor) PendingInputs(ctx context.Context, sessionID string) ([]Nat
 }
 
 func (r *Supervisor) Calls(ctx context.Context, exchangeID string) ([]NativeCall, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT exchange_id,call_id,ordinal,name,arguments,status,result_input_id FROM native_calls WHERE exchange_id=? ORDER BY ordinal`, exchangeID)
+	return readNativeCalls(ctx, r.db.QueryContext, exchangeID)
+}
+
+func readNativeCalls(ctx context.Context, query func(context.Context, string, ...any) (*sql.Rows, error), exchangeID string) ([]NativeCall, error) {
+	rows, err := query(ctx, `SELECT exchange_id,call_id,ordinal,name,arguments,status,result_input_id FROM native_calls WHERE exchange_id=? ORDER BY ordinal`, exchangeID)
 	if err != nil {
 		return nil, err
 	}

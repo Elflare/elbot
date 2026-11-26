@@ -40,7 +40,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 				if stage == "history" {
 					old := &storage.Message{ID: "old-user", SessionID: source.ID, Role: storage.RoleUser, Content: "old question"}
 					input := storage.NativeInput{ID: "old-input", SessionID: source.ID, MessageID: old.ID, ItemJSON: `{"type":"message","role":"user","content":[{"type":"input_text","text":"old question"}]}`, MediaJSON: `[]`}
-					if err := f.store.CreateExchange(ctx, &storage.NativeExchange{ID: "completed", SessionID: source.ID, APIType: "response", Provider: "p", BaseURL: "https://example.invalid", RequestJSON: `{"store":true}`, InputIDsJSON: `["old-input"]`}); err != nil {
+					if err := f.store.CreateExchange(ctx, &storage.NativeExchange{Status: "pending", ID: "completed", SessionID: source.ID, APIType: "response", Provider: "p", BaseURL: "https://example.invalid", RequestJSON: `{"store":true}`, InputIDsJSON: `["old-input"]`}); err != nil {
 						t.Fatal(err)
 					}
 					if err := f.store.FinishExchange(ctx, "completed", "completed", `{"id":"response","status":"completed","store":true}`, `[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"old answer"}]}]`, ""); err != nil {
@@ -70,7 +70,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 					t.Fatal(err)
 				}
 				// Model execution was stopped before any response checkpoint could be committed.
-				if err := f.store.CreateExchange(ctx, &storage.NativeExchange{ID: "stopped", SessionID: source.ID, APIType: "response", Provider: "p", PreviousCheckpointID: checkpointID, RequestJSON: `{"store":true}`, InputIDsJSON: `["stopped-input"]`}); err != nil {
+				if err := f.store.CreateExchange(ctx, &storage.NativeExchange{Status: "pending", ID: "stopped", SessionID: source.ID, APIType: "response", Provider: "p", PreviousCheckpointID: checkpointID, RequestJSON: `{"store":true}`, InputIDsJSON: `["stopped-input"]`}); err != nil {
 					t.Fatal(err)
 				}
 				if err := f.store.FinishExchange(ctx, "stopped", "canceled", "", "", context.Canceled.Error()); err != nil {
@@ -145,7 +145,7 @@ func TestCopyForegroundRechecksPendingInputs(t *testing.T) {
 			if change != "added" {
 				if change == "content" {
 					input.ExchangeID, input.CallID = "exchange", "call"
-					if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
+					if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{Status: "pending", ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
 						t.Fatal(err)
 					}
 				}

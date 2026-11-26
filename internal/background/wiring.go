@@ -81,7 +81,7 @@ func (b elnisBridge) GetByKey(ctx context.Context, name, source, sourceID string
 }
 
 func (b elnisBridge) Update(ctx context.Context, req elnis.UpdateEventRequest) error {
-	return elnisError(b.repo.UpdateElnisEvent(ctx, storage.UpdateElnisEventRequest{ID: req.ID, ResolvedTargets: req.ResolvedTargets,
+	return elnisError(b.repo.UpdateElnisEvent(ctx, storage.UpdateElnisEventRequest{ID: req.ID, ResolvedTargets: req.ResolvedTargets, ReleaseMediaReferences: req.Status == elnis.StatusTakenOver,
 		Status: req.Status, SessionID: req.SessionID, Result: req.Result, Error: req.Error}))
 }
 

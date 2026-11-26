@@ -63,12 +63,11 @@ func optionalTimeEqual(a, b *time.Time) bool {
 	return a.Equal(*b)
 }
 
+const cronJobColumns = `id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
+       run_count, created_at, updated_at, delivery_state, delivery_token`
+
 func (r *Supervisor) GetByName(ctx context.Context, name string) (*CronJob, error) {
-	row := r.db.QueryRowContext(ctx, `
-SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, created_at, updated_at, delivery_state, delivery_token
-FROM cron_jobs
-WHERE name = ?`, name)
+	row := r.db.QueryRowContext(ctx, `SELECT `+cronJobColumns+` FROM cron_jobs WHERE name = ?`, name)
 	job, err := scanCronJob(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -80,10 +79,7 @@ WHERE name = ?`, name)
 }
 
 func (r *Supervisor) ListCronJobs(ctx context.Context, includeDisabled bool) ([]CronJob, error) {
-	query := `
-SELECT id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-       run_count, created_at, updated_at, delivery_state, delivery_token
-FROM cron_jobs`
+	query := `SELECT ` + cronJobColumns + ` FROM cron_jobs`
 	if !includeDisabled {
 		query += `
 WHERE enabled = 1`
@@ -268,10 +264,7 @@ SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updat
 	if resetDelivery {
 		query += ", delivery_state = NULL, delivery_token = NULL"
 	}
-	query += `
-WHERE id = ?
-RETURNING id, name, handler, schedule, enabled, metadata, last_run_at, next_run_at,
-          run_count, created_at, updated_at, delivery_state, delivery_token`
+	query += ` WHERE id = ? RETURNING ` + cronJobColumns
 	args = append(args, job.ID)
 	job, err := scanCronJob(r.db.QueryRowContext(ctx, query, args...))
 	if errors.Is(err, sql.ErrNoRows) {

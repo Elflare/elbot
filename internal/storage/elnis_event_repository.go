@@ -95,35 +95,24 @@ INSERT INTO elnis_events (
 }
 
 func (r *Supervisor) GetElnisEvent(ctx context.Context, id string) (*ElnisEvent, error) {
-	row := r.db.QueryRowContext(ctx, `
-SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
-       model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
-       session_id, result, error, received_at, created_at, updated_at
-FROM elnis_events
-WHERE id = ?`, id)
-	event, err := scanElnisEvent(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get elnis event by id: %w", err)
-	}
-	return event, nil
+	return r.readElnisEvent(ctx, "get elnis event by id", "id = ?", id)
 }
 
 func (r *Supervisor) GetByKey(ctx context.Context, elwispName, source, sourceID string) (*ElnisEvent, error) {
-	row := r.db.QueryRowContext(ctx, `
-SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
+	return r.readElnisEvent(ctx, "get elnis event", "elwisp_name = ? AND source = ? AND source_id = ?", elwispName, source, sourceID)
+}
+
+func (r *Supervisor) readElnisEvent(ctx context.Context, operation, predicate string, args ...any) (*ElnisEvent, error) {
+	event, err := scanElnisEvent(r.db.QueryRowContext(ctx, `SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
        model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
        session_id, result, error, received_at, created_at, updated_at
 FROM elnis_events
-WHERE elwisp_name = ? AND source = ? AND source_id = ?`, elwispName, source, sourceID)
-	event, err := scanElnisEvent(row)
+WHERE `+predicate, args...))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get elnis event: %w", err)
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 	return event, nil
 }
@@ -152,9 +141,7 @@ WHERE id = ?`,
 	if n, err := res.RowsAffected(); err == nil && n == 0 {
 		return ErrNotFound
 	}
-	if req.Status == "taken_over" {
-		// The existing terminal-state triggers predate foreground takeover.
-		// Release the abandoned outbox/event references in this same transaction.
+	if req.ReleaseMediaReferences {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM media_references WHERE (owner_type='elnis_event' AND owner_id=?) OR (owner_type='elnis_report' AND owner_id IN (SELECT id FROM elnis_report_deliveries WHERE event_id=?))", req.ID, req.ID); err != nil {
 			return err
 		}
