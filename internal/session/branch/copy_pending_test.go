@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/agent/responses"
 	"elbot/internal/llm"
@@ -38,7 +39,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 				}
 				checkpointID := ""
 				if stage == "history" {
-					old := &storage.Message{ID: "old-user", SessionID: source.ID, Role: storage.RoleUser, Content: "old question"}
+					old := &storage.Message{ID: "old-user", SessionID: source.ID, Role: llm.RoleUser, Content: "old question"}
 					input := storage.NativeInput{ID: "old-input", SessionID: source.ID, MessageID: old.ID, ItemJSON: `{"type":"message","role":"user","content":[{"type":"input_text","text":"old question"}]}`, MediaJSON: `[]`}
 					if err := f.store.CreateExchange(ctx, &storage.NativeExchange{Status: "pending", ID: "completed", SessionID: source.ID, APIType: "response", Provider: "p", BaseURL: "https://example.invalid", RequestJSON: `{"store":true}`, InputIDsJSON: `["old-input"]`}); err != nil {
 						t.Fatal(err)
@@ -47,7 +48,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 						t.Fatal(err)
 					}
 					checkpointID = "checkpoint"
-					commit := storage.DialogueCommit{SessionID: source.ID, Messages: []*storage.Message{old, {ID: "old-answer", SessionID: source.ID, Role: storage.RoleAssistant, Content: "old answer"}}, Native: &storage.NativeCommit{
+					commit := storage.DialogueCommit{SessionID: source.ID, Messages: []*storage.Message{old, {ID: "old-answer", SessionID: source.ID, Role: llm.RoleAssistant, Content: "old answer"}}, Native: &storage.NativeCommit{
 						Inputs: []storage.NativeInput{input}, ConsumedInputs: []string{input.ID},
 						Checkpoint: storage.NativeCheckpoint{ID: checkpointID, SessionID: source.ID, ExchangeID: "completed", ResponseID: "response", MessageID: "old-answer"},
 					}}
@@ -56,7 +57,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 					}
 				}
 				mediaID := "media:" + strings.Repeat("a", 64)
-				if err := f.store.UpsertMedia(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
+				if err := f.store.CreateMedia(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 					t.Fatal(err)
 				}
 				segments := []llm.MessageSegment{{Type: llm.SegmentText, Text: "unanswered question"}, {Type: llm.SegmentImage, MediaID: mediaID}}
@@ -64,7 +65,7 @@ func TestCopyStoppedResponsesPersistsHistoryAndMedia(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				message := &storage.Message{ID: "stopped-user", SessionID: source.ID, Role: storage.RoleUser, Content: "unanswered question", Segments: string(mustPendingJSON(t, segments))}
+				message := &storage.Message{ID: "stopped-user", SessionID: source.ID, Role: llm.RoleUser, Content: "unanswered question", Segments: string(mustPendingJSON(t, segments))}
 				input := storage.NativeInput{ID: "stopped-input", SessionID: source.ID, MessageID: message.ID, ItemJSON: `{"type":"message","role":"user","content":[{"type":"input_text","text":"unanswered question"},{"type":"input_image","image_url":""}]}`, MediaJSON: string(materialJSON)}
 				if err := f.store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: source.ID, Messages: []*storage.Message{message}, Native: &storage.NativeCommit{ExpectedCheckpointID: checkpointID, Inputs: []storage.NativeInput{input}}}); err != nil {
 					t.Fatal(err)

@@ -3,12 +3,12 @@ package input
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/llm"
 	"strings"
 	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/storage"
 )
 
 func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
@@ -57,7 +57,7 @@ func (h *MessageHandler) isReplyToBot(ctx context.Context, msg agentshare.Messag
 		return false
 	}
 	mapped, err := h.deps.Messages.FindByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID)
-	if err == nil && mapped.Role == storage.RoleAssistant {
+	if err == nil && mapped.Role == llm.RoleAssistant {
 		return true
 	}
 	outputs, err := h.deps.MediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, time.Now())

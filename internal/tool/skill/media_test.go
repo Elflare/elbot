@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	toolmedia "elbot/internal/tool/media"
@@ -138,7 +139,7 @@ func TestSkillMediaBridge(t *testing.T) {
 						t.Fatal(err)
 					}
 					segments, _ := json.Marshal(result.Data.LLMSegments())
-					message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
+					message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleTool, Segments: string(segments)}
 					if err := store.AppendMessage(ctx, message); err != nil {
 						t.Fatal(err)
 					}

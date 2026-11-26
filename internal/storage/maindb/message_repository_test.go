@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -38,7 +39,7 @@ func TestListInputHistory(t *testing.T) {
 		}
 	}
 	check([]string{})
-	add := func(id, session, role, text string) {
+	add := func(id, session string, role llm.MessageRole, text string) {
 		t.Helper()
 		if err := store.AppendMessage(ctx, &Message{ID: id, SessionID: session, Role: role, Content: text, CreatedAt: at}); err != nil {
 			t.Fatal(err)
@@ -65,8 +66,8 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	user := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Content: "hello", Segments: `[{"type":"text","text":"hello"},{"type":"image","url":"https://example.com/a.png"}]`}
-	assistant := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleAssistant, Content: "hi"}
+	user := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "hello", Segments: `[{"type":"text","text":"hello"},{"type":"image","url":"https://example.com/a.png"}]`}
+	assistant := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "hi"}
 	if err := store.AppendMessage(ctx, user); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
@@ -133,9 +134,9 @@ func TestForkFieldsPersistAndBoundedMessageQueries(t *testing.T) {
 	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	first := &Message{ID: share.NewID(), SessionID: parent.ID, Role: RoleUser, Content: "first"}
-	second := &Message{ID: share.NewID(), SessionID: parent.ID, Role: RoleAssistant, Content: "second"}
-	third := &Message{ID: share.NewID(), SessionID: parent.ID, Role: RoleUser, Content: "third"}
+	first := &Message{ID: share.NewID(), SessionID: parent.ID, Role: llm.RoleUser, Content: "first"}
+	second := &Message{ID: share.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, Content: "second"}
+	third := &Message{ID: share.NewID(), SessionID: parent.ID, Role: llm.RoleUser, Content: "third"}
 	for _, message := range []*Message{first, second, third} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)

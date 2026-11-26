@@ -3,6 +3,7 @@ package contextmgr
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/testutil"
 	"testing"
 
@@ -21,9 +22,9 @@ func TestLoaderUsesLatestSummary(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
-	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
-	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "first"}
+	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "second"}
+	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append: %v", err)
@@ -57,9 +58,9 @@ func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
-	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
-	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "first"}
+	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "second"}
+	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append: %v", err)
@@ -90,9 +91,9 @@ func TestLoaderIncludesForkParentContext(t *testing.T) {
 	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
-	forkPoint := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "fork point"}
-	ignored := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "after fork"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleUser, Content: "first"}
+	forkPoint := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, Content: "fork point"}
+	ignored := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleUser, Content: "after fork"}
 	for _, message := range []*storage.Message{first, forkPoint, ignored} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append parent: %v", err)
@@ -102,7 +103,7 @@ func TestLoaderIncludesForkParentContext(t *testing.T) {
 	if err := store.CreateSession(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}
-	branch := &storage.Message{ID: storage.NewID(), SessionID: fork.ID, Role: storage.RoleUser, Content: "branch"}
+	branch := &storage.Message{ID: storage.NewID(), SessionID: fork.ID, Role: llm.RoleUser, Content: "branch"}
 	if err := store.AppendMessage(ctx, branch); err != nil {
 		t.Fatalf("append branch: %v", err)
 	}
@@ -130,9 +131,9 @@ func TestLoaderUsesForkParentSummary(t *testing.T) {
 	if err := store.CreateSession(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
-	second := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "second"}
-	third := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "third"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleUser, Content: "first"}
+	second := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, Content: "second"}
+	third := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append parent: %v", err)
@@ -180,7 +181,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	if err := store.CreateSession(ctx, root); err != nil {
 		t.Fatalf("create root: %v", err)
 	}
-	rootAssistant := &storage.Message{ID: storage.NewID(), SessionID: root.ID, Role: storage.RoleAssistant, Content: "root"}
+	rootAssistant := &storage.Message{ID: storage.NewID(), SessionID: root.ID, Role: llm.RoleAssistant, Content: "root"}
 	if err := store.AppendMessage(ctx, rootAssistant); err != nil {
 		t.Fatalf("append root: %v", err)
 	}
@@ -188,7 +189,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	if err := store.CreateSession(ctx, firstFork); err != nil {
 		t.Fatalf("create first fork: %v", err)
 	}
-	firstAssistant := &storage.Message{ID: storage.NewID(), SessionID: firstFork.ID, Role: storage.RoleAssistant, Content: "first fork"}
+	firstAssistant := &storage.Message{ID: storage.NewID(), SessionID: firstFork.ID, Role: llm.RoleAssistant, Content: "first fork"}
 	if err := store.AppendMessage(ctx, firstAssistant); err != nil {
 		t.Fatalf("append first fork: %v", err)
 	}
@@ -196,7 +197,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	if err := store.CreateSession(ctx, secondFork); err != nil {
 		t.Fatalf("create second fork: %v", err)
 	}
-	branch := &storage.Message{ID: storage.NewID(), SessionID: secondFork.ID, Role: storage.RoleUser, Content: "second fork"}
+	branch := &storage.Message{ID: storage.NewID(), SessionID: secondFork.ID, Role: llm.RoleUser, Content: "second fork"}
 	if err := store.AppendMessage(ctx, branch); err != nil {
 		t.Fatalf("append second fork: %v", err)
 	}

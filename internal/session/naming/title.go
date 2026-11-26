@@ -58,7 +58,7 @@ func titlePrompt(messages []storage.Message) string {
 	var out strings.Builder
 	out.WriteString("中文标题≤20字：\n")
 	for _, message := range messages {
-		if message.Role == storage.RoleUser {
+		if message.Role == llm.RoleUser {
 			out.WriteString("用户：")
 		} else {
 			out.WriteString("助手：")
@@ -72,7 +72,7 @@ func titlePrompt(messages []storage.Message) string {
 func filterConversationMessages(messages []storage.Message) []storage.Message {
 	out := make([]storage.Message, 0, len(messages))
 	for _, message := range messages {
-		if (message.Role == storage.RoleUser || message.Role == storage.RoleAssistant) && strings.TrimSpace(message.Content) != "" {
+		if (message.Role == llm.RoleUser || message.Role == llm.RoleAssistant) && strings.TrimSpace(message.Content) != "" {
 			out = append(out, message)
 		}
 	}
@@ -100,7 +100,7 @@ func invalidTitleReason(title string) string {
 
 func fallbackTitle(messages []storage.Message) string {
 	for _, message := range messages {
-		if message.Role == storage.RoleUser {
+		if message.Role == llm.RoleUser {
 			return normalizeTitle(message.Content)
 		}
 	}

@@ -52,7 +52,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		return agentshare.TurnMaterials{}, err
 	}
 	segments := archived[0].Segments
-	message := &storage.Message{SessionID: in.Session.ID, Role: storage.RoleUser,
+	message := &storage.Message{SessionID: in.Session.ID, Role: llm.RoleUser,
 		Metadata: storage.EncodeInputIDs(input.InputIDs), Content: agentshare.MessageContent(segments), Segments: agentshare.StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
 	if err := storage.PrepareMessageID(ctx, p.NewMessageID, message); err != nil {

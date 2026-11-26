@@ -120,7 +120,7 @@ func (s *LoopState) RunTools(d LoopDeps, out Output, calls []llm.ToolCallRequest
 }
 
 func (s *LoopState) AppendUserText(d LoopDeps, persistence MessageCommitter, messages *[]llm.LLMMessage, text string) error {
-	row := &storage.Message{SessionID: s.Session.ID, Role: storage.RoleUser, Content: text}
+	row := &storage.Message{SessionID: s.Session.ID, Role: llm.RoleUser, Content: text}
 	if err := storage.PrepareMessageID(s.RequestCtx, d.NewMessageID, row); err != nil {
 		return err
 	}

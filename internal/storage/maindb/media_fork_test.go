@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -22,10 +23,8 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 	var messages []*Message
 	for _, hash := range []string{"a", "b", "c"} {
 		id := "media:" + strings.Repeat(hash, 64)
-		if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-			t.Fatal(err)
-		}
-		msg := &Message{ID: share.NewID(), SessionID: parent.ID, Role: RoleAssistant, CreatedAt: at, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+		CreateMediaForTest(t, store, id, "image/png")
+		msg := &Message{ID: share.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, CreatedAt: at, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 		if err := store.AppendMessage(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +47,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 		}
 	}
 	assertHistory(fork.ID)
-	checkpoint := &Message{ID: share.NewID(), SessionID: fork.ID, Role: RoleAssistant, Content: "checkpoint"}
+	checkpoint := &Message{ID: share.NewID(), SessionID: fork.ID, Role: llm.RoleAssistant, Content: "checkpoint"}
 	if err := store.AppendMessage(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +78,10 @@ func TestForkInheritsSessionToolMediaBeforeCheckpoint(t *testing.T) {
 	beforeID := "media:" + strings.Repeat("d", 64)
 	afterID := "media:" + strings.Repeat("e", 64)
 	for _, id := range []string{beforeID, afterID} {
-		if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-			t.Fatal(err)
-		}
+		CreateMediaForTest(t, store, id, "image/png")
 	}
 	checkpointAt := time.Now().UTC()
-	checkpoint := &Message{ID: share.NewID(), SessionID: parent.ID, Role: RoleAssistant, Content: "checkpoint", CreatedAt: checkpointAt}
+	checkpoint := &Message{ID: share.NewID(), SessionID: parent.ID, Role: llm.RoleAssistant, Content: "checkpoint", CreatedAt: checkpointAt}
 	if err := store.AppendMessage(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}

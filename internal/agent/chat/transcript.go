@@ -40,7 +40,7 @@ func (b PromptBuilder) Build(ctx context.Context, req PromptBuildRequest) ([]llm
 	out := []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(systemPrompt)}}
 	summaryInjected := false
 	for _, message := range req.Messages {
-		role := llm.MessageRole(message.Role)
+		role := message.Role
 		if role != llm.RoleUser && role != llm.RoleAssistant && role != llm.RoleTool && role != llm.RoleSystem {
 			continue
 		}

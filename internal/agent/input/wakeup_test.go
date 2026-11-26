@@ -7,13 +7,14 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
 type assistantMapping struct{}
 
 func (assistantMapping) FindByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
-	return &storage.Message{Role: storage.RoleAssistant}, nil
+	return &storage.Message{Role: llm.RoleAssistant}, nil
 }
 
 func TestGroupReplyWakeupUsesKnownSender(t *testing.T) {

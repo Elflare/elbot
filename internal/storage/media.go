@@ -22,7 +22,8 @@ type MediaRepository interface {
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error)
 	DeleteMediaHistoryAssociation(ctx context.Context, ownerID string) error
 	GetMedia(ctx context.Context, id string) (*Media, error)
-	UpsertMedia(ctx context.Context, media *Media) error
+	CreateMedia(ctx context.Context, media *Media) error
+	SetMediaObjectKey(ctx context.Context, id, key string) error
 	GetSignedURL(ctx context.Context, mediaID string) (*MediaSignedURL, error)
 	UpsertSignedURL(ctx context.Context, record *MediaSignedURL) error
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]Media, error)

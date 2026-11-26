@@ -3,6 +3,7 @@ package refcontext
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/testutil"
 	"fmt"
 	"path/filepath"
@@ -175,7 +176,7 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	if err := store.CreateSession(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
-	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: llm.RoleAssistant, Content: "report"}
 	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	if err := store.CreateSession(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
-	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: storage.RoleAssistant, Content: "report"}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: bg.ID, Role: llm.RoleAssistant, Content: "report"}
 	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
@@ -298,8 +299,8 @@ func createAssistantMessages(t *testing.T, ctx context.Context, store *storage.S
 	if err := store.CreateSession(ctx, s); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "old"}
-	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleAssistant, Content: "latest"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: llm.RoleAssistant, Content: "old"}
+	latest := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: llm.RoleAssistant, Content: "latest"}
 	if err := store.AppendMessage(ctx, first); err != nil {
 		t.Fatalf("append first: %v", err)
 	}

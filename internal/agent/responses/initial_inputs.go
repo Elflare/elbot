@@ -59,7 +59,7 @@ func (r *Loop) validateInitialInputs(ctx context.Context, row *storage.Session, 
 	}
 	for i, message := range messages {
 		input := users[i]
-		if message.Role != storage.RoleUser || message.SessionID != sessionID || input.SessionID != sessionID || input.MessageID != message.ID || input.ExchangeID != "" || input.CallID != "" || input.ConsumedBy != "" {
+		if message.Role != llm.RoleUser || message.SessionID != sessionID || input.SessionID != sessionID || input.MessageID != message.ID || input.ExchangeID != "" || input.CallID != "" || input.ConsumedBy != "" {
 			return missing()
 		}
 		if agentshare.MessageContent(input.segments) != message.Content || agentshare.StoredMessageSegments(input.segments) != message.Segments {

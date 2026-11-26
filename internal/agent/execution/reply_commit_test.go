@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/testutil"
 	"errors"
 	"reflect"
@@ -30,7 +31,7 @@ type replyTestRepository struct {
 
 func (r *replyTestRepository) AppendMessage(ctx context.Context, msg *storage.Message) error {
 	*r.events = append(*r.events, "save")
-	if r.appendErr != nil && msg.Role == storage.RoleAssistant {
+	if r.appendErr != nil && msg.Role == llm.RoleAssistant {
 		return r.appendErr
 	}
 	return r.MessageRepository.AppendMessage(ctx, msg)
@@ -288,7 +289,7 @@ type replyTestDialogues struct {
 func (r replyTestDialogues) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	for _, msg := range commit.Messages {
 		*r.repo.events = append(*r.repo.events, "save")
-		if msg.Role == storage.RoleAssistant && r.repo.appendErr != nil {
+		if msg.Role == llm.RoleAssistant && r.repo.appendErr != nil {
 			return r.repo.appendErr
 		}
 	}

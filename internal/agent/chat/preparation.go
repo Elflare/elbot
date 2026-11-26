@@ -86,7 +86,7 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 
 func hasStorageUserMessage(messages []storage.Message) bool {
 	for _, message := range messages {
-		if message.Role == storage.RoleUser {
+		if message.Role == llm.RoleUser {
 			return true
 		}
 	}

@@ -13,8 +13,8 @@ func TestMediaSignedURLMigrationAndLifecycle(t *testing.T) {
 	ctx := t.Context()
 	db := OpenBeforeForTest(t, filepath.Join(t.TempDir(), "old.db")+"?_pragma=foreign_keys(1)", 25)
 	r := &Store{db: db}
-	item := &Media{ID: "existing", Name: "old name", MIMEType: "image/png", Backend: "local"}
-	if err := r.UpsertMedia(ctx, item); err != nil {
+	item := &Media{ID: "existing", Name: "old name", CreatedAt: time.Now(), LastAccessedAt: time.Now(), MIMEType: "image/png", Backend: "local"}
+	if err := r.CreateMedia(ctx, item); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -33,8 +33,7 @@ func TestMediaSignedURLMigrationAndLifecycle(t *testing.T) {
 	if err := r.UpsertSignedURL(ctx, record); err != nil {
 		t.Fatal(err)
 	}
-	item.Name = "new name"
-	if err := r.UpsertMedia(ctx, item); err != nil {
+	if err := r.SetMediaObjectKey(ctx, item.ID, "remote/key"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := r.GetSignedURL(ctx, item.ID)

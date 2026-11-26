@@ -5,6 +5,7 @@ package branch
 import (
 	"context"
 
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -100,7 +101,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	}
 	var messages []*storage.Message
 	if req.InitialMessage != "" {
-		message := &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: req.InitialMessage}
+		message := &storage.Message{SessionID: row.ID, Role: llm.RoleUser, Content: req.InitialMessage}
 		if err := storage.PrepareMessageID(ctx, s.deps.NewMessageID, message); err != nil {
 			return operationresult.Result[*storage.Session]{}, err
 		}

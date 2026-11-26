@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -66,7 +67,7 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 func (r *Compactor) CompactMessages(ctx context.Context, history []storage.Message) ([]CompactMessage, error) {
 	callIDs := map[string][]string{}
 	for _, message := range history {
-		if message.Role != storage.RoleAssistant {
+		if message.Role != llm.RoleAssistant {
 			continue
 		}
 		for _, call := range message.ToolCalls {
@@ -87,12 +88,12 @@ func (r *Compactor) CompactMessages(ctx context.Context, history []storage.Messa
 	out := make([]CompactMessage, 0, len(history))
 	for _, message := range history {
 		switch message.Role {
-		case storage.RoleUser:
+		case llm.RoleUser:
 			content := message.Content
 			if strings.TrimSpace(content) != "" {
-				out = append(out, CompactMessage{Role: storage.RoleUser, Content: content})
+				out = append(out, CompactMessage{Role: llm.RoleUser, Content: content})
 			}
-		case storage.RoleAssistant:
+		case llm.RoleAssistant:
 			content := message.Content
 			if message.SourceContent != "" {
 				content = message.SourceContent
@@ -105,7 +106,7 @@ func (r *Compactor) CompactMessages(ctx context.Context, history []storage.Messa
 				calls = append(calls, CompactToolCall{Name: call.Name, Arguments: call.Arguments})
 			}
 			if strings.TrimSpace(content) != "" || len(calls) > 0 {
-				out = append(out, CompactMessage{Role: storage.RoleAssistant, Content: content, ToolCalls: calls})
+				out = append(out, CompactMessage{Role: llm.RoleAssistant, Content: content, ToolCalls: calls})
 			}
 		}
 	}
@@ -118,7 +119,7 @@ func compactUserInputs(messages []storage.Message, previous *contextmgr.CompactS
 		inputs = append(inputs, previous.Inputs...)
 	}
 	for _, message := range messages {
-		if message.Role != storage.RoleUser {
+		if message.Role != llm.RoleUser {
 			continue
 		}
 		if skipFirstUser {

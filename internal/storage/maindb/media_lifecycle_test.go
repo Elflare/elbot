@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -16,7 +17,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	store := NewStoreForTest(t)
 	id := "media:" + strings.Repeat("a", 64)
 	expires := time.Now().UTC().Add(time.Hour)
-	if err := store.UpsertMedia(ctx, &Media{ID: id, Name: "image.png", Backend: "local", LocalPath: "objects/image.png", MIMEType: "image/png", Size: 42, SourcePlatform: "p", SourceFileID: "file", CreatedAt: time.Now().Add(-24 * time.Hour), ExpiresAt: &expires}); err != nil {
+	if err := store.CreateMedia(ctx, &Media{ID: id, Name: "image.png", Backend: "local", LocalPath: "objects/image.png", MIMEType: "image/png", Size: 42, SourcePlatform: "p", SourceFileID: "file", CreatedAt: time.Now().Add(-24 * time.Hour), LastAccessedAt: time.Now().Add(-24 * time.Hour), ExpiresAt: &expires}); err != nil {
 		t.Fatal(err)
 	}
 	var checkpoint string
@@ -26,7 +27,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 		if err := store.CreateSession(ctx, &sessions[i]); err != nil {
 			t.Fatal(err)
 		}
-		msg := &Message{ID: share.NewID(), SessionID: sessions[i].ID, Role: RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+		msg := &Message{ID: share.NewID(), SessionID: sessions[i].ID, Role: llm.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 		if err := store.AppendMessage(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
@@ -77,9 +78,7 @@ func TestOutputMediaOrderScopeReplacementAndExpiry(t *testing.T) {
 	for _, ch := range []string{"a", "b", "c"} {
 		id := "media:" + strings.Repeat(ch, 64)
 		ids = append(ids, id)
-		if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-			t.Fatal(err)
-		}
+		CreateMediaForTest(t, store, id, "image/png")
 	}
 	for _, out := range []MediaOutput{
 		{Platform: "p", ChatType: "group", ChatID: "1", MessageID: "m", SegmentIndex: 2, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
@@ -134,7 +133,7 @@ func TestReferenceAndCleanupRace(t *testing.T) {
 	store := NewStoreForTest(t)
 	for i := range 12 {
 		id := fmt.Sprintf("media:%064x", i)
-		if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "text/plain", CreatedAt: time.Now().Add(-24 * time.Hour)}); err != nil {
+		if err := store.CreateMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "text/plain", CreatedAt: time.Now().Add(-24 * time.Hour), LastAccessedAt: time.Now().Add(-24 * time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
 		ready := make(chan struct{})
@@ -166,9 +165,7 @@ func TestReferenceAuditAndRecovery(t *testing.T) {
 	ctx := context.Background()
 	store := NewStoreForTest(t)
 	id := "media:" + strings.Repeat("c", 64)
-	if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "text/plain"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, id, "text/plain")
 	for _, kind := range []string{"hook", "skill", "request"} {
 		if err := store.AddMediaReference(ctx, &MediaReference{MediaID: id, OwnerType: kind, OwnerID: kind, Purpose: "temporary"}); err != nil {
 			t.Fatal(err)
@@ -185,7 +182,7 @@ func TestReferenceAuditAndRecovery(t *testing.T) {
 	if err := store.CreateSession(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	msg := &Message{ID: share.NewID(), SessionID: s.ID, Role: RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+	msg := &Message{ID: share.NewID(), SessionID: s.ID, Role: llm.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatal(err)
 	}

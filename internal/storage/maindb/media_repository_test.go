@@ -21,9 +21,10 @@ func TestMediaRepositoryAndReferences(t *testing.T) {
 		SourcePlatform: "telegram",
 		SourceFileID:   "file-1",
 		CreatedAt:      createdAt,
+		LastAccessedAt: createdAt,
 	}
-	if err := store.UpsertMedia(ctx, media); err != nil {
-		t.Fatalf("upsert media: %v", err)
+	if err := store.CreateMedia(ctx, media); err != nil {
+		t.Fatalf("create media: %v", err)
 	}
 	got, err := store.GetMedia(ctx, media.ID)
 	if err != nil {

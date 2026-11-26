@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
@@ -30,11 +31,11 @@ func TestCompactMessagesScopesToolCallResultsBySession(t *testing.T) {
 		}
 	}
 	messages := []storage.Message{
-		{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "P", ToolCalls: []storage.ToolCall{{ID: "same", Name: "failed-parent"}, {ID: "missing", Name: "inherited"}}},
-		{SessionID: session.ID, Role: storage.RoleUser, Content: "J"},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "C", SourceContent: "C", ToolCalls: []storage.ToolCall{{ID: "same", Name: "shell", Arguments: `{"command":"safe"}`}, {ID: "missing", Name: "web", Arguments: `{"q":"missing"}`}}},
-		{SessionID: session.ID, Role: storage.RoleTool, Content: "secret tool result", ToolCallID: "same"},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "H"},
+		{SessionID: parent.ID, Role: llm.RoleAssistant, Content: "P", ToolCalls: []llm.ToolCallRequest{{ID: "same", Name: "failed-parent"}, {ID: "missing", Name: "inherited"}}},
+		{SessionID: session.ID, Role: llm.RoleUser, Content: "J"},
+		{SessionID: session.ID, Role: llm.RoleAssistant, Content: "C", SourceContent: "C", ToolCalls: []llm.ToolCallRequest{{ID: "same", Name: "shell", Arguments: `{"command":"safe"}`}, {ID: "missing", Name: "web", Arguments: `{"q":"missing"}`}}},
+		{SessionID: session.ID, Role: llm.RoleTool, Content: "secret tool result", ToolCallID: "same"},
+		{SessionID: session.ID, Role: llm.RoleAssistant, Content: "H"},
 	}
 	runtime := &chatroute.Compactor{ToolCalls: store}
 	compacted, err := runtime.CompactMessages(ctx, messages)

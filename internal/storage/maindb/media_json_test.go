@@ -19,9 +19,7 @@ func TestMediaAuditDetectsMissingCronReference(t *testing.T) {
 	ctx := context.Background()
 	store := maindb.NewStoreForTest(t)
 	id := "media:" + strings.Repeat("c", 64)
-	if err := store.UpsertMedia(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
-		t.Fatal(err)
-	}
+	maindb.CreateMediaForTest(t, store, id, "image/png")
 	job, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "audit-media", Handler: "test", Schedule: "0 * * * *", Enabled: true})
 	if err != nil {
 		t.Fatal(err)
@@ -49,9 +47,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 	store := maindb.NewStoreForTest(t)
 	ids := []string{"media:" + strings.Repeat("a", 64), "media:" + strings.Repeat("b", 64)}
 	for _, id := range ids {
-		if err := store.UpsertMedia(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
-			t.Fatal(err)
-		}
+		maindb.CreateMediaForTest(t, store, id, "image/png")
 	}
 	segments := func(id string) string {
 		t.Helper()
@@ -83,7 +79,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	msg := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Segments: segments(ids[0])}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleUser, Segments: segments(ids[0])}
 	if err := store.AppendMessage(ctx, msg); err != nil {
 		t.Fatal(err)
 	}
@@ -138,9 +134,7 @@ func TestNativePublicMaterialsRetainMediaAndAuditMissingReferences(t *testing.T)
 	ctx := t.Context()
 	store := maindb.NewStoreForTest(t)
 	id := "media:" + strings.Repeat("d", 64)
-	if err := store.UpsertMedia(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
-		t.Fatal(err)
-	}
+	maindb.CreateMediaForTest(t, store, id, "image/png")
 	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test"}
 	if err := store.CreateSession(ctx, row); err != nil {
 		t.Fatal(err)

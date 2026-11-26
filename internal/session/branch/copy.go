@@ -270,7 +270,7 @@ func (s *Service) sessionBusy(id string) bool {
 
 func (s *Service) copySession(ctx context.Context, request storage.SessionMaterialCreate, messages []storage.Message, toolCalls []storage.ToolCallRecord) (operationresult.Result[*storage.Session], error) {
 	ids := make(map[string]string, len(messages))
-	roles := make(map[string]string, len(messages))
+	roles := make(map[string]llm.MessageRole, len(messages))
 	for _, message := range messages {
 		id, err := s.deps.NewMessageID(ctx)
 		if err != nil {
@@ -293,7 +293,7 @@ func (s *Service) copySession(ctx context.Context, request storage.SessionMateri
 		}
 		for i, id := range resultIDs {
 			mapped, ok := ids[id]
-			if !ok || roles[id] != storage.RoleTool {
+			if !ok || roles[id] != llm.RoleTool {
 				return operationresult.Result[*storage.Session]{}, fmt.Errorf("message %s references missing or non-tool result %s", message.ID, id)
 			}
 			resultIDs[i] = mapped

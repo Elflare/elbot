@@ -174,7 +174,7 @@ func canForkAccess(scope share.Scope, row *storage.Session) bool {
 }
 
 func (s *Service) forkBoundary(ctx context.Context, sourceID string, message *storage.Message) (operationresult.Result[string], error) {
-	if message.SessionID != sourceID || message.Role != storage.RoleAssistant {
+	if message.SessionID != sourceID || message.Role != llm.RoleAssistant {
 		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "can only fork from a source assistant message"}, nil
 	}
 	fields, err := storage.DecodeSessionMetadata(message.Metadata)
@@ -195,7 +195,7 @@ func (s *Service) forkBoundary(ctx context.Context, sourceID string, message *st
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	if result.SessionID != sourceID || result.Role != storage.RoleTool {
+	if result.SessionID != sourceID || result.Role != llm.RoleTool {
 		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "invalid tool batch fork boundary"}, nil
 	}
 	return operationresult.Result[string]{Status: operationresult.Success, Data: result.ID}, nil

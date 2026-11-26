@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"encoding/json"
 	"errors"
 	"io"
@@ -99,7 +100,7 @@ func seedElnisReportMessage(t *testing.T, store *storage.Supervisor) {
 	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "elnis", ChatID: "test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: llm.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -485,7 +486,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 	b, store := newElnisBridgeFixture(t)
 	repo := store
 	const mediaID = "report-media"
-	if err := store.UpsertMedia(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+	if err := store.CreateMedia(ctx, &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	before := map[string]savedEventState{}
@@ -612,7 +613,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 	runtime.BeginClose()
 	// All workers are canceled; the occupied execution keeps cleanup from starting.
 	const mediaID = "shutdown-media"
-	if err := store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain"}); err != nil {
+	if err := store.CreateMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "text/plain", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
 	rows := map[string]string{}

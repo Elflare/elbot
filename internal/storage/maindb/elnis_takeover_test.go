@@ -11,9 +11,7 @@ import (
 func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 	ctx := t.Context()
 	store := NewStoreForTest(t)
-	if err := store.UpsertMedia(ctx, &Media{ID: "input", Backend: "local", MIMEType: "text/plain"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, "input", "text/plain")
 	repo := store
 	event, err := repo.CreateElnisEvent(ctx, CreateElnisEventRequest{ReceivedAt: time.Now(), CreatedAt: time.Now(), ID: share.NewID(),
 		EventKey: "interrupted", ElwispName: "source", SourceID: "interrupted",
@@ -69,9 +67,7 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 func TestTakenOverEventReleasesEventAndOutboxMedia(t *testing.T) {
 	ctx := context.Background()
 	store := NewStoreForTest(t)
-	if err := store.UpsertMedia(ctx, &Media{ID: "attachment", MIMEType: "image/png", Backend: "local"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, "attachment", "image/png")
 	event, err := store.CreateElnisEvent(ctx, CreateElnisEventRequest{ReceivedAt: time.Now(), CreatedAt: time.Now(), ID: share.NewID(), EventKey: "event", ElwispName: "source", SourceID: "1", Status: "running", MediaIDs: []string{"attachment"}})
 	if err != nil {
 		t.Fatal(err)

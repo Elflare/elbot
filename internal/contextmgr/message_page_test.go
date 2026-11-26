@@ -3,6 +3,7 @@ package contextmgr
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
 	"fmt"
@@ -39,7 +40,7 @@ func TestMessagePageIsBoundedAndIncludesForkHistoryBeforeSummary(t *testing.T) {
 	}
 	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < 8; i++ {
-		m := storage.Message{ID: fmt.Sprintf("p-%d", i), SessionID: parent.ID, Role: storage.RoleUser, Content: fmt.Sprintf("parent %d", i), CreatedAt: at}
+		m := storage.Message{ID: fmt.Sprintf("p-%d", i), SessionID: parent.ID, Role: llm.RoleUser, Content: fmt.Sprintf("parent %d", i), CreatedAt: at}
 		if err := store.AppendMessage(t.Context(), &m); err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +50,7 @@ func TestMessagePageIsBoundedAndIncludesForkHistoryBeforeSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
-		m := storage.Message{ID: fmt.Sprintf("c-%d", i), SessionID: child.ID, Role: storage.RoleAssistant, Content: "child", CreatedAt: at}
+		m := storage.Message{ID: fmt.Sprintf("c-%d", i), SessionID: child.ID, Role: llm.RoleAssistant, Content: "child", CreatedAt: at}
 		if err := store.AppendMessage(t.Context(), &m); err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +95,7 @@ func TestMessagePageCutoffCanBelongToEarlierAncestor(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, m := range []storage.Message{{ID: "r-1", SessionID: "root", Role: storage.RoleUser, Content: "first"}, {ID: "r-2", SessionID: "root", Role: storage.RoleAssistant, Content: "later root"}, {ID: "m-1", SessionID: "middle", Role: storage.RoleUser, Content: "later middle"}, {ID: "l-1", SessionID: "leaf", Role: storage.RoleAssistant, Content: "leaf"}} {
+	for _, m := range []storage.Message{{ID: "r-1", SessionID: "root", Role: llm.RoleUser, Content: "first"}, {ID: "r-2", SessionID: "root", Role: llm.RoleAssistant, Content: "later root"}, {ID: "m-1", SessionID: "middle", Role: llm.RoleUser, Content: "later middle"}, {ID: "l-1", SessionID: "leaf", Role: llm.RoleAssistant, Content: "leaf"}} {
 		if err := store.AppendMessage(t.Context(), &m); err != nil {
 			t.Fatal(err)
 		}
@@ -120,10 +121,10 @@ func TestMessagePageIncludesToolTranscriptWithoutAssistantText(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := []storage.Message{
-		{ID: "user", SessionID: session.ID, Role: storage.RoleUser, Content: "run tools"},
-		{ID: "call", SessionID: session.ID, Role: storage.RoleAssistant, ToolCalls: []storage.ToolCall{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}, ToolBatchStatus: "interrupted"},
-		{ID: "result", SessionID: session.ID, Role: storage.RoleTool, ToolCallID: "call-1", ToolName: "shell", ToolResultStatus: "completed", Content: "done"},
-		{ID: "reasoning", SessionID: session.ID, Role: storage.RoleAssistant, ReasoningContent: "checking results"},
+		{ID: "user", SessionID: session.ID, Role: llm.RoleUser, Content: "run tools"},
+		{ID: "call", SessionID: session.ID, Role: llm.RoleAssistant, ToolCalls: []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}, ToolBatchStatus: "interrupted"},
+		{ID: "result", SessionID: session.ID, Role: llm.RoleTool, ToolCallID: "call-1", ToolName: "shell", ToolResultStatus: "completed", Content: "done"},
+		{ID: "reasoning", SessionID: session.ID, Role: llm.RoleAssistant, ReasoningContent: "checking results"},
 	}
 	for i := range rows {
 		if err := store.AppendMessage(t.Context(), &rows[i]); err != nil {

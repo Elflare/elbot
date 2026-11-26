@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"elbot/internal/crondef"
+	"elbot/internal/llm"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -52,7 +53,7 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: llm.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "", "current", `{"delivery_complete":true}`, nil); err != nil || !ok {
@@ -100,7 +101,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	if err := store.CreateSession(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: llm.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
 	metadata, err := json.Marshal(crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "report", Schedule: crondef.CronSchedule{Mode: "once", RunAt: time.Now().Add(time.Hour).Format("2006-01-02 15:04:05")}, Trigger: crondef.CronTrigger{Mode: "llm", Message: "#task report - test"}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})

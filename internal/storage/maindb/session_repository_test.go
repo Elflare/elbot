@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -202,10 +203,10 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	for i, message := range []Message{
-		{ID: "blank-user", SessionID: session.ID, Role: RoleUser, Content: ""},
-		{ID: "user", SessionID: session.ID, Role: RoleUser, Content: "hello"},
-		{ID: "blank-assistant", SessionID: session.ID, Role: RoleAssistant, Content: "  \n\t  "},
-		{ID: "assistant", SessionID: session.ID, Role: RoleAssistant, Content: "hi"},
+		{ID: "blank-user", SessionID: session.ID, Role: llm.RoleUser, Content: ""},
+		{ID: "user", SessionID: session.ID, Role: llm.RoleUser, Content: "hello"},
+		{ID: "blank-assistant", SessionID: session.ID, Role: llm.RoleAssistant, Content: "  \n\t  "},
+		{ID: "assistant", SessionID: session.ID, Role: llm.RoleAssistant, Content: "hi"},
 	} {
 		if err := store.AppendMessage(ctx, &message); err != nil {
 			t.Fatalf("append message %d: %v", i, err)
@@ -234,14 +235,14 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 	}
 	createdAt := time.Now()
 	messages := []Message{
-		{ID: "z-user", SessionID: session.ID, Role: RoleUser, Content: "first", CreatedAt: createdAt},
-		{ID: "a-user", SessionID: session.ID, Role: RoleUser, Content: "second", CreatedAt: createdAt},
-		{ID: "z-assistant", SessionID: session.ID, Role: RoleAssistant, Content: "third", CreatedAt: createdAt},
-		{ID: "a-assistant", SessionID: session.ID, Role: RoleAssistant, Content: "fourth", CreatedAt: createdAt},
-		{ID: "fifth-user", SessionID: session.ID, Role: RoleUser, Content: "fifth", CreatedAt: createdAt},
-		{ID: "sixth-assistant", SessionID: session.ID, Role: RoleAssistant, Content: "sixth", CreatedAt: createdAt},
-		{ID: "seventh-user", SessionID: session.ID, Role: RoleUser, Content: "seventh", CreatedAt: createdAt},
-		{ID: "ignored-tool", SessionID: session.ID, Role: RoleTool, Content: "tool", CreatedAt: createdAt},
+		{ID: "z-user", SessionID: session.ID, Role: llm.RoleUser, Content: "first", CreatedAt: createdAt},
+		{ID: "a-user", SessionID: session.ID, Role: llm.RoleUser, Content: "second", CreatedAt: createdAt},
+		{ID: "z-assistant", SessionID: session.ID, Role: llm.RoleAssistant, Content: "third", CreatedAt: createdAt},
+		{ID: "a-assistant", SessionID: session.ID, Role: llm.RoleAssistant, Content: "fourth", CreatedAt: createdAt},
+		{ID: "fifth-user", SessionID: session.ID, Role: llm.RoleUser, Content: "fifth", CreatedAt: createdAt},
+		{ID: "sixth-assistant", SessionID: session.ID, Role: llm.RoleAssistant, Content: "sixth", CreatedAt: createdAt},
+		{ID: "seventh-user", SessionID: session.ID, Role: llm.RoleUser, Content: "seventh", CreatedAt: createdAt},
+		{ID: "ignored-tool", SessionID: session.ID, Role: llm.RoleTool, Content: "tool", CreatedAt: createdAt},
 	}
 	for i := range messages {
 		if err := store.AppendMessage(ctx, &messages[i]); err != nil {

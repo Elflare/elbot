@@ -56,7 +56,7 @@ type ToolBatch struct {
 // All attached facts are committed in the same transaction.
 type ToolResultCommit struct {
 	Call     *Message        // Updated batch header, including prepared arguments and batch status.
-	Result   *Message        // Final body in the original slot; nil seals remaining unknown slots on recovery.
+	Result   *Message        // Final body in the original slot; absent when the batch header marks interruption.
 	Record   *ToolCallRecord // Raw invocation outcome, unaffected by completion Hooks.
 	Metadata SessionMetadata // Tool-owned session fields to merge with the latest row.
 }

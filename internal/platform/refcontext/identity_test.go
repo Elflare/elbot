@@ -2,6 +2,7 @@ package refcontext
 
 import (
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"testing"
 
 	"elbot/internal/platform/share"
@@ -31,7 +32,7 @@ func TestReferenceBackgroundIdentityUsesMode(t *testing.T) {
 			if err := store.CreateSession(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}
-			msg := &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleAssistant, Content: "report"}
+			msg := &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: llm.RoleAssistant, Content: "report"}
 			if err := store.AppendMessage(t.Context(), msg); err != nil {
 				t.Fatal(err)
 			}

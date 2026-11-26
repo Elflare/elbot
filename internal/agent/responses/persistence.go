@@ -17,7 +17,7 @@ type inputCommitter struct{ state *turnState }
 func (c inputCommitter) CommitDialogue(ctx context.Context, commit storage.DialogueCommit) error {
 	inputs := make([]storage.NativeInput, 0, len(commit.Messages))
 	for _, message := range commit.Messages {
-		if message.Role == storage.RoleAssistant && len(message.ToolCalls) == 1 {
+		if message.Role == llm.RoleAssistant && len(message.ToolCalls) == 1 {
 			call := message.ToolCalls[0]
 			raw, err := json.Marshal(map[string]string{"type": "function_call", "name": call.Name, "arguments": call.Arguments, "call_id": call.ID})
 			if err != nil {

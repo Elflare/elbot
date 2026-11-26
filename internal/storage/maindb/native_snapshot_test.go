@@ -4,13 +4,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"elbot/internal/llm"
 )
 
 func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
-	head := &Message{ID: "head", SessionID: "s", Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "one"}}, ToolBatchStatus: "pending", Metadata: `{"tool_result_message_ids":["result"]}`}
-	result := &Message{ID: "result", SessionID: "s", Role: RoleTool, ToolCallID: "one", Content: "unknown", ToolResultStatus: "pending"}
+	head := &Message{ID: "head", SessionID: "s", Role: llm.RoleAssistant, ToolCalls: []llm.ToolCallRequest{{ID: "one"}}, ToolBatchStatus: "pending", Metadata: `{"tool_result_message_ids":["result"]}`}
+	result := &Message{ID: "result", SessionID: "s", Role: llm.RoleTool, ToolCallID: "one", Content: "unknown", ToolResultStatus: "pending"}
 	if err := store.CommitDialogue(ctx, DialogueCommit{SessionID: "s", ToolBatch: &ToolBatch{Call: head, Results: []*Message{result}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +59,8 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 				}
 			}
 			pair := &ToolBatch{
-				Call:    &Message{ID: "head", SessionID: "s", Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
-				Results: []*Message{{ID: "result", SessionID: "s", Role: RoleTool, ToolCallID: "one", Content: "done"}},
+				Call:    &Message{ID: "head", SessionID: "s", Role: llm.RoleAssistant, ToolCalls: []llm.ToolCallRequest{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
+				Results: []*Message{{ID: "result", SessionID: "s", Role: llm.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			call := initial.Native.Calls[0]
 			call.Status, call.ResultInputID = "completed", "output"

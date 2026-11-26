@@ -113,17 +113,18 @@ func holdTestMedia(t *testing.T, m *Manager, id string) share.HeldMedia {
 
 type testRepository struct {
 	MediaRepository
-	upsert  func(context.Context, *storage.Media) error
 	get     func(context.Context, string) (*storage.Media, error)
 	recover func(context.Context) error
 }
 
-func (r testRepository) UpsertMedia(ctx context.Context, item *storage.Media) error {
-	if r.upsert != nil {
-		return r.upsert(ctx, item)
-	}
-	return r.MediaRepository.UpsertMedia(ctx, item)
+type failedMediaWrite struct {
+	MediaRepository
+	fail func() error
 }
+
+func (r failedMediaWrite) CreateMedia(context.Context, *storage.Media) error       { return r.fail() }
+func (r failedMediaWrite) SetMediaObjectKey(context.Context, string, string) error { return r.fail() }
+
 func (r testRepository) GetMedia(ctx context.Context, id string) (*storage.Media, error) {
 	if r.get != nil {
 		return r.get(ctx, id)
@@ -191,7 +192,7 @@ func TestImportLimitsAndRollback(t *testing.T) {
 	}
 	failure, rollback := errors.New("database failure"), errors.New("remove failure")
 	ctx, cancel := context.WithCancel(t.Context())
-	m.media = testRepository{MediaRepository: m.media, upsert: func(context.Context, *storage.Media) error { cancel(); return failure }}
+	m.media = failedMediaWrite{MediaRepository: m.media, fail: func() error { cancel(); return failure }}
 	backend.remove = func(ctx context.Context, _ string) error {
 		if ctx.Err() != nil {
 			t.Error("rollback inherited canceled context")

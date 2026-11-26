@@ -48,7 +48,7 @@ func (h *heldMedia) SignedURL(ctx context.Context) (string, error) {
 			return "", err
 		}
 		metadata.ObjectKey = location
-		if err := m.media.UpsertMedia(ctx, metadata); err != nil {
+		if err := m.media.SetMediaObjectKey(ctx, id, location); err != nil {
 			removeUnrecordedObject(m.remote, location)
 			return "", err
 		}

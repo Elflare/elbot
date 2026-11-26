@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
-	"elbot/internal/storage"
 )
 
 func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
@@ -103,7 +102,7 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 	local.open = func(context.Context, string) (io.ReadCloser, error) {
 		return &testReader{Reader: reader, closeErr: closeErr}, nil
 	}
-	m.media = testRepository{MediaRepository: m.media, upsert: func(context.Context, *storage.Media) error { return persistErr }}
+	m.media = failedMediaWrite{MediaRepository: m.media, fail: func() error { return persistErr }}
 	remote.remove = func(ctx context.Context, key string) error {
 		if ctx.Err() != nil || key != item.ID {
 			t.Errorf("rollback context/key = %v %q", ctx.Err(), key)

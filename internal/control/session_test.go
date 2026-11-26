@@ -57,7 +57,7 @@ func TestListInputHistoryUsesAuthenticatedAccount(t *testing.T) {
 	}
 }
 func TestHistoryProjectsInputIDs(t *testing.T) {
-	rows, err := messageData([]storage.Message{{Role: storage.RoleUser, Metadata: `{"input_ids":["a","b"],"elyph_rules_shown":true}`}, {Role: storage.RoleUser}})
+	rows, err := messageData([]storage.Message{{Role: llm.RoleUser, Metadata: `{"input_ids":["a","b"],"elyph_rules_shown":true}`}, {Role: llm.RoleUser}})
 	if err != nil || !reflect.DeepEqual(rows[0].InputIDs, []string{"a", "b"}) || rows[1].InputIDs != nil {
 		t.Fatal(rows, err)
 	}
@@ -75,7 +75,7 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := storage.Message{ID: "m", SessionID: "s", Role: "assistant", Content: "exact\n", SourceContent: "model source", ReasoningContent: "thought", ParentMessageID: "parent", ReplyToPlatformMessageID: "platform-message", ReplyToMessageID: "reply", ToolCallID: "tool-call", ToolCalls: []storage.ToolCall{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: "completed", Metadata: `{"internal":"must not be returned"}`, Segments: string(raw), CreatedAt: time.Now()}
+	message := storage.Message{ID: "m", SessionID: "s", Role: "assistant", Content: "exact\n", SourceContent: "model source", ReasoningContent: "thought", ParentMessageID: "parent", ReplyToPlatformMessageID: "platform-message", ReplyToMessageID: "reply", ToolCallID: "tool-call", ToolCalls: []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: "completed", Metadata: `{"internal":"must not be returned"}`, Segments: string(raw), CreatedAt: time.Now()}
 	provider.messages = []storage.Message{message}
 	m, _ := testSupervisor(t, SupervisorDeps{History: provider, Scope: func(context.Context) session.Scope {
 		return session.Scope{Platform: "qq", ChatType: contextinfo.ChatPrivate, ChatID: "chat", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "user"}}
@@ -93,7 +93,7 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: []ToolCallData{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
+	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: string(message.Role), Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: []ToolCallData{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
 	if result.Status != operationresult.Success || !reflect.DeepEqual(result.Data.Items, []MessageData{want}) {
 		t.Fatalf("history data: %+v", result)
 	}

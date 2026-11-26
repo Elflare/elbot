@@ -388,7 +388,7 @@ func testAsyncMixedHandoff(t *testing.T, stop bool) {
 			t.Fatal(err)
 		}
 		if slices.ContainsFunc(history, func(m storage.Message) bool {
-			return m.Role == storage.RoleTool && strings.Contains(m.Content, "answer-mode-true")
+			return m.Role == llm.RoleTool && strings.Contains(m.Content, "answer-mode-true")
 		}) && len(m.requests.ListBySession(sid)) == 0 {
 			break
 		}

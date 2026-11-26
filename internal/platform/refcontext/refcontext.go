@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"errors"
 	"slices"
 	"strings"
@@ -54,7 +55,7 @@ func (deps Options) Apply(ctx context.Context, opts share.ReferenceOptions) (sha
 	} else if len(ref.Segments) == 0 && ref.Text == "" {
 		return result, nil
 	}
-	assistant := stored != nil && stored.Role == storage.RoleAssistant
+	assistant := stored != nil && stored.Role == llm.RoleAssistant
 	parsed := deps.ParseCommand(opts.Text)
 	if assistant && !parsed.OK {
 		result.ResumeSessionID, result.ForkFromMessageID, err = deps.ResolveContinuation(ctx, opts, *stored)

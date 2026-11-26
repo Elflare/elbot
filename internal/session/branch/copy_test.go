@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
@@ -24,8 +25,8 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			}
 			current := f.c.CurrentBinding(scope())
 			source := f.source(t, storage.SessionModeBackground)
-			parent := f.message(t, source.ID, storage.RoleUser)
-			answer := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: parent.ID, ReplyToMessageID: parent.ID, ReplyToPlatformMessageID: "platform"}
+			parent := f.message(t, source.ID, llm.RoleUser)
+			answer := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: llm.RoleAssistant, Content: "answer", ParentMessageID: parent.ID, ReplyToMessageID: parent.ID, ReplyToPlatformMessageID: "platform"}
 			if err := f.store.AppendMessage(t.Context(), answer); err != nil {
 				t.Fatal(err)
 			}
@@ -42,7 +43,7 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			}
 			mediaID := "media:" + strings.Repeat("a", 64)
 			if native {
-				if err := f.store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
+				if err := f.store.CreateMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 					t.Fatal(err)
 				}
 				f.material = func(context.Context, *storage.Session, *storage.Message) (*branch.PreparedMaterial, error) {
@@ -112,8 +113,8 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 func TestCopyForegroundAcrossPlatformsPreservesSourceAndHistory(t *testing.T) {
 	f := newFixture(t)
 	source := f.source(t, storage.SessionModeWork)
-	first := f.message(t, source.ID, storage.RoleUser)
-	second := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: first.ID}
+	first := f.message(t, source.ID, llm.RoleUser)
+	second := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: llm.RoleAssistant, Content: "answer", ParentMessageID: first.ID}
 	if err := f.store.AppendMessage(t.Context(), second); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +170,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			f := newFixture(t)
 			source := f.source(t, storage.SessionModeBackground)
-			f.message(t, source.ID, storage.RoleAssistant)
+			f.message(t, source.ID, llm.RoleAssistant)
 			input := storage.NativeInput{ID: "input", SessionID: source.ID, ExchangeID: "exchange", CallID: "call", ItemJSON: `{"output":"pending"}`, MediaJSON: `[]`}
 			if change == "pending-content" {
 				if err := f.store.CreateExchange(t.Context(), &storage.NativeExchange{Status: "pending", ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
@@ -266,9 +267,9 @@ func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
 			case "missing-result", "non-tool-result":
 				resultID := "absent"
 				if failure == "non-tool-result" {
-					resultID = f.message(t, source.ID, storage.RoleAssistant).ID
+					resultID = f.message(t, source.ID, llm.RoleAssistant).ID
 				}
-				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["` + resultID + `"]}`}
+				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: llm.RoleAssistant, Metadata: `{"tool_result_message_ids":["` + resultID + `"]}`}
 				if err := f.store.AppendMessage(t.Context(), message); err != nil {
 					t.Fatal(err)
 				}

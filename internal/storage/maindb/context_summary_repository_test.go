@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -18,9 +19,9 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	first := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Content: "first"}
-	second := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleAssistant, Content: "second"}
-	third := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Content: "third"}
+	first := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "first"}
+	second := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "second"}
+	third := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "third"}
 	for _, message := range []*Message{first, second, third} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)

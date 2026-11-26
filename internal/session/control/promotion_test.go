@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -113,7 +114,7 @@ func TestReferencePromotesElwispTaskForSuperadmin(t *testing.T) {
 		t.Fatalf("prepare background: %+v %v", prepared, err)
 	}
 	row := prepared.Data
-	message := storage.Message{SessionID: row.ID, Role: storage.RoleAssistant}
+	message := storage.Message{SessionID: row.ID, Role: llm.RoleAssistant}
 	viewer := privateScope()
 	resume, _, err := f.s.ResolveReference(t.Context(), viewer, message)
 	if err != nil || resume != "" {

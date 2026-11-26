@@ -9,19 +9,11 @@ import (
 
 type (
 	Message            = maindb.Message
-	ToolCall           = maindb.ToolCall
 	ContextSummary     = maindb.ContextSummary
 	ToolCallRecord     = maindb.ToolCallRecord
 	ToolUsageSummary   = maindb.ToolUsageSummary
 	PlatformMessageMap = maindb.PlatformMessageMap
 	MessageStats       = maindb.MessageStats
-)
-
-const (
-	RoleSystem    = maindb.RoleSystem
-	RoleUser      = maindb.RoleUser
-	RoleAssistant = maindb.RoleAssistant
-	RoleTool      = maindb.RoleTool
 )
 
 type MessageRepository interface {

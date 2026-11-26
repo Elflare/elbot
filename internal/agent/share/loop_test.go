@@ -77,7 +77,7 @@ func (r *oneRound) ExecuteWithCommitter(context.Context, *storage.Session, []llm
 
 type skippedBatch struct {
 	tool.ToolCommitter
-	calls   []storage.ToolCall
+	calls   []llm.ToolCallRequest
 	results []string
 	flushed bool
 }

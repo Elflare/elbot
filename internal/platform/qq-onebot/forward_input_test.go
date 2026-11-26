@@ -5,6 +5,7 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"path/filepath"
@@ -183,8 +184,8 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "旧回答", CreatedAt: time.Now()}
-	latest := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "最新回答", CreatedAt: first.CreatedAt.Add(time.Second)}
+	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "旧回答", CreatedAt: time.Now()}
+	latest := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: llm.RoleAssistant, Content: "最新回答", CreatedAt: first.CreatedAt.Add(time.Second)}
 	for i, message := range []*storage.Message{first, latest} {
 		if err := store.AppendMessage(ctx, message); err != nil {
 			t.Fatal(err)

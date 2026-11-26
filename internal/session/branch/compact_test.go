@@ -7,6 +7,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/share"
@@ -145,7 +146,7 @@ func TestCompactedStoresInitialMessageInNewSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 || messages[0].Role != storage.RoleUser || messages[0].Content != "summary + user inputs" {
+	if len(messages) != 1 || messages[0].Role != llm.RoleUser || messages[0].Content != "summary + user inputs" {
 		t.Fatalf("initial messages = %+v", messages)
 	}
 }

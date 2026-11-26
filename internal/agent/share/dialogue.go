@@ -128,7 +128,7 @@ func DrainPending(turns interface {
 	}
 	message := storage.Message{
 		SessionID: sessionID, Metadata: storage.EncodeInputIDs(pending.InputIDs),
-		Role:     storage.RoleUser,
+		Role:     llm.RoleUser,
 		Content:  MessageContent(segments),
 		Segments: StoredMessageSegments(segments),
 	}
@@ -231,18 +231,15 @@ func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
 	if err != nil {
 		return llm.LLMMessage{}, fmt.Errorf("message %s segments: %w", row.ID, err)
 	}
-	message := llm.LLMMessage{Role: llm.MessageRole(row.Role), ToolCallID: row.ToolCallID}
+	message := llm.LLMMessage{Role: row.Role, ToolCallID: row.ToolCallID}
 	text := row.Content
 	switch row.Role {
-	case storage.RoleAssistant:
+	case llm.RoleAssistant:
 		if row.SourceContent != "" {
 			text = row.SourceContent
 		}
-		message.ToolCalls = make([]llm.ToolCallRequest, len(row.ToolCalls))
-		for i, call := range row.ToolCalls {
-			message.ToolCalls[i] = llm.ToolCallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
-		}
-	case storage.RoleTool:
+		message.ToolCalls = append([]llm.ToolCallRequest{}, row.ToolCalls...)
+	case llm.RoleTool:
 		message.Name = row.ToolName
 	}
 	if len(segments) == 0 {
@@ -253,11 +250,7 @@ func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
 }
 
 func ToolCallStorageMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest, reasoningContent string) storage.Message {
-	storedCalls := make([]storage.ToolCall, len(calls))
-	for i, call := range calls {
-		storedCalls[i] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
-	}
-	message := storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content, ReasoningContent: reasoningContent, ToolCalls: storedCalls}
+	message := storage.Message{SessionID: sessionID, Role: llm.RoleAssistant, Content: content, ReasoningContent: reasoningContent, ToolCalls: append([]llm.ToolCallRequest{}, calls...)}
 	if rawText != content {
 		message.SourceContent = rawText
 	}
@@ -290,7 +283,7 @@ func segmentsTextOnly(segments []llm.MessageSegment) bool {
 func ToolResultStorageMessage(sessionID string, message llm.LLMMessage) storage.Message {
 	return storage.Message{
 		SessionID:  sessionID,
-		Role:       storage.RoleTool,
+		Role:       llm.RoleTool,
 		Content:    MessageContent(message.Segments),
 		ToolCallID: message.ToolCallID,
 		ToolName:   message.Name,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -28,7 +29,7 @@ func TestContextSummaryNullableTokens(t *testing.T) {
 			if err := store.CreateSession(ctx, session); err != nil {
 				t.Fatal(err)
 			}
-			message := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Content: "source"}
+			message := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "source"}
 			if err := store.AppendMessage(ctx, message); err != nil {
 				t.Fatal(err)
 			}
@@ -62,7 +63,7 @@ func TestNullableTokenMigrationPreservesExistingDataAndConstraints(t *testing.T)
 	if err := applyMigration(ctx, db, migrations[31]); err != nil {
 		t.Fatal(err)
 	}
-	message := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Content: "original"}
+	message := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Content: "original"}
 	if err := messages.AppendMessage(ctx, message); err != nil {
 		t.Fatal(err)
 	}

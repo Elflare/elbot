@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -132,7 +133,7 @@ func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, messa
 		return "", "", err
 	}
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == storage.RoleAssistant {
+		if messages[i].Role == llm.RoleAssistant {
 			if messages[i].ID == message.ID {
 				return row.ID, "", nil
 			}

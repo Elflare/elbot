@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
 	"github.com/pelletier/go-toml/v2"
@@ -77,7 +78,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 				ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: tc.current, Model: "dialogue-" + tc.current, APIType: tc.current})
 			}
 			service := &Service{deps: ServiceDeps{ResolveNaming: models.ResolveNaming}}
-			result, err := service.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "name this conversation"}})
+			result, err := service.generateTitle(ctx, []storage.Message{{Role: llm.RoleUser, Content: "name this conversation"}})
 			if tc.target == "" {
 				if err == nil || len(requests) != 0 {
 					t.Fatalf("missing model fell back to work: result=%+v err=%v requests=%d", result, err, len(requests))
@@ -162,7 +163,7 @@ func TestNamingFallbackUsesSnapshotAcrossSelectionAndReload(t *testing.T) {
 	results := make(chan TitleResult, 1)
 	errs := make(chan error, 1)
 	go func() {
-		result, err := s.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "user"}})
+		result, err := s.generateTitle(ctx, []storage.Message{{Role: llm.RoleUser, Content: "user"}})
 		results <- result
 		errs <- err
 	}()
@@ -197,7 +198,7 @@ func TestNamingFallbackUsesSnapshotAcrossSelectionAndReload(t *testing.T) {
 	if got := receive(t, requests); got != "/old/chat/completions:first" {
 		t.Fatal("fallback changed during request", got)
 	}
-	result, err = s.generateTitle(ctx, []storage.Message{{Role: storage.RoleUser, Content: "user"}})
+	result, err = s.generateTitle(ctx, []storage.Message{{Role: llm.RoleUser, Content: "user"}})
 	if err != nil || result.Provider != "next" || result.RawTitle != "second title" {
 		t.Fatalf("new=%+v %v", result, err)
 	}

@@ -61,7 +61,7 @@ func commitInput(ctx context.Context, session *storage.Session, commit storage.D
 	if !commit.ElyphRulesShown {
 		return persistence.CommitDialogue(ctx, commit)
 	}
-	i := slices.IndexFunc(commit.Messages, func(m *storage.Message) bool { return m.Role == storage.RoleUser })
+	i := slices.IndexFunc(commit.Messages, func(m *storage.Message) bool { return m.Role == llm.RoleUser })
 	message := commit.Messages[i]
 	fields, err := storage.DecodeSessionMetadata(message.Metadata)
 	if err != nil {
@@ -138,7 +138,7 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	}
 	stored := update.Result
 	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
-	c.head.ToolCalls[index] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+	c.head.ToolCalls[index] = call
 	c.results[index] = stored
 	stored.ToolResultStatus = "completed"
 	if c.remaining == 1 {

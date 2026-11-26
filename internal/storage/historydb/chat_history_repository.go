@@ -53,7 +53,7 @@ type ChatHistorySearchRequest struct {
 	ChatType         contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
 	ChatID           string
 	QueryTerms       []string
-	QueryMode        string
+	MatchAll         bool   // 所有关键词是否都必须匹配。
 	SenderQuery      string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
 	Since            *time.Time
 	Until            *time.Time
@@ -189,21 +189,15 @@ func (r *Store) SearchChatHistory(ctx context.Context, req ChatHistorySearchRequ
 	}
 	if len(req.QueryTerms) > 0 {
 		op := "OR"
-		if strings.EqualFold(strings.TrimSpace(req.QueryMode), "and") {
+		if req.MatchAll {
 			op = "AND"
 		}
 		parts := make([]string, 0, len(req.QueryTerms))
 		for _, term := range req.QueryTerms {
-			term = strings.TrimSpace(term)
-			if term == "" {
-				continue
-			}
 			parts = append(parts, "text LIKE ?")
 			params = append(params, "%"+term+"%")
 		}
-		if len(parts) > 0 {
-			conditions = append(conditions, "("+strings.Join(parts, " "+op+" ")+")")
-		}
+		conditions = append(conditions, "("+strings.Join(parts, " "+op+" ")+")")
 	}
 	if req.SenderQuery != "" {
 		conditions = append(conditions, "(sender_id = ? OR sender_name LIKE ? ESCAPE '!')")

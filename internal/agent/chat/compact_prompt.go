@@ -12,7 +12,7 @@ func compactPrompt(messages []CompactMessage) string {
 		content := strings.TrimSpace(message.Content)
 		if content != "" {
 			sb.WriteString("\n")
-			sb.WriteString(message.Role)
+			sb.WriteString(string(message.Role))
 			sb.WriteString(": ")
 			sb.WriteString(content)
 		}

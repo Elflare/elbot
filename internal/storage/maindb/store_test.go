@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func NewStoreForTest(t *testing.T) *Store {
@@ -16,6 +17,14 @@ func NewStoreForTest(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	return store
+}
+
+func CreateMediaForTest(t *testing.T, store *Store, id, mime string) {
+	t.Helper()
+	now := time.Now()
+	if err := store.CreateMedia(t.Context(), &Media{ID: id, MIMEType: mime, Backend: "local", CreatedAt: now, LastAccessedAt: now}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func hasSQLiteObject(t *testing.T, db *sql.DB, objectType, name string) bool {

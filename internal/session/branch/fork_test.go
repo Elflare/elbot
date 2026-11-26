@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
@@ -22,7 +23,7 @@ func TestForkModesAndOwnership(t *testing.T) {
 			t.Run(mode+"/"+entry, func(t *testing.T) {
 				f := newFixture(t)
 				source := f.source(t, mode)
-				message := f.message(t, source.ID, storage.RoleAssistant)
+				message := f.message(t, source.ID, llm.RoleAssistant)
 				target := scope()
 				allowed := entry == "owner" || entry == "superadmin-owner"
 				switch entry {
@@ -83,7 +84,7 @@ func TestForkModesAndOwnership(t *testing.T) {
 func TestForkMessageAndToolBoundaries(t *testing.T) {
 	f := newFixture(t)
 	source := f.source(t, storage.SessionModeWork)
-	user := f.message(t, source.ID, storage.RoleUser)
+	user := f.message(t, source.ID, llm.RoleUser)
 	if result, err := f.s.Fork(t.Context(), scope(), user.ID); err != nil || result.Status == operationresult.Success {
 		t.Fatal("user message accepted")
 	}
@@ -95,7 +96,7 @@ func TestForkMessageAndToolBoundaries(t *testing.T) {
 		t.Fatal("pending batch accepted")
 	}
 	sealed := toolBatch(t, f, source.ID, "sealed", false)
-	later := f.message(t, source.ID, storage.RoleAssistant)
+	later := f.message(t, source.ID, llm.RoleAssistant)
 	forked, err := f.s.Fork(t.Context(), scope(), sealed.Call.ID)
 	if err != nil || forked.Status != operationresult.Success {
 		t.Fatalf("fork: %+v %v", forked, err)
@@ -120,7 +121,7 @@ func TestForkRechecksAfterUnlockedPreparation(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			f := newFixture(t)
 			source := f.source(t, storage.SessionModeWork)
-			message := f.message(t, source.ID, storage.RoleAssistant)
+			message := f.message(t, source.ID, llm.RoleAssistant)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if change == "save" {
@@ -196,7 +197,7 @@ func TestForkControlTimerAndRelease(t *testing.T) {
 		f := newFixture(t)
 		source := f.source(t, storage.SessionModeWork)
 		original := f.c.CurrentBinding(scope())
-		message := f.message(t, source.ID, storage.RoleAssistant)
+		message := f.message(t, source.ID, llm.RoleAssistant)
 		if err := f.c.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"testing"
@@ -100,10 +101,10 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 		t.Fatalf("resumed updated_at = %v, want after %v", current.Data.UpdatedAt, aged)
 	}
 
-	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: llm.RoleUser, Content: "hello"}); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
-	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleAssistant, Content: "hi"}); err != nil {
+	if err := store.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: llm.RoleAssistant, Content: "hi"}); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
 

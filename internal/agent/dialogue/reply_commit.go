@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/llm"
 
 	"context"
 	"elbot/internal/events"
@@ -31,7 +32,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	result.RawText = in.RawText
 	text := in.PlatformText
 	empty := strings.TrimSpace(text) == "" && strings.TrimSpace(in.Text) == "" && len(in.Outputs) == 0
-	message := &storage.Message{SessionID: in.Session.ID, Role: storage.RoleAssistant, Content: in.Text, ReasoningContent: in.ReasoningContent}
+	message := &storage.Message{SessionID: in.Session.ID, Role: llm.RoleAssistant, Content: in.Text, ReasoningContent: in.ReasoningContent}
 	if in.RawText != in.Text {
 		message.SourceContent = in.RawText
 	}

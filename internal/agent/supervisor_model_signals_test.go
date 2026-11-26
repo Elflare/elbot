@@ -10,6 +10,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/signal"
@@ -102,7 +103,7 @@ data: [DONE]
 					result <- err
 					return
 				}
-				if err := deps.Store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: row.ID, Messages: []*storage.Message{{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}}}); err != nil {
+				if err := deps.Store.CommitDialogue(ctx, storage.DialogueCommit{SessionID: row.ID, Messages: []*storage.Message{{ID: storage.NewID(), SessionID: row.ID, Role: llm.RoleUser, Content: "hello"}}}); err != nil {
 					result <- err
 					return
 				}

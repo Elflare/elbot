@@ -171,7 +171,7 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	} else {
 		item.LocalPath = location
 	}
-	if err := m.media.UpsertMedia(ctx, item); err != nil {
+	if err := m.media.CreateMedia(ctx, item); err != nil {
 		removeUnrecordedObject(backend, location)
 		return operationresult.Result[share.MediaInfo]{}, err
 	}

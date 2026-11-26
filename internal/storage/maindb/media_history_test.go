@@ -12,9 +12,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 	store := NewStoreForTest(t)
 	repo := store
 	id := "media:" + strings.Repeat("a", 64)
-	if err := repo.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, repo, id, "image/png")
 	item := HistoryMedia{HistoryID: "history-1", Platform: "qqonebot", ChatType: "group", ChatID: "1", MessageID: "message", Kind: "image", MediaID: id}
 	for _, index := range []int{3, 1, 2} {
 		item.MediaIndex = index

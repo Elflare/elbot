@@ -3,6 +3,7 @@ package testutil
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"errors"
 	"strings"
 	"testing"
@@ -35,7 +36,7 @@ func TestNewSQLiteStoreUsesIndependentMemoryDatabase(t *testing.T) {
 	if got, err := second.GetSession(ctx, session.ID); err != nil || got.Title != "second" {
 		t.Fatalf("second store session after closing first = %+v, error = %v", got, err)
 	}
-	err := second.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: "missing-session", Role: storage.RoleUser, Content: "orphan"})
+	err := second.AppendMessage(ctx, &storage.Message{ID: storage.NewID(), SessionID: "missing-session", Role: llm.RoleUser, Content: "orphan"})
 	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
 		t.Fatalf("missing session Append error = %v, want foreign key violation", err)
 	}

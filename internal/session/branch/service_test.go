@@ -128,7 +128,7 @@ func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 	return row
 }
 
-func (f *fixture) message(t *testing.T, id, role string) *storage.Message {
+func (f *fixture) message(t *testing.T, id string, role llm.MessageRole) *storage.Message {
 	t.Helper()
 	row := &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: "message"}
 	if err := f.store.AppendMessage(t.Context(), row); err != nil {
@@ -184,9 +184,9 @@ func toolBatch(t *testing.T, f *fixture, sessionID, suffix string, pending bool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	batch := &storage.ToolBatch{Call: &storage.Message{ID: suffix + "-head", SessionID: sessionID, Role: storage.RoleAssistant, Metadata: raw, ToolBatchStatus: status, ToolCalls: []storage.ToolCall{{ID: suffix + "-one", Name: "tool", Arguments: "{}"}, {ID: suffix + "-two", Name: "tool", Arguments: "{}"}}}, Results: []*storage.Message{
-		{ID: suffix + "-r1", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-one", Content: "one", ToolResultStatus: "completed"},
-		{ID: suffix + "-r2", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-two", Content: "two", ToolResultStatus: "completed"},
+	batch := &storage.ToolBatch{Call: &storage.Message{ID: suffix + "-head", SessionID: sessionID, Role: llm.RoleAssistant, Metadata: raw, ToolBatchStatus: status, ToolCalls: []llm.ToolCallRequest{{ID: suffix + "-one", Name: "tool", Arguments: "{}"}, {ID: suffix + "-two", Name: "tool", Arguments: "{}"}}}, Results: []*storage.Message{
+		{ID: suffix + "-r1", SessionID: sessionID, Role: llm.RoleTool, ToolCallID: suffix + "-one", Content: "one", ToolResultStatus: "completed"},
+		{ID: suffix + "-r2", SessionID: sessionID, Role: llm.RoleTool, ToolCallID: suffix + "-two", Content: "two", ToolResultStatus: "completed"},
 	}}
 	if err := f.store.CommitDialogue(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
 		t.Fatal(err)
@@ -214,10 +214,10 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 					mode = storage.SessionModeBackground
 				}
 				source := f.source(t, mode)
-				message := f.message(t, source.ID, storage.RoleAssistant)
+				message := f.message(t, source.ID, llm.RoleAssistant)
 				before := f.c.CurrentBinding(scope())
 				mediaID := "media:" + strings.Repeat("b", 64)
-				if err := f.store.UpsertMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
+				if err := f.store.CreateMedia(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 					t.Fatal(err)
 				}
 				material := seed()
@@ -280,7 +280,7 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 func TestMaterialSelectionAndStaleContext(t *testing.T) {
 	f := newFixture(t)
 	source := f.source(t, storage.SessionModeWork)
-	message := f.message(t, source.ID, storage.RoleAssistant)
+	message := f.message(t, source.ID, llm.RoleAssistant)
 	original := f.c.CurrentBinding(scope())
 	if result, err := f.c.ResetCurrent(t.Context(), scope()); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("reset: %+v %v", result, err)

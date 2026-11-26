@@ -37,9 +37,7 @@ func TestCronSourceMigrationPreservesReportsAndUpdatesReferences(t *testing.T) {
 		t.Fatal(persisted, err)
 	}
 	id := "media:" + strings.Repeat("a", 64)
-	if err := store.UpsertMedia(t.Context(), &storage.Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-		t.Fatal(err)
-	}
+	maindb.CreateMediaForTest(t, store, id, "image/png")
 	raw, err := json.Marshal(cron.CronDeliveryState{RunID: "new", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: id}}}})
 	if err != nil {
 		t.Fatal(err)

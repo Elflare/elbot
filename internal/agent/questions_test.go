@@ -130,7 +130,7 @@ func TestQuestionPresentation(t *testing.T) {
 					}
 					reports := 0
 					for _, row := range rows {
-						if row.Role == storage.RoleTool && row.ToolName == "ask_user" && strings.Count(row.Content, "未回答") == 4 {
+						if row.Role == llm.RoleTool && row.ToolName == "ask_user" && strings.Count(row.Content, "未回答") == 4 {
 							reports++
 						}
 					}
@@ -235,7 +235,7 @@ func TestSynchronousQuestionResult(t *testing.T) {
 		if !strings.Contains(row.Content, "sync-answer-") {
 			continue
 		}
-		if row.Role != storage.RoleTool || !strings.Contains(row.Content, "sync-answer-0") || !strings.Contains(row.Content, "Two?\n未回答") {
+		if row.Role != llm.RoleTool || !strings.Contains(row.Content, "sync-answer-0") || !strings.Contains(row.Content, "Two?\n未回答") {
 			t.Fatalf("misrouted answer: %+v", row)
 		}
 		count++
@@ -409,7 +409,7 @@ func TestQuestionSubmission(t *testing.T) {
 			count := 0
 			for _, m := range history {
 				if strings.Contains(m.Content, "我来审阅") {
-					if m.Role != storage.RoleTool || m.ToolCallID != reportID {
+					if m.Role != llm.RoleTool || m.ToolCallID != reportID {
 						t.Fatalf("misrouted answer: %+v", m)
 					}
 					count++
@@ -505,7 +505,7 @@ func TestQuestionSubmissionDuringLLM(t *testing.T) {
 				}
 				var found []string
 				for _, msg := range history {
-					if msg.Role == storage.RoleTool && msg.ToolName == "ask_user" && msg.ToolCallID != "contract-call" {
+					if msg.Role == llm.RoleTool && msg.ToolName == "ask_user" && msg.ToolCallID != "contract-call" {
 						found = append(found, msg.Content)
 					}
 				}

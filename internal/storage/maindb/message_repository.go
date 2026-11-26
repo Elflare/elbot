@@ -9,20 +9,14 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
-)
-
-const (
-	RoleSystem    = "system"
-	RoleUser      = "user"
-	RoleAssistant = "assistant"
-	RoleTool      = "tool"
 )
 
 type Message struct {
 	ID                       string
 	SessionID                string
-	Role                     string
+	Role                     llm.MessageRole
 	Content                  string
 	SourceContent            string
 	ReasoningContent         string
@@ -30,19 +24,13 @@ type Message struct {
 	ReplyToPlatformMessageID string
 	ReplyToMessageID         string
 	ToolCallID               string
-	ToolCalls                []ToolCall
+	ToolCalls                []llm.ToolCallRequest
 	ToolName                 string
 	ToolBatchStatus          string
 	ToolResultStatus         string
 	Segments                 string
 	Metadata                 string
 	CreatedAt                time.Time
-}
-
-type ToolCall struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
 }
 
 type ContextSummary struct {
@@ -126,7 +114,7 @@ func appendMessageTx(ctx context.Context, tx *sql.Tx, message *Message) error {
 	}
 	calls := message.ToolCalls
 	if calls == nil {
-		calls = []ToolCall{}
+		calls = []llm.ToolCallRequest{}
 	}
 	toolCalls, _ := json.Marshal(calls)
 
@@ -166,7 +154,7 @@ INSERT INTO messages (
 		}
 	}
 	ownerType := "message"
-	if message.Role == RoleTool {
+	if message.Role == llm.RoleTool {
 		ownerType = "tool_result"
 	}
 	for _, segment := range segments {

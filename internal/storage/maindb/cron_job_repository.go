@@ -57,10 +57,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT(name) DO NOTHING`,
 	}
 	if job.Handler != req.Handler || job.Schedule != req.Schedule || job.Enabled != req.Enabled || job.Metadata != req.Metadata ||
 		!optionalTimeEqual(job.NextRunAt, req.NextRunAt) || req.ResetDelivery && (job.DeliveryToken != "" || job.DeliveryState != "") {
+		reset := ""
+		if req.ResetDelivery {
+			reset = ", delivery_state=NULL, delivery_token=NULL"
+		}
 		job, err = scanCronJob(tx.QueryRowContext(ctx, `UPDATE cron_jobs SET handler=?, schedule=?, enabled=?, metadata=?,
-next_run_at=?, updated_at=?, delivery_state=CASE WHEN ? THEN NULL ELSE delivery_state END,
-delivery_token=CASE WHEN ? THEN NULL ELSE delivery_token END WHERE id=? RETURNING `+cronJobColumns,
-			req.Handler, req.Schedule, req.Enabled, share.NullString(req.Metadata), nullTime(req.NextRunAt), now, req.ResetDelivery, req.ResetDelivery, job.ID))
+next_run_at=?, updated_at=?`+reset+` WHERE id=? RETURNING `+cronJobColumns,
+			req.Handler, req.Schedule, req.Enabled, share.NullString(req.Metadata), nullTime(req.NextRunAt), now, job.ID))
 		if err != nil {
 			return nil, fmt.Errorf("update cron definition: %w", err)
 		}

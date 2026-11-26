@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -160,7 +161,7 @@ func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 		t.Fatalf("create: %+v %v", created, err)
 	}
 	source := created.Data
-	message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer"}
+	message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: llm.RoleAssistant, Content: "answer"}
 	if err := store.AppendMessage(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}

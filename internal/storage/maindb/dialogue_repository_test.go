@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/signal"
 )
 
@@ -97,7 +98,7 @@ func nativeStorageFixture(t *testing.T) (*Store, *NativeExchange) {
 }
 
 func nativeStorageCommit(id, parent string) DialogueCommit {
-	return DialogueCommit{SessionID: "s", Messages: []*Message{{ID: "message-" + id, SessionID: "s", Role: RoleAssistant, Content: "reply"}}, Native: &NativeCommit{ExpectedCheckpointID: parent, Checkpoint: NativeCheckpoint{ID: id, SessionID: "s", ParentID: parent, ExchangeID: "exchange", ResponseID: "r", MessageID: "message-" + id}}}
+	return DialogueCommit{SessionID: "s", Messages: []*Message{{ID: "message-" + id, SessionID: "s", Role: llm.RoleAssistant, Content: "reply"}}, Native: &NativeCommit{ExpectedCheckpointID: parent, Checkpoint: NativeCheckpoint{ID: id, SessionID: "s", ParentID: parent, ExchangeID: "exchange", ResponseID: "r", MessageID: "message-" + id}}}
 }
 
 func TestElyphRulesCommitWithMessageAndNativeState(t *testing.T) {
@@ -153,9 +154,7 @@ func TestNativeCheckpointCommitRollsBackMessageAndInputOnFailure(t *testing.T) {
 	}
 	commit := nativeStorageCommit("c", "")
 	mediaID := "media:" + strings.Repeat("a", 64)
-	if err := store.UpsertMedia(t.Context(), &Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, mediaID, "image/png")
 	commit.Messages[0].Segments = `[{"type":"image","media":"` + mediaID + `"}]`
 	commit.Native.Inputs = []NativeInput{{ID: "input", SessionID: "s", ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[]`}}
 	if err := store.CommitDialogue(t.Context(), commit); err == nil {
@@ -190,13 +189,11 @@ func TestToolBatchLastResultFailureRollsBackEveryMessageAndMediaReference(t *tes
 				}
 			}
 			mediaID := "media:" + strings.Repeat("c", 64)
-			if err := store.UpsertMedia(ctx, &Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
-				t.Fatal(err)
-			}
-			batch := &ToolBatch{Call: &Message{ID: "batch", SessionID: "s", Role: RoleAssistant,
-				ToolCalls: []ToolCall{{ID: "A"}, {ID: "B"}, {ID: "C"}}, Metadata: `{"tool_result_message_ids":["result-A","result-B","result-C"]}`}}
+			CreateMediaForTest(t, store, mediaID, "image/png")
+			batch := &ToolBatch{Call: &Message{ID: "batch", SessionID: "s", Role: llm.RoleAssistant,
+				ToolCalls: []llm.ToolCallRequest{{ID: "A"}, {ID: "B"}, {ID: "C"}}, Metadata: `{"tool_result_message_ids":["result-A","result-B","result-C"]}`}}
 			for _, id := range []string{"A", "B", "C"} {
-				batch.Results = append(batch.Results, &Message{ID: "result-" + id, SessionID: "s", Role: RoleTool, ToolCallID: id, Content: id,
+				batch.Results = append(batch.Results, &Message{ID: "result-" + id, SessionID: "s", Role: llm.RoleTool, ToolCallID: id, Content: id,
 					Segments: `[{"type":"image","media":"` + mediaID + `"}]`})
 			}
 			err := store.CommitDialogue(ctx, DialogueCommit{SessionID: "s", ToolBatch: batch})
@@ -315,13 +312,11 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 				}
 			}
 			pair := &ToolBatch{
-				Call:    &Message{ID: "head", SessionID: "s", Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
-				Results: []*Message{{ID: "result", SessionID: "s", Role: RoleTool, ToolCallID: "one", Content: "done"}},
+				Call:    &Message{ID: "head", SessionID: "s", Role: llm.RoleAssistant, ToolCalls: []llm.ToolCallRequest{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
+				Results: []*Message{{ID: "result", SessionID: "s", Role: llm.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			mediaID := "media:" + strings.Repeat("b", 64)
-			if err := store.UpsertMedia(ctx, &Media{ID: mediaID, MIMEType: "image/png", Backend: "local"}); err != nil {
-				t.Fatal(err)
-			}
+			CreateMediaForTest(t, store, mediaID, "image/png")
 			pair.Call.Segments = `[{"type":"image","media":"` + mediaID + `"}]`
 			pair.Results[0].Segments = pair.Call.Segments
 			err := store.CommitDialogue(ctx, DialogueCommit{SessionID: "s", ToolBatch: pair})

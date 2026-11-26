@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/llm"
 	"elbot/internal/testutil"
 	"errors"
 	"path/filepath"
@@ -222,7 +223,7 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	if result, err := f.s.ActivateMode(ctx, scope, ActivateModeRequest{Mode: storage.SessionModeWork}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("mode: %+v %v", result, err)
 	}
-	for _, message := range []storage.Message{{ID: "question", SessionID: row.ID, Role: storage.RoleUser, Content: "question"}, {ID: "answer", SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}} {
+	for _, message := range []storage.Message{{ID: "question", SessionID: row.ID, Role: llm.RoleUser, Content: "question"}, {ID: "answer", SessionID: row.ID, Role: llm.RoleAssistant, Content: "answer"}} {
 		if err := f.store.AppendMessage(ctx, &message); err != nil {
 			t.Fatal(err)
 		}

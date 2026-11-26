@@ -314,7 +314,7 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleAssistant, Content: "visible text", SourceContent: "raw [[smile]] text"},
+			{Role: llm.RoleAssistant, Content: "visible text", SourceContent: "raw [[smile]] text"},
 		},
 	})
 	if err != nil {
@@ -392,7 +392,7 @@ func TestPromptBuilderRestoresUserSegmentsFromStorage(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: agentshare.StoredMessageSegments(segments)},
+			{Role: llm.RoleUser, Content: "看图 [图片: https://example.com/a.png]", Segments: agentshare.StoredMessageSegments(segments)},
 		},
 	})
 	if err != nil {
@@ -419,9 +419,9 @@ func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "纯文本快速路径"},
+			{Role: llm.RoleUser, Content: "纯文本快速路径"},
 			{
-				Role:       storage.RoleTool,
+				Role:       llm.RoleTool,
 				Content:    "截图完成 [图片]",
 				ToolCallID: "call_1",
 				Segments:   agentshare.StoredMessageSegments(toolSegments),
@@ -450,7 +450,7 @@ func TestPromptBuilderSummaryPreservesUserImageSegment(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: llm.SegmentsContentText(segments), Segments: agentshare.StoredMessageSegments(segments)},
+			{Role: llm.RoleUser, Content: llm.SegmentsContentText(segments), Segments: agentshare.StoredMessageSegments(segments)},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})
@@ -501,8 +501,8 @@ func TestPromptBuilderInjectsSummaryIntoCurrentUserMessage(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleAssistant, Content: "after summary"},
-			{Role: storage.RoleUser, Content: "new question"},
+			{Role: llm.RoleAssistant, Content: "after summary"},
+			{Role: llm.RoleUser, Content: "new question"},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})
@@ -530,9 +530,9 @@ func TestPromptBuilderKeepsSummaryOnFirstUserAfterCheckpoint(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "first question"},
-			{Role: storage.RoleAssistant, Content: "first answer"},
-			{Role: storage.RoleUser, Content: "latest question"},
+			{Role: llm.RoleUser, Content: "first question"},
+			{Role: llm.RoleAssistant, Content: "first answer"},
+			{Role: llm.RoleUser, Content: "latest question"},
 		},
 		Summary: &storage.ContextSummary{Summary: "old summary"},
 	})

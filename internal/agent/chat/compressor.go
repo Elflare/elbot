@@ -10,7 +10,7 @@ import (
 )
 
 type CompactMessage struct {
-	Role      string
+	Role      llm.MessageRole
 	Content   string
 	ToolCalls []CompactToolCall
 }

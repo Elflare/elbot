@@ -8,6 +8,7 @@ import (
 	"maps"
 	"time"
 
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -36,7 +37,7 @@ func validateToolBatch(commit DialogueCommit) error {
 	if batch == nil {
 		return nil
 	}
-	if batch.Call == nil || batch.Call.Role != RoleAssistant || batch.Call.ID == "" || len(batch.Results) == 0 {
+	if batch.Call == nil || batch.Call.Role != llm.RoleAssistant || batch.Call.ID == "" || len(batch.Results) == 0 {
 		return fmt.Errorf("invalid tool batch messages")
 	}
 	ids, err := batch.Call.ToolResultMessageIDs()
@@ -50,7 +51,7 @@ func validateToolBatch(commit DialogueCommit) error {
 	seen := map[string]bool{batch.Call.ID: true}
 	callIDs := map[string]bool{}
 	for i, result := range batch.Results {
-		if result == nil || result.Role != RoleTool || result.ID == "" || seen[result.ID] || ids[i] != result.ID || calls[i].ID == "" || callIDs[calls[i].ID] || calls[i].ID != result.ToolCallID {
+		if result == nil || result.Role != llm.RoleTool || result.ID == "" || seen[result.ID] || ids[i] != result.ID || calls[i].ID == "" || callIDs[calls[i].ID] || calls[i].ID != result.ToolCallID {
 			return fmt.Errorf("tool batch identity mismatch")
 		}
 		seen[result.ID], callIDs[calls[i].ID] = true, true
@@ -60,11 +61,7 @@ func validateToolBatch(commit DialogueCommit) error {
 
 func commitToolResult(ctx context.Context, tx *sql.Tx, commit DialogueCommit, fields SessionMetadata) error {
 	update := commit.ToolResult
-	rows := []*Message{update.Call}
-	if update.Result != nil {
-		rows = append(rows, update.Result)
-	}
-	for _, message := range rows {
+	for _, message := range []*Message{update.Call, update.Result} {
 		if message == nil || message.SessionID != commit.SessionID {
 			return fmt.Errorf("tool result session mismatch")
 		}
@@ -86,20 +83,20 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit DialogueCommit, fi
 		if err != nil || count != 1 {
 			return fmt.Errorf("tool slot is absent or already sealed: %s", message.ID)
 		}
-	}
-	message := update.Result
-	if message == nil {
-		ids, err := update.Call.ToolResultMessageIDs()
-		if err != nil {
-			return err
-		}
-		for _, id := range ids {
-			if _, err := tx.ExecContext(ctx, `UPDATE messages SET tool_result_status='interrupted' WHERE id=? AND session_id=? AND tool_result_status='pending'`, id, commit.SessionID); err != nil {
+		if message == update.Call && message.ToolBatchStatus == "interrupted" {
+			ids, err := update.Call.ToolResultMessageIDs()
+			if err != nil {
 				return err
 			}
+			for _, id := range ids {
+				if _, err := tx.ExecContext(ctx, `UPDATE messages SET tool_result_status=? WHERE id=? AND session_id=? AND tool_result_status='pending'`, update.Call.ToolBatchStatus, id, commit.SessionID); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
-		return nil
 	}
+	message := update.Result
 	var segments []struct {
 		MediaID string `json:"media"`
 	}

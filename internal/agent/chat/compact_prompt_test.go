@@ -5,14 +5,15 @@ import (
 	"testing"
 
 	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
 func TestCompactPromptUsesConversationOnly(t *testing.T) {
 	prompt := compactPrompt([]CompactMessage{
-		{Role: storage.RoleUser, Content: "B"},
-		{Role: storage.RoleAssistant, Content: "C", ToolCalls: []CompactToolCall{{Name: "shell", Arguments: `{"command":"go test ./..."}`}}},
-		{Role: storage.RoleAssistant, Content: "H"},
+		{Role: llm.RoleUser, Content: "B"},
+		{Role: llm.RoleAssistant, Content: "C", ToolCalls: []CompactToolCall{{Name: "shell", Arguments: `{"command":"go test ./..."}`}}},
+		{Role: llm.RoleAssistant, Content: "H"},
 	})
 	for _, want := range []string{"上下文内容：", "user: B", "assistant: C", `tool_call: name=shell arguments={"command":"go test ./..."}`} {
 		if !strings.Contains(prompt, want) {
@@ -26,10 +27,10 @@ func TestCompactPromptUsesConversationOnly(t *testing.T) {
 
 func TestCompactUserInputsSkipsSyntheticFirstMessageAfterCompaction(t *testing.T) {
 	messages := []storage.Message{
-		{Role: storage.RoleUser, Content: "summary + prior inputs"},
-		{Role: storage.RoleAssistant, Content: "answer"},
-		{Role: storage.RoleUser, Content: "U"},
-		{Role: storage.RoleUser, Content: "U2"},
+		{Role: llm.RoleUser, Content: "summary + prior inputs"},
+		{Role: llm.RoleAssistant, Content: "answer"},
+		{Role: llm.RoleUser, Content: "U"},
+		{Role: llm.RoleUser, Content: "U2"},
 	}
 	got := compactUserInputs(messages, &contextmgr.CompactState{Inputs: []string{"B"}}, true)
 	want := []string{"B", "U", "U2"}

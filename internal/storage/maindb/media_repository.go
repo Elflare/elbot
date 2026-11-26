@@ -125,18 +125,17 @@ func scanMedia(row interface{ Scan(...any) error }) (*Media, error) {
 	return &m, nil
 }
 
-func (r *Store) UpsertMedia(ctx context.Context, m *Media) error {
-	if m.CreatedAt.IsZero() {
-		m.CreatedAt = time.Now()
-	}
-	if m.LastAccessedAt.IsZero() {
-		m.LastAccessedAt = m.CreatedAt
-	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO media (id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, mime_type=excluded.mime_type, size=excluded.size, local_path=excluded.local_path, backend=excluded.backend, object_key=excluded.object_key, source_platform=excluded.source_platform, source_url=excluded.source_url, source_file_id=excluded.source_file_id, last_accessed_at=excluded.last_accessed_at, expires_at=excluded.expires_at WHERE media.deleting=0`, m.ID, share.NullString(m.Name), m.MIMEType, m.Size, share.NullString(m.LocalPath), m.Backend, share.NullString(m.ObjectKey), share.NullString(m.SourcePlatform), share.NullString(m.SourceURL), share.NullString(m.SourceFileID), share.FormatTime(m.CreatedAt), share.FormatTime(m.LastAccessedAt), nullTime(m.ExpiresAt))
+func (r *Store) CreateMedia(ctx context.Context, m *Media) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO media (id, name, mime_type, size, local_path, backend, object_key, source_platform, source_url, source_file_id, created_at, last_accessed_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, m.ID, share.NullString(m.Name), m.MIMEType, m.Size, share.NullString(m.LocalPath), m.Backend, share.NullString(m.ObjectKey), share.NullString(m.SourcePlatform), share.NullString(m.SourceURL), share.NullString(m.SourceFileID), share.FormatTime(m.CreatedAt), share.FormatTime(m.LastAccessedAt), nullTime(m.ExpiresAt))
 	if err != nil {
-		return fmt.Errorf("upsert media: %w", err)
+		return fmt.Errorf("create media: %w", err)
 	}
 	return nil
+}
+
+func (r *Store) SetMediaObjectKey(ctx context.Context, id, key string) error {
+	res, err := r.db.ExecContext(ctx, `UPDATE media SET object_key=? WHERE id=? AND deleting=0`, key, id)
+	return requireRow(res, err, "set media object key")
 }
 
 func (r *Store) AddMediaReference(ctx context.Context, ref *MediaReference) error {

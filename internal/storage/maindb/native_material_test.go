@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -39,9 +40,7 @@ func TestNativeSeedMediaMigrationRepairsNullAndPreservesReferences(t *testing.T)
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
 	id := "media:" + strings.Repeat("b", 64)
-	if err := store.UpsertMedia(ctx, &Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, id, "image/png")
 	for _, name := range []string{"empty", "with-media"} {
 		seed := materialSeed(name)
 		if name == "with-media" {
@@ -84,15 +83,13 @@ func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
 	id := "media:" + strings.Repeat("a", 64)
-	if err := store.UpsertMedia(ctx, &Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
-		t.Fatal(err)
-	}
+	CreateMediaForTest(t, store, id, "image/png")
 	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_seed BEFORE INSERT ON native_seeds BEGIN SELECT RAISE(ABORT,'seed failed'); END`); err != nil {
 		t.Fatal(err)
 	}
 	seed := materialSeed("root")
 	seed.MediaIDs = []string{id}
-	req := SessionMaterialCreate{Session: &Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}, SourceSessionID: "s", Seed: seed, Messages: []*Message{{ID: "copy", SessionID: "child", Role: RoleAssistant, Segments: `[{"type":"image","media":"` + id + `"}]`}}, ToolCallRecords: []ToolCallRecord{{SessionID: "child", ToolCallID: "copy-call", ToolName: "tool", Success: true}}}
+	req := SessionMaterialCreate{Session: &Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}, SourceSessionID: "s", Seed: seed, Messages: []*Message{{ID: "copy", SessionID: "child", Role: llm.RoleAssistant, Segments: `[{"type":"image","media":"` + id + `"}]`}}, ToolCallRecords: []ToolCallRecord{{SessionID: "child", ToolCallID: "copy-call", ToolName: "tool", Success: true}}}
 	if err := store.CreateMaterial(ctx, req); err == nil {
 		t.Fatal("seed failure committed")
 	}
@@ -129,7 +126,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if err := store.FinishExchange(ctx, exchange.ID, "completed", `{"id":"child-response","status":"completed","output":[]}`, `[]`, ""); err != nil {
 		t.Fatal(err)
 	}
-	commit := DialogueCommit{SessionID: row.ID, Messages: []*Message{{ID: "reply", SessionID: row.ID, Role: RoleAssistant, Content: "reply"}}, Native: &NativeCommit{Checkpoint: NativeCheckpoint{ID: "child-checkpoint", SessionID: row.ID, ExchangeID: exchange.ID, ResponseID: "child-response", MessageID: "reply", SeedID: seed.ID}, ConsumeSeedID: seed.ID}}
+	commit := DialogueCommit{SessionID: row.ID, Messages: []*Message{{ID: "reply", SessionID: row.ID, Role: llm.RoleAssistant, Content: "reply"}}, Native: &NativeCommit{Checkpoint: NativeCheckpoint{ID: "child-checkpoint", SessionID: row.ID, ExchangeID: exchange.ID, ResponseID: "child-response", MessageID: "reply", SeedID: seed.ID}, ConsumeSeedID: seed.ID}}
 	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_seed_consumption BEFORE UPDATE OF consumed ON native_seeds BEGIN SELECT RAISE(ABORT,'consume failed'); END`); err != nil {
 		t.Fatal(err)
 	}

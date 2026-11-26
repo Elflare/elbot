@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/llm"
 	"elbot/internal/storage/share"
 )
 
@@ -18,23 +20,23 @@ func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "media:" + strings.Repeat("a", 64)
-	if err := store.UpsertMedia(ctx, &Media{ID: id, MIMEType: "image/png", Size: 4, Backend: "local"}); err != nil {
+	if err := store.CreateMedia(ctx, &Media{ID: id, MIMEType: "image/png", Size: 4, Backend: "local", CreatedAt: time.Now(), LastAccessedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
-	for _, role := range []string{RoleUser, RoleTool} {
+	for _, role := range []llm.MessageRole{llm.RoleUser, llm.RoleTool} {
 		msg := &Message{ID: share.NewID(), SessionID: session.ID, Role: role, Segments: `[{"type":"image","media":"` + id + `"},{"type":"image","media":"` + id + `"}]`}
 		if err := store.AppendMessage(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
 		owner := "message"
-		if role == RoleTool {
+		if role == llm.RoleTool {
 			owner = "tool_result"
 		}
 		refs, err := store.ListByOwner(ctx, owner, msg.ID)
 		if err != nil || len(refs) != 1 {
 			t.Fatalf("refs: %#v, %v", refs, err)
 		}
-		if role == RoleUser {
+		if role == llm.RoleUser {
 			if _, err := store.db.ExecContext(ctx, `DELETE FROM messages WHERE id=?`, msg.ID); err != nil {
 				t.Fatal(err)
 			}
@@ -44,7 +46,7 @@ func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 			}
 		}
 	}
-	bad := &Message{ID: share.NewID(), SessionID: session.ID, Role: RoleUser, Segments: `[{"type":"image","media":"media:missing"}]`}
+	bad := &Message{ID: share.NewID(), SessionID: session.ID, Role: llm.RoleUser, Segments: `[{"type":"image","media":"media:missing"}]`}
 	if err := store.AppendMessage(ctx, bad); err == nil {
 		t.Fatal("accepted dangling media")
 	}

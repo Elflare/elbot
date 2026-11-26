@@ -605,11 +605,11 @@ func sessionData(row *storage.Session) *SessionData {
 func messageData(rows []storage.Message) ([]MessageData, error) {
 	result := make([]MessageData, 0, len(rows))
 	for _, row := range rows {
-		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, SourceContent: row.SourceContent, ReasoningContent: row.ReasoningContent, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, ToolCalls: make([]ToolCallData, len(row.ToolCalls)), ToolName: row.ToolName, ToolBatchStatus: row.ToolBatchStatus, ToolResultStatus: row.ToolResultStatus, CreatedAt: row.CreatedAt}
+		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: string(row.Role), Content: row.Content, SourceContent: row.SourceContent, ReasoningContent: row.ReasoningContent, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, ToolCalls: make([]ToolCallData, len(row.ToolCalls)), ToolName: row.ToolName, ToolBatchStatus: row.ToolBatchStatus, ToolResultStatus: row.ToolResultStatus, CreatedAt: row.CreatedAt}
 		for i, call := range row.ToolCalls {
 			item.ToolCalls[i] = ToolCallData{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 		}
-		if row.Role == storage.RoleUser && row.Metadata != "" {
+		if row.Role == llm.RoleUser && row.Metadata != "" {
 			var meta storage.UserInputMetadata
 			if err := json.Unmarshal([]byte(row.Metadata), &meta); err != nil {
 				return nil, err

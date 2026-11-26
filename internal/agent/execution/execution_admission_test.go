@@ -74,7 +74,7 @@ func (d *rejectedReportDialogue) CheckSelection(modelmgr.Selection) (operationre
 }
 
 func (d *rejectedReportDialogue) PrepareTurn(_ context.Context, in agentshare.TurnInput) (agentshare.PreparedTurn, error) {
-	d.turns.AppendPendingInput(in.Session.ID, turn.Input{Reports: []*storage.Message{{Role: storage.RoleAssistant}, {Role: storage.RoleTool}}})
+	d.turns.AppendPendingInput(in.Session.ID, turn.Input{Reports: []*storage.Message{{Role: llm.RoleAssistant}, {Role: llm.RoleTool}}})
 	return nil, d.failure
 }
 

@@ -242,7 +242,7 @@ func (m Deps) search(ctx context.Context, req searchChatHistoryArgs, scope searc
 	rows, err := m.Repository.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{
 		IncludeAssistant: req.IncludeAssistant, IncludeAvatar: req.IncludeAvatar,
 		Platform: chat.Data.Platform, ChatID: chat.Data.ChatID,
-		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
+		QueryTerms: splitChatHistoryTerms(req.Query), MatchAll: strings.EqualFold(strings.TrimSpace(req.QueryMode), "and"),
 		SenderQuery: strings.TrimSpace(req.User),
 		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.Data.ChatType,
 	})

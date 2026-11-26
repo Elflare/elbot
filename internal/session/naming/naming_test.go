@@ -136,21 +136,21 @@ func TestThresholdFilteringAndPersistentCompletion(t *testing.T) {
 				requests <- req
 				return llm.TextResult{Text: "\n\"雪与火\"\n"}, nil
 			})
-			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleSystem, Content: "ignored system"}, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "  "})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleSystem, Content: "ignored system"}, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "  "})
 			for i := 0; i < step; i++ {
 				f.s.MaybeScheduleNaming(t.Context(), id)
 				if len(requests) != 0 {
 					t.Fatal("scheduled below threshold")
 				}
-				role := storage.RoleUser
+				role := llm.RoleUser
 				if i == 1 {
-					role = storage.RoleAssistant
+					role = llm.RoleAssistant
 				}
 				if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: fmt.Sprintf("message%d", i)}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "excluded later"}); err != nil {
+			if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: llm.RoleUser, Content: "excluded later"}); err != nil {
 				t.Fatal(err)
 			}
 			e := f.attempt(t, id)
@@ -222,7 +222,7 @@ func TestThreeFailuresThenFallbackAndPersistenceRetry(t *testing.T) {
 				}
 				return llm.TextResult{Text: output}, nil
 			})
-			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant, Content: "first assistant"}, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "fallback text"})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleAssistant, Content: "first assistant"}, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "fallback text"})
 			repo := &faultSessions{SessionRepository: f.store, err: errors.New("write failed")}
 			f.s.deps.Sessions = repo
 			for i := 1; i <= 3; i++ {
@@ -267,7 +267,7 @@ func TestStorageFailureDoesNotConsumeGenerationRetries(t *testing.T) {
 	f := newFixture(t, 1, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
 		return llm.TextResult{Text: "generated"}, nil
 	})
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "user"})
 	repo := &faultSessions{SessionRepository: f.store, err: errors.New("storage unavailable")}
 	f.s.deps.Sessions = repo
 	for i := 0; i < 4; i++ {
@@ -289,7 +289,7 @@ func TestManualRenameWinsAndMalformedMetadataFailsPreparation(t *testing.T) {
 		<-release
 		return llm.TextResult{Text: "generated"}, nil
 	})
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "user"})
 	f.s.MaybeScheduleNaming(t.Context(), id)
 	receive(t, started)
 	_, err := f.store.MutateSession(t.Context(), id, func(row *storage.Session) error {
@@ -325,7 +325,7 @@ func TestNoUserFallbackKeepsOriginalAndDoesNotComplete(t *testing.T) {
 		calls.Add(1)
 		return llm.TextResult{}, errors.New("model error")
 	})
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant, Content: "assistant only"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleAssistant, Content: "assistant only"})
 	for i := 0; i < 4; i++ {
 		f.attempt(t, id)
 	}
@@ -333,7 +333,7 @@ func TestNoUserFallbackKeepsOriginalAndDoesNotComplete(t *testing.T) {
 	if calls.Load() != 3 || row.Title != "original" || strings.Contains(row.Metadata, "title_renamed") {
 		t.Fatalf("row=%+v calls=%d", row, calls.Load())
 	}
-	if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleUser, Content: "late user"}); err != nil {
+	if err := f.store.AppendMessage(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: llm.RoleUser, Content: "late user"}); err != nil {
 		t.Fatal(err)
 	}
 	if e := f.attempt(t, id); e.FallbackResultStatus != events.ResultSucceeded || calls.Load() != 3 {
@@ -347,7 +347,7 @@ func TestProtectedTitlesAndMissingRows(t *testing.T) {
 		return llm.TextResult{}, nil
 	})
 	for _, source := range []string{"manual", "cron", "compact", "auto", "fallback"} {
-		id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
+		id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "user"})
 		_, err := f.store.MutateSession(t.Context(), id, func(row *storage.Session) error {
 			row.Metadata = fmt.Sprintf(`{"title_renamed":true,"title_source":%q}`, source)
 			return nil
@@ -385,7 +385,7 @@ func TestPreparationFailureIdentityAndRetry(t *testing.T) {
 	f := newFixture(t, 1, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
 		return llm.TextResult{Text: "retry title"}, nil
 	})
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "user"})
 	original := errors.New("read messages failed")
 	f.s.deps.Messages = messageFunc(func(context.Context, string) ([]storage.Message, error) { return nil, original })
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "wrong", RequestID: "request", RunID: "run"})
@@ -416,7 +416,7 @@ func TestSourceDeletedWhileGeneratingDoesNotRetainCache(t *testing.T) {
 		return llm.TextResult{Text: "late title"}, nil
 	})
 	t.Cleanup(unblock)
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: llm.RoleUser, Content: "user"})
 	f.s.MaybeScheduleNaming(t.Context(), id)
 	receive(t, started)
 	if err := f.store.DeleteSession(t.Context(), id); err != nil {
