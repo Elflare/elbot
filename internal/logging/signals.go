@@ -21,7 +21,7 @@ var logCategories = [...]events.LogCategory{events.LogCategoryLog, events.LogCat
 
 type logSink struct {
 	queue  *signal.Queue
-	writer io.Writer
+	writer io.WriteCloser
 }
 
 // The factory is internal so failure tests can exercise the real subscription,
@@ -34,18 +34,14 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 	}
 	managerOwnership.active = true
 	managerOwnership.Unlock()
-	m := &Manager{logDir: logDir, retentionDays: normalizeRetentionDays(retentionDays), level: parseLevel(level), sinks: make(map[events.LogCategory]*logSink), closeGate: make(chan struct{}, 1)}
+	m := &Manager{logDir: logDir, retentionDays: retentionDays, level: parseLevel(level), sinks: make(map[events.LogCategory]*logSink), closeGate: make(chan struct{}, 1)}
 	defer func() {
 		if err == nil {
 			return
 		}
+		// No queue can accept work until the subscription succeeds.
 		for _, sink := range m.sinks {
-			if closeErr := sink.queue.Close(context.Background()); closeErr != nil {
-				signal.ReportDiagnostic("logging cleanup failed", slog.Any("error", closeErr))
-			}
-		}
-		for _, writer := range m.writers {
-			if closeErr := writer.Close(); closeErr != nil {
+			if closeErr := sink.writer.Close(); closeErr != nil {
 				signal.ReportDiagnostic("logging cleanup failed", slog.Any("error", closeErr))
 			}
 		}
@@ -54,14 +50,13 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		managerOwnership.Unlock()
 	}()
 	for _, category := range logCategories {
-		writer, openErr := open(category.String())
-		if openErr != nil {
-			return nil, openErr
-		}
-		m.writers = append(m.writers, writer)
 		queue, queueErr := signal.NewQueue(signal.QueueOptions{Name: "logging." + category.String(), Capacity: 256, WaitForCapacity: true, AdmissionTimeout: 500 * time.Millisecond})
 		if queueErr != nil {
 			return nil, queueErr
+		}
+		writer, openErr := open(category.String())
+		if openErr != nil {
+			return nil, openErr
 		}
 		m.sinks[category] = &logSink{queue: queue, writer: writer}
 	}
@@ -100,14 +95,8 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) {
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("logging admission failed", slog.String("category", record.Category.String()), slog.Any("error", err))
 	}
-	return
 }
 
 func (m *Manager) BeginClose() {
-	if m == nil {
-		return
-	}
-	m.beginOnce.Do(func() {
-		m.connection.BeginClose()
-	})
+	m.connection.BeginClose()
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -21,8 +20,6 @@ const (
 )
 
 type LogQuery struct {
-	// Prefix selects the source category's daily files, without the date suffix.
-	Prefix string
 	// Limit caps matching valid entries; non-positive uses DefaultLogLimit.
 	Limit int
 	// Days scans today and preceding dates; non-positive means today only.
@@ -62,7 +59,7 @@ type LogEntry struct {
 	Type events.LogContentType
 	// Content is decoded text or valid JSON with original integer precision.
 	Content string
-	// Identity preserves source presence; missing fields remain nil.
+	// Identity preserves source presence; missing fields remain empty.
 	Identity events.LogIdentity
 	// ResultStatus is the declared overall result; zero means not declared.
 	ResultStatus events.ResultStatus
@@ -80,124 +77,33 @@ type LogQueryResult struct {
 	DamagedLines []string
 }
 
-type Reader struct {
-	Dir string
-}
-
-func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, error) {
-	result := LogQueryResult{}
-	if strings.TrimSpace(r.Dir) == "" {
-		return result, fmt.Errorf("log directory is not configured")
-	}
+func (m *Manager) Query(ctx context.Context, category events.LogCategory, query LogQuery) (LogQueryResult, error) {
+	var result LogQueryResult
 	query = normalizeLogQuery(query)
 	length := 0
-	for _, path := range logPaths(r.Dir, query.Prefix, query.Days) {
+	today := time.Now()
+	for i := range query.Days {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		err := readLogFileReverse(ctx, path, func(raw string) (bool, error) {
-			trimmed := strings.TrimSpace(raw)
-			if trimmed == "" {
-				return false, nil
+		path := dailyLogPath(m.logDir, category.String(), today.AddDate(0, 0, -i).Format(time.DateOnly))
+		err := readLogFileReverse(ctx, path, func(raw string) bool {
+			if strings.TrimSpace(raw) == "" {
+				return false
 			}
-			var entry LogEntry
-			var fields map[string]json.RawMessage
-			err := json.Unmarshal([]byte(raw), &fields)
-			if err == nil {
-				entry = LogEntry{Raw: raw}
-				for key, value := range fields {
-					var text string
-					if key == "content" {
-						continue
-					}
-					if err = json.Unmarshal(value, &text); err != nil || string(value) == "null" {
-						err = fmt.Errorf("invalid log field %s", key)
-						break
-					}
-					switch key {
-					case "time":
-						entry.Time, err = time.Parse(time.RFC3339Nano, text)
-					case "level":
-						entry.Level = text
-					case "event":
-						entry.EventName = text
-					case "module":
-						entry.Module = text
-					case "category":
-						switch text {
-						case "log":
-							entry.Category = events.LogCategoryLog
-						case "audit":
-							entry.Category = events.LogCategoryAudit
-						case "elnis":
-							entry.Category = events.LogCategoryElnis
-						default:
-							err = fmt.Errorf("invalid log category")
-						}
-					case "type":
-						switch text {
-						case "text":
-							entry.Type = events.ContentText
-						case "json":
-							entry.Type = events.ContentJSON
-						default:
-							err = fmt.Errorf("invalid log type")
-						}
-					case "result_status":
-						switch text {
-						case "succeeded":
-							entry.ResultStatus = events.ResultSucceeded
-						case "failed":
-							entry.ResultStatus = events.ResultFailed
-						case "canceled":
-							entry.ResultStatus = events.ResultCanceled
-						case "rejected":
-							entry.ResultStatus = events.ResultRejected
-						case "skipped":
-							entry.ResultStatus = events.ResultSkipped
-						default:
-							err = fmt.Errorf("invalid log result")
-						}
-					case "session_id":
-						entry.Identity.SessionID = text
-					case "run_id":
-						entry.Identity.RunID = text
-					case "attempt":
-						entry.Identity.Attempt = text
-					case "request_id":
-						entry.Identity.RequestID = text
-					case "root_request_id":
-						entry.Identity.RootRequestID = text
-					}
-					if err != nil {
-						break
-					}
-				}
-				if err == nil {
-					if fields["time"] == nil || fields["category"] == nil || fields["level"] == nil || fields["event"] == nil || fields["module"] == nil || fields["type"] == nil || fields["content"] == nil {
-						err = fmt.Errorf("missing log field")
-					} else if entry.Type == events.ContentText {
-						err = json.Unmarshal(fields["content"], &entry.Content)
-						if string(fields["content"]) == "null" {
-							err = fmt.Errorf("null text content")
-						}
-					} else {
-						entry.Content = string(fields["content"])
-					}
-				}
-			}
-			if err != nil {
+			entry, ok := decodeRecord(raw)
+			if !ok {
 				result.DamagedCount++
 				if query.Raw && len(result.DamagedLines) < 10 && length+len(raw) <= 256*1024 {
 					result.DamagedLines = append(result.DamagedLines, raw)
 					length += len(raw)
 				}
-				return false, nil
+				return false
 			}
 			if matchLogEntry(entry, query) {
 				result.Entries = append(result.Entries, entry)
 			}
-			return len(result.Entries) >= query.Limit, nil
+			return len(result.Entries) >= query.Limit
 		})
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -213,7 +119,6 @@ func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, erro
 }
 
 func normalizeLogQuery(query LogQuery) LogQuery {
-	query.Prefix = strings.TrimSpace(query.Prefix)
 	if query.Limit <= 0 {
 		query.Limit = DefaultLogLimit
 	}
@@ -223,17 +128,7 @@ func normalizeLogQuery(query LogQuery) LogQuery {
 	return query
 }
 
-func logPaths(dir, prefix string, days int) []string {
-	paths := make([]string, 0, days)
-	today := time.Now()
-	for i := 0; i < days; i++ {
-		day := today.AddDate(0, 0, -i).Format("2006-01-02")
-		paths = append(paths, filepath.Join(dir, prefix+"-"+day+".log"))
-	}
-	return paths
-}
-
-func readLogFileReverse(ctx context.Context, path string, visit func(string) (bool, error)) error {
+func readLogFileReverse(ctx context.Context, path string, visit func(string) bool) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -252,7 +147,7 @@ func readLogFileReverse(ctx context.Context, path string, visit func(string) (bo
 // scanLogLinesReverse visits physical lines newest first within a fixed range.
 // Returning true from visit stops reading immediately. Line terminators are not
 // included in the 16 MiB limit, for both LF and CRLF records.
-func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, visit func(string) (bool, error)) error {
+func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, visit func(string) bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -270,11 +165,8 @@ func scanLogLinesReverse(ctx context.Context, reader io.ReaderAt, size int64, vi
 		}
 		slices.Reverse(line)
 		raw := strings.TrimSuffix(string(line), "\r")
-		stop, err := visit(raw)
+		stop := visit(raw)
 		line = line[:0]
-		if err != nil {
-			return false, err
-		}
 		return stop, ctx.Err()
 	}
 	for offset := size; offset > 0; {
@@ -333,18 +225,20 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 	if query.MinLevel != "" && levelRank(entry.Level) < levelRank(query.MinLevel) {
 		return false
 	}
-	fields := map[string]string{"event": entry.EventName, "module": entry.Module, "level": entry.Level, "category": entry.Category.String(), "type": entry.Type.String(), "result_status": entry.ResultStatus.String()}
-	fields["session_id"] = entry.Identity.SessionID
-	fields["run_id"] = entry.Identity.RunID
-	fields["attempt"] = entry.Identity.Attempt
-	fields["request_id"] = entry.Identity.RequestID
-	fields["root_request_id"] = entry.Identity.RootRequestID
-	for key, want := range query.Fields {
-		if strings.TrimSpace(want) == "" {
-			continue
-		}
-		if !strings.EqualFold(fields[key], want) {
-			return false
+	if len(query.Fields) != 0 {
+		fields := map[string]string{"event": entry.EventName, "module": entry.Module, "level": entry.Level, "category": entry.Category.String(), "type": entry.Type.String(), "result_status": entry.ResultStatus.String()}
+		fields["session_id"] = entry.Identity.SessionID
+		fields["run_id"] = entry.Identity.RunID
+		fields["attempt"] = entry.Identity.Attempt
+		fields["request_id"] = entry.Identity.RequestID
+		fields["root_request_id"] = entry.Identity.RootRequestID
+		for key, want := range query.Fields {
+			if strings.TrimSpace(want) == "" {
+				continue
+			}
+			if !strings.EqualFold(fields[key], want) {
+				return false
+			}
 		}
 	}
 	var content map[string]json.RawMessage

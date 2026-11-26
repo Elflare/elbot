@@ -20,17 +20,16 @@ func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (opera
 	if err != nil || authorized.Status != operationresult.Success {
 		return operationresult.Result[QueryLogsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
-	if !slices.Contains([]string{"log", "audit", "elnis"}, req.Category) {
+	category := events.ParseLogCategory(req.Category)
+	if category == 0 {
 		return operationresult.Result[QueryLogsResult]{Status: operationresult.InvalidArguments, Message: "category 必须是 log、audit 或 elnis"}, nil
 	}
-	query := req.Query
-	query.Prefix = req.Category
-	listed, err := m.deps.Logs.Query(ctx, query)
+	listed, err := m.deps.Logs.Query(ctx, category, req.Query)
 	if err != nil {
 		return operationresult.Result[QueryLogsResult]{}, err
 	}
 	result.DamagedCount = listed.DamagedCount
-	if query.Raw {
+	if req.Query.Raw {
 		result.DamagedLines = append(result.DamagedLines, listed.DamagedLines...)
 	}
 	for _, entry := range listed.Entries {
@@ -40,7 +39,7 @@ func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (opera
 		}
 		item := LogData{Time: entry.Time, Category: entry.Category, Level: entry.Level, EventName: entry.EventName, Module: entry.Module, Type: entry.Type, Content: content,
 			Identity: LogIdentityData{SessionID: entry.Identity.SessionID, RunID: entry.Identity.RunID, Attempt: entry.Identity.Attempt, RequestID: entry.Identity.RequestID, RootRequestID: entry.Identity.RootRequestID}, ResultStatus: entry.ResultStatus}
-		if query.Raw {
+		if req.Query.Raw {
 			item.Raw = entry.Raw
 		}
 		result.Items = append(result.Items, item)
@@ -61,7 +60,6 @@ func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (ope
 		return operationresult.Result[QueryUsageResult]{Status: operationresult.InvalidArguments, Message: "调用区间必须满足 1 <= first <= last"}, nil
 	}
 	query := req.Query
-	query.Prefix = "audit"
 	query.Limit = req.Last
 	query.Fields = maps.Clone(query.Fields)
 	if query.Fields == nil {
@@ -69,7 +67,7 @@ func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (ope
 	}
 	query.Fields["event"] = "llm_usage"
 	query.Events = nil
-	listed, err := m.deps.Logs.Query(ctx, query)
+	listed, err := m.deps.Logs.Query(ctx, events.LogCategoryAudit, query)
 	if err != nil {
 		return operationresult.Result[QueryUsageResult]{}, err
 	}

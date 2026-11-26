@@ -10,7 +10,6 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/doctor"
 	"elbot/internal/hook"
-	"elbot/internal/logging"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
@@ -25,8 +24,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	if err != nil {
 		return businessLines{}, err
 	}
-	logDir := resources.logs.LogDir()
-	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: logging.Reader{Dir: logDir}, Doctor: doctorService, LogDir: logDir})
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: resources.logs, Doctor: doctorService, LogDir: resources.logs.LogDir()})
 	if err != nil {
 		return businessLines{}, err
 	}

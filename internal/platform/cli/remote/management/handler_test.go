@@ -170,7 +170,16 @@ func TestFileByteRangesOverHTTP(t *testing.T) {
 }
 func TestUsageBeforeFirstLog(t *testing.T) {
 	dir := t.TempDir()
-	supervisor, err := control.NewSupervisor(&config.Config{ConfigPath: filepath.Join(dir, "app.toml")}, control.SupervisorDeps{Logs: logging.Reader{Dir: dir}})
+	logs, err := logging.NewManager("info", filepath.Join(dir, "db"), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := logs.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	supervisor, err := control.NewSupervisor(&config.Config{ConfigPath: filepath.Join(dir, "app.toml")}, control.SupervisorDeps{Logs: logs})
 	if err != nil {
 		t.Fatal(err)
 	}

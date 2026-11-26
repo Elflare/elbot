@@ -3,7 +3,7 @@
 把以下包和5条业务线一样并列
 - [x] control
 - [x] storage
-- [ ] logging
+- [x] logging
 - [x] session 
 
 ## 代码精简
@@ -18,38 +18,8 @@
 - [x] agent包
 - [x] platform包
 - [x] tool包
-    - [x] tool 根部（不含子包）
-    - [x] builtin
-        - [x] builtin 根部（不含子包）
-        - [x] builtin/chat_history
-        - [x] builtin/long_memory
-        - [x] builtin/weave
-        - [x] builtin/web
-    - [x] discovery
-    - [x] execution
-    - [x] media
-    - [x] preload
-    - [x] registry
-    - [x] skill
-    - [x] state
-    - [x] share（最后按实际消费者核对共享契约）
 - [x] hook 包（总管启动失败直接报错退出；单个插件失败只报该插件的错误，不阻断模块启动，修正后可热重载）
-    - [x] hook 根部（不含子包）
-    - [x] control、pipeline
-    - [x] rules
-    - [x] runtime
-        - [x] 精简 stdout 故障处理、工具审计状态映射和共享状态淘汰
-        - [x] 隔离 worker 重启前后的请求：旧 stdout 收尾不能关闭新进程的 pending
-    - [x] share/output
-    - [x] share/protocol
-    - [x] share 根部（按实际消费者核对共享契约）
-        - [x] 统一匹配校验、重启策略、媒体导入限长和日志截断的调用边界
-        - [x] 规则正则随候选规则加载预编译，匹配时只读复用
 - [x] background 包
-    - [x] background 根部（装配、启动状态与存储适配；保留现有关闭契约）
-    - [x] cron
-    - [x] elnis
-    - [x] execution、maintenance、share
 - [x] completion包
 - [x] fileops包
 - [x] workspace包
@@ -59,8 +29,6 @@
 - [x] session包
 - [x] command包
 - [x] control包
-    - [x] 收回包内授权，合并授权失败的重复返回分支。
-    - [x] 分离会话变更回执和预览，保真交付文件分片，原子保存受管文件。
 - [x] delivery包
 
 ## 不一定实现

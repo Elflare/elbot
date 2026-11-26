@@ -17,12 +17,14 @@ import (
 )
 
 type logStub struct {
-	query  logging.LogQuery
-	result logging.LogQueryResult
-	calls  int
+	category events.LogCategory
+	query    logging.LogQuery
+	result   logging.LogQueryResult
+	calls    int
 }
 
-func (s *logStub) Query(_ context.Context, query logging.LogQuery) (logging.LogQueryResult, error) {
+func (s *logStub) Query(_ context.Context, category events.LogCategory, query logging.LogQuery) (logging.LogQueryResult, error) {
+	s.category = category
 	s.query = query
 	s.calls++
 	result := s.result
@@ -37,7 +39,15 @@ func TestQueryLogsReadsCategoryFiles(t *testing.T) {
 		{"log", "log"}, {"audit", "audit"}, {"elnis", "elnis"},
 	} {
 		t.Run(item.category, func(t *testing.T) {
-			dir := t.TempDir()
+			logs, err := logging.NewManager("info", filepath.Join(t.TempDir(), "db"), 30)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := logs.Close(context.Background()); err != nil {
+					t.Error(err)
+				}
+			})
 			now := time.Now()
 			data, err := json.Marshal(map[string]any{
 				"time": now.Format(time.RFC3339Nano), "category": item.category,
@@ -46,11 +56,11 @@ func TestQueryLogsReadsCategoryFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			path := filepath.Join(dir, item.prefix+"-"+now.Format("2006-01-02")+".log")
+			path := filepath.Join(logs.LogDir(), item.prefix+"-"+now.Format("2006-01-02")+".log")
 			if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			m, _ := testSupervisor(t, SupervisorDeps{Logs: logging.Reader{Dir: dir}})
+			m, _ := testSupervisor(t, SupervisorDeps{Logs: logs})
 			result, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: item.category, Query: logging.LogQuery{Days: 2}})
 			if err != nil {
 				t.Fatal(err)
@@ -76,11 +86,11 @@ func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
 	if provider.calls != 0 {
 		t.Fatal("unauthorized read reached log provider")
 	}
-	result, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: "audit", Query: logging.LogQuery{Prefix: "../../outside"}})
+	result, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: "audit"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != operationresult.Success || provider.query.Prefix != "audit" || len(result.Data.DamagedLines) != 0 || result.Data.Items[0].Raw != "" {
+	if result.Status != operationresult.Success || provider.category != events.LogCategoryAudit || len(result.Data.DamagedLines) != 0 || result.Data.Items[0].Raw != "" {
 		t.Fatalf("query/result: %+v %+v", provider.query, result)
 	}
 	data, err := json.Marshal(result)
@@ -116,7 +126,7 @@ func TestUsageUnknownAndOverflowRemainNull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fields["event"] != "wrong" || provider.query.Fields["event"] != "llm_usage" || provider.query.Prefix != "audit" {
+	if fields["event"] != "wrong" || provider.query.Fields["event"] != "llm_usage" || provider.category != events.LogCategoryAudit {
 		t.Fatal("usage query mutated input or failed to fix event")
 	}
 	if result.Status != operationresult.Success || result.Data.Total.Calls != 3 || result.Data.Total.PromptTokens != nil || result.Data.Total.TotalTokens != nil || result.Data.DamagedCount != 2 {
@@ -162,15 +172,13 @@ func TestLogQueriesForwardCallerOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := query
-	want.Prefix = "log"
-	if !reflect.DeepEqual(provider.query, want) {
+	if provider.category != events.LogCategoryLog || !reflect.DeepEqual(provider.query, want) {
 		t.Fatalf("log query options changed: %+v", provider.query)
 	}
 	_, err = m.QueryUsage(testContext(true), QueryUsageRequest{Query: query, GroupBy: "session", First: 100000, Last: 100001})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want.Prefix = "audit"
 	want.Fields = map[string]string{"session_id": "s", "event": "llm_usage"}
 	want.Events = nil
 	if !reflect.DeepEqual(provider.query, want) || len(query.Fields) != 1 {

@@ -64,3 +64,87 @@ func formatRecord(record events.LogRecord, at time.Time) ([]byte, error) {
 	}
 	return append(data, '\n'), nil
 }
+
+// decodeRecord validates the JSONL envelope; malformed lines are counted, not returned as I/O errors.
+func decodeRecord(raw string) (LogEntry, bool) {
+	var fields map[string]json.RawMessage
+	var entry LogEntry
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return entry, false
+	}
+	for _, key := range [...]string{"time", "category", "level", "event", "module", "type", "content"} {
+		if fields[key] == nil {
+			return entry, false
+		}
+	}
+	for key, value := range fields {
+		if key == "content" {
+			continue
+		}
+		var text string
+		if string(value) == "null" || json.Unmarshal(value, &text) != nil {
+			return entry, false
+		}
+		switch key {
+		case "time":
+			at, err := time.Parse(time.RFC3339Nano, text)
+			if err != nil {
+				return entry, false
+			}
+			entry.Time = at
+		case "category":
+			entry.Category = events.ParseLogCategory(text)
+			if entry.Category == 0 {
+				return entry, false
+			}
+		case "level":
+			entry.Level = text
+		case "event":
+			entry.EventName = text
+		case "module":
+			entry.Module = text
+		case "type":
+			switch text {
+			case "text":
+				entry.Type = events.ContentText
+			case "json":
+				entry.Type = events.ContentJSON
+			default:
+				return entry, false
+			}
+		case "result_status":
+			switch text {
+			case "succeeded":
+				entry.ResultStatus = events.ResultSucceeded
+			case "failed":
+				entry.ResultStatus = events.ResultFailed
+			case "canceled":
+				entry.ResultStatus = events.ResultCanceled
+			case "rejected":
+				entry.ResultStatus = events.ResultRejected
+			case "skipped":
+				entry.ResultStatus = events.ResultSkipped
+			default:
+				return entry, false
+			}
+		case "session_id":
+			entry.Identity.SessionID = text
+		case "run_id":
+			entry.Identity.RunID = text
+		case "attempt":
+			entry.Identity.Attempt = text
+		case "request_id":
+			entry.Identity.RequestID = text
+		case "root_request_id":
+			entry.Identity.RootRequestID = text
+		}
+	}
+	content := fields["content"]
+	if entry.Type == events.ContentJSON {
+		entry.Content = string(content)
+	} else if string(content) == "null" || json.Unmarshal(content, &entry.Content) != nil {
+		return entry, false
+	}
+	entry.Raw = raw
+	return entry, true
+}

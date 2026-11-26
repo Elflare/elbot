@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/security"
@@ -70,12 +71,11 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("tool entry timeout")
 	}
-	audit := logging.Reader{Dir: center.LogDir()}
 	waitFor := func(end bool) {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
 		for {
-			result, err := audit.Query(t.Context(), logging.LogQuery{Prefix: "audit", Days: 1, Limit: 10, MinLevel: "debug"})
+			result, err := center.Query(t.Context(), events.LogCategoryAudit, logging.LogQuery{Days: 1, Limit: 10, MinLevel: "debug"})
 			if err != nil {
 				t.Fatal(err)
 			}

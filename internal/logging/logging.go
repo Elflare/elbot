@@ -15,16 +15,12 @@ import (
 	"elbot/internal/signal"
 )
 
-const DefaultRetentionDays = 30
-
 type Manager struct {
 	logDir        string
 	retentionDays int
-	writers       []io.WriteCloser
 	level         slog.Level
 	sinks         map[events.LogCategory]*logSink
 	connection    *signal.Connection
-	beginOnce     sync.Once
 	closeGate     chan struct{}
 	closed        bool
 }
@@ -37,30 +33,18 @@ func NewManager(level, sqlitePath string, retentionDays int) (*Manager, error) {
 }
 
 func (m *Manager) LogDir() string {
-	if m == nil {
-		return ""
-	}
 	return m.logDir
 }
 
 func (m *Manager) RetentionDays() int {
-	if m == nil {
-		return DefaultRetentionDays
-	}
 	return m.retentionDays
 }
 
 func (m *Manager) CleanupOldLogs() error {
-	if m == nil {
-		return nil
-	}
 	return cleanupOldLogs(m.logDir, m.retentionDays)
 }
 
 func (m *Manager) Close(ctx context.Context) error {
-	if m == nil {
-		return nil
-	}
 	m.BeginClose()
 	select {
 	case m.closeGate <- struct{}{}:
@@ -83,8 +67,8 @@ func (m *Manager) Close(ctx context.Context) error {
 			return err
 		}
 	}
-	for _, writer := range m.writers {
-		if err := writer.Close(); err != nil {
+	for _, category := range logCategories {
+		if err := m.sinks[category].writer.Close(); err != nil {
 			signal.ReportDiagnostic("logging writer close failed", slog.Any("error", err))
 		}
 	}
@@ -144,7 +128,7 @@ func (w *dailyFileWriter) rotateLocked() error {
 	if err := os.MkdirAll(w.logDir, 0o755); err != nil {
 		return fmt.Errorf("create log dir: %w", err)
 	}
-	path := filepath.Join(w.logDir, w.prefix+"-"+day+".log")
+	path := dailyLogPath(w.logDir, w.prefix, day)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open log file: %w", err)
@@ -156,6 +140,10 @@ func (w *dailyFileWriter) rotateLocked() error {
 		return old.Close()
 	}
 	return nil
+}
+
+func dailyLogPath(dir, prefix, day string) string {
+	return filepath.Join(dir, prefix+"-"+day+".log")
 }
 
 func cleanupOldLogs(logDir string, days int) error {
@@ -179,13 +167,6 @@ func cleanupOldLogs(logDir string, days int) error {
 		}
 	}
 	return nil
-}
-
-func normalizeRetentionDays(days int) int {
-	if days <= 0 {
-		return DefaultRetentionDays
-	}
-	return days
 }
 
 func isManagedLogFile(name string) bool {

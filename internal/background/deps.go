@@ -9,7 +9,6 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
@@ -24,10 +23,16 @@ type SupervisorDeps struct {
 	Store    Store                // 持久化 Cron 任务及运行状态、Elnis 事件；不取得平台历史仓库。
 	Models   ModelCapabilities    // 解析和校验后台任务使用的模型选择。
 	Media    *media.MediaCenter   // 提供媒体处理和维护能力。
-	Logs     *logging.Manager     // 提供日志清理及保留策略。
+	Logs     LogCapabilities      // 提供日志清理及保留策略。
 	Agent    AgentCapabilities    // 执行后台任务、复制后台会话和清理过期会话。
 	Tools    ToolCapabilities     // 展开后台工具声明并订阅 Cron 定义变更。
 	Platform PlatformCapabilities // 发送结果、调用平台 API。
+}
+
+// LogCapabilities 只提供日志维护任务所需的清理操作与实际保留天数。
+type LogCapabilities interface {
+	CleanupOldLogs() error
+	RetentionDays() int
 }
 
 // ModelCapabilities 只声明后台任务的模型选择与校验能力。

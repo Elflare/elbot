@@ -32,6 +32,19 @@ func (value LogCategory) String() string {
 	return ""
 }
 
+// ParseLogCategory returns zero for an unknown file category.
+func ParseLogCategory(text string) LogCategory {
+	switch text {
+	case "log":
+		return LogCategoryLog
+	case "audit":
+		return LogCategoryAudit
+	case "elnis":
+		return LogCategoryElnis
+	}
+	return 0
+}
+
 // LogContentType is selected by the source, never inferred from the content.
 // Its zero value is ordinary text; JSON content must be valid JSON.
 type LogContentType uint8

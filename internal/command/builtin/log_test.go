@@ -37,7 +37,7 @@ func TestAuditCommandParsesFiltersAndReturnsRawControlResult(t *testing.T) {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	query := service.request
-	if query.Category != "audit" || query.Query.Prefix != "audit" || query.Query.Limit != 3 || query.Query.Days != 2 || !query.Query.Raw || query.Query.Fields["event"] != "tool_call_completed" || query.Query.ContentFields["risk"] != "high" || query.Query.ContentFields["tool"] != "shell" {
+	if query.Category != "audit" || query.Query.Limit != 3 || query.Query.Days != 2 || !query.Query.Raw || query.Query.Fields["event"] != "tool_call_completed" || query.Query.ContentFields["risk"] != "high" || query.Query.ContentFields["tool"] != "shell" {
 		t.Fatalf("request=%+v", query)
 	}
 }

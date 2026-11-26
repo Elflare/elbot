@@ -85,6 +85,7 @@ func TestManagerCreatesLogAuditAndElnisLogs(t *testing.T) {
 }
 
 func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
+	const retentionDays = 30
 	dir := t.TempDir()
 	logDir := filepath.Join(dir, "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
@@ -96,7 +97,7 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 		if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
 			t.Fatalf("write old log: %v", err)
 		}
-		oldTime := time.Now().AddDate(0, 0, -DefaultRetentionDays-1)
+		oldTime := time.Now().AddDate(0, 0, -retentionDays-1)
 		if err := os.Chtimes(path, oldTime, oldTime); err != nil {
 			t.Fatalf("chtimes old log: %v", err)
 		}
@@ -118,7 +119,7 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 		}
 	}
 
-	if err := cleanupOldLogs(logDir, DefaultRetentionDays); err != nil {
+	if err := cleanupOldLogs(logDir, retentionDays); err != nil {
 		t.Fatalf("cleanupOldLogs: %v", err)
 	}
 

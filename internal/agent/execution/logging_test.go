@@ -115,7 +115,7 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 	if err := center.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "log", Fields: map[string]string{"event": "stable_event"}})
+	result, err := center.Query(context.Background(), globalevents.LogCategoryLog, logging.LogQuery{Fields: map[string]string{"event": "stable_event"}})
 	if err != nil || len(result.Entries) != 2 || result.Entries[0].Content == result.Entries[1].Content {
 		t.Fatalf("result = %#v, err = %v", result, err)
 	}

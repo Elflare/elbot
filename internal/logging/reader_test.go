@@ -35,7 +35,7 @@ func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Limit: 1})
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryLog, LogQuery{Limit: 1})
 	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != "latest" {
 		t.Fatalf("tail query: entries=%v err=%v", entries, err)
 	}
@@ -51,8 +51,8 @@ func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	query := LogQuery{Prefix: "audit", Limit: 2, Events: []string{"tool_call_prepared", "tool_call_completed"}}
-	result, err := (Reader{Dir: dir}).Query(t.Context(), query)
+	query := LogQuery{Limit: 2, Events: []string{"tool_call_prepared", "tool_call_completed"}}
+	result, err := (&Manager{logDir: dir}).Query(t.Context(), events.LogCategoryAudit, query)
 	if err != nil || len(result.Entries) != 2 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -60,7 +60,7 @@ func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
 		t.Fatalf("order=%+v", result.Entries)
 	}
 	query.Limit = 1
-	result, err = (Reader{Dir: dir}).Query(t.Context(), query)
+	result, err = (&Manager{logDir: dir}).Query(t.Context(), events.LogCategoryAudit, query)
 	if err != nil || len(result.Entries) != 1 || result.Entries[0].Content != "end" {
 		t.Fatalf("limit result=%+v err=%v", result, err)
 	}
@@ -76,8 +76,7 @@ func TestReaderParsesAndFiltersJSONLogs(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
-		Prefix: "audit",
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryAudit, LogQuery{
 		Fields: map[string]string{"event": "tool_call_completed"}, ContentFields: map[string]string{"risk": "high"},
 	})
 	if err != nil {
@@ -102,7 +101,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Contains: "file content"})
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryLog, LogQuery{Contains: "file content"})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -110,7 +109,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 		t.Fatalf("entries = %#v", entries)
 	}
 
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Contains: "needle"})
+	entries, err = (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryLog, LogQuery{Contains: "needle"})
 	if err != nil {
 		t.Fatalf("Query raw: %v", err)
 	}
@@ -129,7 +128,7 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", ContentFieldContains: map[string][]string{"tags": {"onedrive"}}})
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryElnis, LogQuery{ContentFieldContains: map[string][]string{"tags": {"onedrive"}}})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -137,7 +136,7 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 		t.Fatalf("entries = %#v", entries)
 	}
 
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elnis", ContentFieldContains: map[string][]string{"tags": {"windows", "onedrive"}}})
+	entries, err = (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryElnis, LogQuery{ContentFieldContains: map[string][]string{"tags": {"windows", "onedrive"}}})
 	if err != nil {
 		t.Fatalf("Query both tags: %v", err)
 	}
@@ -156,7 +155,7 @@ func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", MinLevel: "info", Limit: 1})
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryLog, LogQuery{MinLevel: "info", Limit: 1})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -186,9 +185,9 @@ func TestReverseLogScanStopsAfterOneBlock(t *testing.T) {
 	content := strings.Repeat("level=INFO msg=old\n", 100000) + "level=INFO msg=latest\n"
 	reader := &countedLogReader{ReaderAt: strings.NewReader(content)}
 	var lines []string
-	err := scanLogLinesReverse(context.Background(), reader, int64(len(content)), func(line string) (bool, error) {
+	err := scanLogLinesReverse(context.Background(), reader, int64(len(content)), func(line string) bool {
 		lines = append(lines, line)
-		return true, nil
+		return true
 	})
 	if err != nil || !slices.Equal(lines, []string{"level=INFO msg=latest"}) {
 		t.Fatalf("lines=%v err=%v", lines, err)
@@ -215,9 +214,9 @@ func TestReverseLogScanLineBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []string
-			err := scanLogLinesReverse(context.Background(), strings.NewReader(tc.content), int64(len(tc.content)), func(line string) (bool, error) {
+			err := scanLogLinesReverse(context.Background(), strings.NewReader(tc.content), int64(len(tc.content)), func(line string) bool {
 				got = append(got, line)
-				return false, nil
+				return false
 			})
 			if err != nil || !slices.Equal(got, tc.want) {
 				t.Fatalf("line mismatch: got lengths=%v want lengths=%v err=%v", logLineLengths(got), logLineLengths(tc.want), err)
@@ -240,12 +239,12 @@ func TestReverseLogScanLineSizeLimit(t *testing.T) {
 			t.Run(fmt.Sprintf("%d/%q", size, suffix), func(t *testing.T) {
 				content := strings.Repeat("x", size) + suffix
 				seen := 0
-				err := scanLogLinesReverse(context.Background(), strings.NewReader(content), int64(len(content)), func(line string) (bool, error) {
+				err := scanLogLinesReverse(context.Background(), strings.NewReader(content), int64(len(content)), func(line string) bool {
 					seen++
 					if len(line) != size {
 						t.Fatalf("line length=%d", len(line))
 					}
-					return false, nil
+					return false
 				})
 				if size == maxLogLineBytes {
 					if err != nil || seen != 1 {
@@ -276,10 +275,10 @@ func TestReverseLogScanCancellation(t *testing.T) {
 				reader.afterRead = cancel
 			}
 			seen := 0
-			err := scanLogLinesReverse(ctx, reader, int64(len(content)), func(string) (bool, error) {
+			err := scanLogLinesReverse(ctx, reader, int64(len(content)), func(string) bool {
 				seen++
 				cancel()
-				return false, nil
+				return false
 			})
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("err=%v", err)
@@ -301,25 +300,21 @@ func TestReverseLogScanCancellation(t *testing.T) {
 func TestReverseLogScanFixedRangeAndErrors(t *testing.T) {
 	content := "first\nsecond\n"
 	var got []string
-	err := scanLogLinesReverse(context.Background(), strings.NewReader(content+"appended\n"), int64(len(content)), func(line string) (bool, error) {
+	err := scanLogLinesReverse(context.Background(), strings.NewReader(content+"appended\n"), int64(len(content)), func(line string) bool {
 		got = append(got, line)
-		return false, nil
+		return false
 	})
 	if err != nil || !slices.Equal(got, []string{"second", "first"}) {
 		t.Fatalf("got=%v err=%v", got, err)
 	}
-	err = scanLogLinesReverse(context.Background(), strings.NewReader(content), int64(len(content)+1), func(string) (bool, error) {
+	err = scanLogLinesReverse(context.Background(), strings.NewReader(content), int64(len(content)+1), func(string) bool {
 		t.Fatal("visited data after short read")
-		return false, nil
+		return false
 	})
 	if !errors.Is(err, io.EOF) {
 		t.Fatalf("short read: %v", err)
 	}
-	wantErr := errors.New("visitor failed")
-	err = scanLogLinesReverse(context.Background(), strings.NewReader(content), int64(len(content)), func(string) (bool, error) { return false, wantErr })
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("visitor error: %v", err)
-	}
+
 }
 
 type logReadAtFunc func([]byte, int64) (int, error)
@@ -340,7 +335,7 @@ func TestReverseLogScanReadAtResults(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := logReadAtFunc(func(p []byte, _ int64) (int, error) { copy(p, "ok\n"); return tc.n, tc.err })
 			var lines []string
-			err := scanLogLinesReverse(context.Background(), reader, 3, func(line string) (bool, error) { lines = append(lines, line); return false, nil })
+			err := scanLogLinesReverse(context.Background(), reader, 3, func(line string) bool { lines = append(lines, line); return false })
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err=%v want=%v", err, tc.wantErr)
 			}
@@ -356,7 +351,9 @@ func TestReverseLogScanReadAtResults(t *testing.T) {
 
 func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 	dir := t.TempDir()
-	paths := logPaths(dir, "audit", 3)
+	today := time.Now()
+	latest := dailyLogPath(dir, "audit", today.Format(time.DateOnly))
+	older := dailyLogPath(dir, "audit", today.AddDate(0, 0, -2).Format(time.DateOnly))
 	// Event timestamps need not be monotonic within a file. Keep write order.
 	line := func(hour, module, detail string) string {
 		stamp, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-06-03 "+hour+":00:00", time.Local)
@@ -365,17 +362,17 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 		}
 		return testLogLine(t, map[string]any{"time": stamp.Format(time.RFC3339), "level": "WARN", "event": "hook_tool_call_completed", "module": module, "content": map[string]any{"summary": "摘要\n匹配", "detail": detail, "tags": []string{"tag"}}})
 	}
-	if err := os.WriteFile(paths[0], []byte(line("12", "hook", "详情\n目标")+line("11", "hook", "详情\n目标")+line("13", "agent", "详情\n目标")), 0o600); err != nil {
+	if err := os.WriteFile(latest, []byte(line("12", "hook", "详情\n目标")+line("11", "hook", "详情\n目标")+line("13", "agent", "详情\n目标")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// A missing day is skipped.
-	if err := os.WriteFile(paths[2], []byte(line("10", "hook", "详情\n目标")), 0o600); err != nil {
+	if err := os.WriteFile(older, []byte(line("10", "hook", "详情\n目标")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	since, _ := time.ParseInLocation("2006-01-02 15:04:05", "2026-06-03 10:00:00", time.Local)
 	until := since.Add(2 * time.Hour)
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
-		Prefix: "audit", Days: 3, Limit: 3, MinLevel: "warn", Since: &since, Until: &until,
+	entries, err := (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryAudit, LogQuery{
+		Days: 3, Limit: 3, MinLevel: "warn", Since: &since, Until: &until,
 		Fields:               map[string]string{"module": "hook", "event": "hook_tool_call_completed"},
 		ContentFieldContains: map[string][]string{"tags": {"tag"}},
 		Contains:             `详情\n目标`, ContentContains: `摘要\n匹配`,
@@ -388,7 +385,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 			t.Fatalf("order: %v", entries)
 		}
 	}
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "audit", Contains: `摘要\n匹配`})
+	entries, err = (&Manager{logDir: dir}).Query(context.Background(), events.LogCategoryAudit, LogQuery{Contains: `摘要\n匹配`})
 	if err != nil || len(entries.Entries) != 3 {
 		t.Fatalf("decoded summary: count=%d err=%v", len(entries.Entries), err)
 	}
@@ -396,20 +393,22 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 
 func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 	dir := t.TempDir()
-	paths := logPaths(dir, "log", 2)
-	if err := os.WriteFile(paths[0], []byte(testLogLine(t, map[string]any{"type": "text", "content": "latest"})), 0o600); err != nil {
+	today := time.Now()
+	latest := dailyLogPath(dir, "log", today.Format(time.DateOnly))
+	older := dailyLogPath(dir, "log", today.AddDate(0, 0, -1).Format(time.DateOnly))
+	if err := os.WriteFile(latest, []byte(testLogLine(t, map[string]any{"type": "text", "content": "latest"})), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(paths[1], 0o700); err != nil {
+	if err := os.Mkdir(older, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	reader := Reader{Dir: dir}
-	entries, err := reader.Query(context.Background(), LogQuery{Prefix: "log", Days: 2, Limit: 1})
+	reader := &Manager{logDir: dir}
+	entries, err := reader.Query(context.Background(), events.LogCategoryLog, LogQuery{Days: 2, Limit: 1})
 	if err != nil || len(entries.Entries) != 1 {
 		t.Fatalf("limit: entries=%v err=%v", entries, err)
 	}
-	_, err = reader.Query(context.Background(), LogQuery{Prefix: "log", Days: 2, Limit: 2})
-	if err == nil || !strings.Contains(err.Error(), paths[1]) {
+	_, err = reader.Query(context.Background(), events.LogCategoryLog, LogQuery{Days: 2, Limit: 2})
+	if err == nil || !strings.Contains(err.Error(), older) {
 		t.Fatalf("file error: %v", err)
 	}
 }

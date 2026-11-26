@@ -180,13 +180,12 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	if err := center.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	reader := logging.Reader{Dir: center.LogDir()}
-	for _, prefix := range []string{"audit", "log"} {
-		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Events: []string{"tool_call_prepared", "tool_call_completed"}})
+	for _, category := range []events.LogCategory{events.LogCategoryAudit, events.LogCategoryLog} {
+		found, err := center.Query(t.Context(), category, logging.LogQuery{Days: 1, Limit: 10, MinLevel: "debug", Events: []string{"tool_call_prepared", "tool_call_completed"}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if prefix == "log" {
+		if category == events.LogCategoryLog {
 			if len(found.Entries) != 0 {
 				t.Fatalf("log duplicated tool calls: %+v", found.Entries)
 			}

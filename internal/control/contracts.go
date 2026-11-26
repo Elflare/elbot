@@ -289,7 +289,7 @@ type RestartHookRequest = GetHookRequest
 
 type QueryLogsRequest struct {
 	Category string           `json:"category"` // log、audit 或 elnis。
-	Query    logging.LogQuery `json:"-"`        // 现有类型化筛选；来源由 Category 决定，忽略 Query.Prefix。
+	Query    logging.LogQuery `json:"-"`        // 日志筛选条件；来源由 Category 决定。
 }
 type LogData struct {
 	Time         time.Time             `json:"time"`

@@ -8,6 +8,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/doctor"
+	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
@@ -98,7 +99,7 @@ type HookCapabilities interface {
 }
 
 type LogCapabilities interface {
-	Query(context.Context, logging.LogQuery) (logging.LogQueryResult, error)
+	Query(context.Context, events.LogCategory, logging.LogQuery) (logging.LogQueryResult, error)
 }
 type DoctorCapabilities interface {
 	Check(context.Context) (doctor.Report, error)

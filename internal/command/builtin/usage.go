@@ -125,7 +125,6 @@ func parseUsageCallRange(value string) (*usageCallRange, error) {
 
 func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, *usageCallRange, error) {
 	query := logging.LogQuery{
-		Prefix:        "audit",
 		Limit:         usageQueryLimit,
 		Days:          1,
 		MinLevel:      "debug",

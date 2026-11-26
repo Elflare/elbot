@@ -10,7 +10,7 @@ import (
 )
 
 func parseAuditQuery(args string) (logging.LogQuery, error) {
-	query := baseLogQuery("audit")
+	query := baseLogQuery()
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	if err := parseLogArgs(args, &query, fields, func(name, value string) error {
@@ -47,7 +47,7 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 }
 
 func parseLogQuery(args string) (logging.LogQuery, error) {
-	query := baseLogQuery("log")
+	query := baseLogQuery()
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {
@@ -60,7 +60,7 @@ func parseLogQuery(args string) (logging.LogQuery, error) {
 }
 
 func parseElwispLogQuery(args string) (logging.LogQuery, error) {
-	query := baseLogQuery("elnis")
+	query := baseLogQuery()
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	setElwispName := func(value string) error {
@@ -100,8 +100,8 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 	return query, nil
 }
 
-func baseLogQuery(prefix string) logging.LogQuery {
-	return logging.LogQuery{Prefix: prefix, Limit: defaultLogListLimit, Days: 1, ContentFieldContains: map[string][]string{}, ContentFields: map[string]string{}}
+func baseLogQuery() logging.LogQuery {
+	return logging.LogQuery{Limit: defaultLogListLimit, Days: 1, ContentFieldContains: map[string][]string{}, ContentFields: map[string]string{}}
 }
 
 func parseLogArgs(args string, query *logging.LogQuery, fields map[string]string, extra func(name, value string) error) error {
