@@ -34,6 +34,8 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[0].ID, ToolName: "tool", Success: true},
 				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[1].ID, ToolName: "tool", Success: false, Error: "failed"},
 			} {
+				record.StartedAt = time.Now()
+				record.FinishedAt = record.StartedAt
 				if err := f.store.CreateToolCallRecord(t.Context(), &record); err != nil {
 					t.Fatal(err)
 				}

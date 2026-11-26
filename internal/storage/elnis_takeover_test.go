@@ -12,7 +12,7 @@ func TestFailInterruptedRollsBackWhenReferenceReleaseFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	repo := store
-	event, err := repo.CreateElnisEvent(ctx, CreateElnisEventRequest{ID: NewID(),
+	event, err := repo.CreateElnisEvent(ctx, CreateElnisEventRequest{ReceivedAt: Now(), CreatedAt: Now(), ID: NewID(),
 		EventKey: "interrupted", ElwispName: "source", SourceID: "interrupted",
 		Status: "queued", MediaIDs: []string{"input"},
 	})
@@ -64,7 +64,7 @@ func TestTakenOverEventReleasesEventAndOutboxMedia(t *testing.T) {
 	if err := store.UpsertMedia(ctx, &Media{ID: "attachment", MIMEType: "image/png", Backend: "local"}); err != nil {
 		t.Fatal(err)
 	}
-	event, err := store.CreateElnisEvent(ctx, CreateElnisEventRequest{ID: NewID(), EventKey: "event", ElwispName: "source", SourceID: "1", Status: "running", MediaIDs: []string{"attachment"}})
+	event, err := store.CreateElnisEvent(ctx, CreateElnisEventRequest{ReceivedAt: Now(), CreatedAt: Now(), ID: NewID(), EventKey: "event", ElwispName: "source", SourceID: "1", Status: "running", MediaIDs: []string{"attachment"}})
 	if err != nil {
 		t.Fatal(err)
 	}

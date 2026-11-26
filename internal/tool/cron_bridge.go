@@ -3,6 +3,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,20 +56,20 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (op
 	if name == "" {
 		return operationresult.Result[builtin.CronInfo]{Status: operationresult.InvalidArguments, Message: "cron name is required"}, nil
 	}
-	meta := storage.CronMetadata{
-		Kind: storage.CronMetadataKind, Version: 2, Title: definition.Title,
-		CreatedBy: storage.CronActor{Platform: definition.Actor.Platform, ID: definition.Actor.ID, Name: definition.Actor.Name},
-		Schedule:  storage.CronSchedule{Mode: storage.CronScheduleMode(definition.ScheduleMode), RunAt: definition.RunAt, CronExpr: definition.CronExpr},
-		Trigger:   storage.CronTrigger{Mode: storage.CronTriggerMode(definition.TriggerMode), Message: definition.Message},
-		Target:    storage.CronTarget{ID: definition.TargetID, AllEnabledPlatforms: definition.AllEnabledPlatforms, SourcePlatform: definition.SourcePlatform},
-		LLM:       storage.CronLLMMetadata{ToolListNames: definition.ToolListNames, ModelProvider: definition.ModelProvider, Model: definition.Model},
+	meta := crondef.Metadata{
+		Kind: crondef.MetadataKind, Version: 2, Title: definition.Title,
+		CreatedBy: crondef.CronActor{Platform: definition.Actor.Platform, ID: definition.Actor.ID, Name: definition.Actor.Name},
+		Schedule:  crondef.CronSchedule{Mode: crondef.ScheduleMode(definition.ScheduleMode), RunAt: definition.RunAt, CronExpr: definition.CronExpr},
+		Trigger:   crondef.CronTrigger{Mode: crondef.TriggerMode(definition.TriggerMode), Message: definition.Message},
+		Target:    crondef.CronTarget{ID: definition.TargetID, AllEnabledPlatforms: definition.AllEnabledPlatforms, SourcePlatform: definition.SourcePlatform},
+		LLM:       crondef.CronLLMMetadata{ToolListNames: definition.ToolListNames, ModelProvider: definition.ModelProvider, Model: definition.Model},
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	job, err := b.repo.UpsertCronJob(ctx, storage.UpsertCronJobRequest{
-		Name: name, Handler: storage.CronHandlerName, Schedule: req.Schedule,
+		Name: name, Handler: crondef.UserHandlerName, Schedule: req.Schedule,
 		Enabled: definition.Enabled, Metadata: string(data), NextRunAt: req.NextRunAt,
 		ResetDelivery: req.ResetDelivery,
 	})
@@ -99,7 +100,7 @@ func (b cronBridge) List(ctx context.Context, includeDisabled bool) (operationre
 	}
 	result := []builtin.CronInfo{}
 	for _, job := range jobs {
-		if job.Handler != storage.CronHandlerName {
+		if job.Handler != crondef.UserHandlerName {
 			continue
 		}
 		info, err := cronInfo(job)
@@ -157,14 +158,14 @@ func normalizeCronName(name string) string {
 }
 
 func cronInfo(job storage.CronJob) (operationresult.Result[builtin.CronInfo], error) {
-	var meta storage.CronMetadata
+	var meta crondef.Metadata
 	if err := json.Unmarshal([]byte(job.Metadata), &meta); err != nil {
 		return operationresult.Result[builtin.CronInfo]{}, err
 	}
-	if job.Handler != storage.CronHandlerName || meta.Kind != storage.CronMetadataKind {
+	if job.Handler != crondef.UserHandlerName || meta.Kind != crondef.MetadataKind {
 		return operationresult.Result[builtin.CronInfo]{Status: operationresult.Incompatible, Message: fmt.Sprintf("unsupported cron task %q", job.Name)}, nil
 	}
-	var status storage.CronTaskStatus
+	var status crondef.CronTaskStatus
 	if job.DeliveryState != "" {
 		if err := json.Unmarshal([]byte(job.DeliveryState), &status); err != nil {
 			return operationresult.Result[builtin.CronInfo]{}, err
@@ -175,7 +176,7 @@ func cronInfo(job storage.CronJob) (operationresult.Result[builtin.CronInfo], er
 		TriggerMode: string(meta.Trigger.Mode), Message: meta.Trigger.Message, ToolListNames: meta.LLM.ToolListNames, ModelProvider: meta.LLM.ModelProvider, Model: meta.LLM.Model,
 		TargetID: meta.Target.ID, AllEnabledPlatforms: meta.Target.AllEnabledPlatforms, SourcePlatform: meta.Target.SourcePlatform,
 		CreatedBy: contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: meta.CreatedBy.Platform, ID: meta.CreatedBy.ID}, Name: meta.CreatedBy.Name},
-		Enabled:   job.Enabled, Completed: meta.Schedule.Mode == storage.CronScheduleOnce && (!job.Enabled || status.DeliveryComplete),
+		Enabled:   job.Enabled, Completed: meta.Schedule.Mode == crondef.ScheduleOnce && (!job.Enabled || status.DeliveryComplete),
 		RunCount: job.RunCount, LastRunAt: job.LastRunAt, NextRunAt: job.NextRunAt, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
 	}}, nil
 }

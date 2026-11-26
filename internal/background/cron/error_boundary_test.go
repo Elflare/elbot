@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"errors"
 	"strings"
 	"testing"
@@ -15,7 +16,7 @@ import (
 func TestForegroundAfterFormatRetryStopsReport(t *testing.T) {
 	runner := &fakeCronRunner{text: "not a background JSON result"}
 	svc := newTestCronService(t, Options{Runner: runner, IsSessionForeground: func(context.Context, string) (bool, error) { return runner.calls == 2, nil }})
-	_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{}, CronDeliveryState{})
+	_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, crondef.Metadata{}, CronDeliveryState{})
 	if err != nil || runner.calls != 2 || !state.TakenOver || state.NeedReport || state.Report != "" {
 		t.Fatal(runner.calls, state, err)
 	}
@@ -31,7 +32,7 @@ func TestFormatRetryExecutionFailureStopsTask(t *testing.T) {
 				sent++
 				return sentReceipt(delivery.Receipt{}), nil
 			}})
-			meta := Metadata{Kind: metadataKind, Version: 1, Title: "retry", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("retry")}, Target: CronTarget{SourcePlatform: "cli"}}
+			meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "retry", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("retry")}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
 			_, _, err := svc.runTask(t.Context(), *job, meta)
 			if err != failure || runner.calls != 2 || sent != 0 {

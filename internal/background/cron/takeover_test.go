@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"errors"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 		sent++
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "takeover", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	if _, result, err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 		runner := &fakeCronRunner{text: "invalid JSON"}
 		queried := ""
 		svc := newTestCronService(t, Options{Runner: runner, IsSessionForeground: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
-		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
+		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, crondef.Metadata{Target: crondef.CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
 		if runner.calls != 1 || queried != "cron-session" || state.Report != "" {
 			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, state.Report)
 		}
@@ -69,7 +70,7 @@ func TestInjectedTakeoverQueryStopsPreparedDelivery(t *testing.T) {
 		sent++
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleOnce}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, Report: "unsent", ReportSessionID: "adopted"}
 	repo.jobs[job.Name].DeliveryToken = "run"
 	job.DeliveryToken = "run"

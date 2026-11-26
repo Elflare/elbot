@@ -4,6 +4,7 @@ package builtin
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/crondef"
 	"elbot/internal/elyph"
 	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
@@ -165,8 +166,8 @@ func (s *cronService) prepare(req CronCreateRequest, reset bool) operationresult
 		return operationresult.Result[CronSaveRequest]{Status: operationresult.InvalidArguments, Message: "message is required"}
 	}
 	switch req.TriggerMode {
-	case "direct":
-	case "llm":
+	case crondef.TriggerDirect:
+	case crondef.TriggerLLM:
 		if _, err := elyph.ParseTask(req.Message, ""); err != nil {
 			return operationresult.Result[CronSaveRequest]{Status: operationresult.InvalidArguments, Message: err.Error()}
 		}
@@ -197,28 +198,27 @@ func (s *cronService) prepare(req CronCreateRequest, reset bool) operationresult
 }
 
 func cronSchedule(req *CronCreateRequest, now time.Time) (string, *time.Time, error) {
-	const timeLayout = "2006-01-02 15:04:05"
 	var next *time.Time
 	expr := req.CronExpr
 	switch req.ScheduleMode {
-	case "once":
-		runAt, err := time.ParseInLocation(timeLayout, req.RunAt, time.Local)
+	case crondef.ScheduleOnce:
+		runAt, err := time.ParseInLocation(time.DateTime, req.RunAt, time.Local)
 		if err != nil {
 			return "", nil, fmt.Errorf("run_at must use YYYY-MM-DD HH:MM:SS: %w", err)
 		}
 		if req.Enabled {
 			nowMinute, runMinute := now.Truncate(time.Minute), runAt.Truncate(time.Minute)
 			if runMinute.Before(nowMinute) {
-				return "", nil, fmt.Errorf("run_at 时间不正确：一次性 cron 是分钟级调度，必须晚于当前这一分钟。当前时间：%s", now.Format(timeLayout))
+				return "", nil, fmt.Errorf("run_at 时间不正确：一次性 cron 是分钟级调度，必须晚于当前这一分钟。当前时间：%s", now.Format(time.DateTime))
 			}
 			if runMinute.Equal(nowMinute) {
 				runAt = nowMinute.Add(time.Minute)
-				req.RunAt = runAt.Format(timeLayout)
+				req.RunAt = runAt.Format(time.DateTime)
 			}
 			next = &runAt
 		}
 		expr = fmt.Sprintf("%d %d %d %d *", runAt.Minute(), runAt.Hour(), runAt.Day(), int(runAt.Month()))
-	case "cron":
+	case crondef.ScheduleCron:
 		if len(strings.Fields(expr)) != 5 {
 			return "", nil, fmt.Errorf("cron_expr must be a 5-field cron expression")
 		}
@@ -229,7 +229,7 @@ func cronSchedule(req *CronCreateRequest, now time.Time) (string, *time.Time, er
 	if err != nil {
 		return "", nil, err
 	}
-	if req.Enabled && req.ScheduleMode == "cron" {
+	if req.Enabled && req.ScheduleMode == crondef.ScheduleCron {
 		value := parsed.Next(now)
 		if !value.IsZero() {
 			next = &value
@@ -260,7 +260,7 @@ func (t CronTool) Definition() toolshare.ToolDefinition {
 }
 func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		now := t.now().Format("2006-01-02 15:04:05")
+		now := t.now().Format(time.DateTime)
 		result := &toolshare.Result{Content: strings.TrimSpace("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, "cron guide returned; current_time=" + now, nil
 	})}, nil
@@ -270,7 +270,7 @@ func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, in
 // The cron entry tool is the natural place to surface this because users often
 // discover cron tools to set up time-based reminders.
 func (t CronTool) DiscoveryContent() (string, bool) {
-	return "当前本地时间：" + t.now().Format("2006-01-02 15:04:05"), false
+	return "当前本地时间：" + t.now().Format(time.DateTime), false
 }
 
 func (t CronQueryTool) Definition() toolshare.ToolDefinition {
@@ -300,7 +300,7 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				return operationresult.Result[*toolshare.Result]{Status: queried.Status, Message: queried.Message}, queried.Message, nil
 			}
 			view := queried.Data
-			result := &toolshare.Result{Content: formatCronInfo(view), NeedsElyphRules: view.TriggerMode == "llm"}
+			result := &toolshare.Result{Content: formatCronInfo(view), NeedsElyphRules: view.TriggerMode == crondef.TriggerLLM}
 			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 		}
@@ -317,7 +317,7 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		var content []string
 		for _, view := range views {
 			content = append(content, formatCronInfo(view))
-			if view.TriggerMode == "llm" {
+			if view.TriggerMode == crondef.TriggerLLM {
 				result.NeedsElyphRules = true
 			}
 		}
@@ -335,7 +335,7 @@ func (t CronWriteTool) Definition() toolshare.ToolDefinition {
 		String("operation", "disable=停用保留；delete=永久删除；暂停用disable。", toolshare.Required(), toolshare.Enum("create", "update", "disable", "delete")).
 		String("name", "任务短名：字母/数字/下划线/点/横线。", toolshare.Required()).
 		String("title", "展示标题；create默认name。").
-		String("schedule_mode", "once⇒run_at或非零run_after_*；cron⇒cron_expr。", toolshare.Enum("once", "cron")).
+		String("schedule_mode", "once⇒run_at或非零run_after_*；cron⇒cron_expr。", toolshare.Enum(crondef.ScheduleOnce, crondef.ScheduleCron)).
 		String("run_at", "绝对时间YYYY-MM-DD HH:MM:SS。").
 		String("cron_expr", "5字段：分 时 日 月 周。").
 		Integer("run_after_minutes", "相对分钟数，按时长。").
@@ -343,7 +343,7 @@ func (t CronWriteTool) Definition() toolshare.ToolDefinition {
 		Integer("run_after_days", "相对日历天数。").
 		Integer("run_after_weeks", "相对周数，1周=7日历天。").
 		Integer("run_after_months", "相对日历月数。").
-		String("trigger_mode", "direct=直接通知；llm=后台LLM任务。", toolshare.Enum("direct", "llm")).
+		String("trigger_mode", "direct=直接通知；llm=后台LLM任务。", toolshare.Enum(crondef.TriggerDirect, crondef.TriggerLLM)).
 		String("message", "direct→通知正文；llm→ELyph #task <name> - 描述 任务文本。").
 		StringArray("tool_list_names", "llm允许的工具/Skill/标签名，无需@；仅所选能力+必要依赖，无discover_tool；update: []→清空。").
 		String("model_provider", "与model同传；create省略→work模型；update两者同为\"\"→默认模型。").
@@ -385,7 +385,7 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		definition := save.Definition
 		var nextRunAt any
 		if save.NextRunAt != nil {
-			nextRunAt = save.NextRunAt.Format("2006-01-02 15:04:05")
+			nextRunAt = save.NextRunAt.Format(time.DateTime)
 		}
 		details = append(details, toolshare.FieldsConfirmationDetail(
 			toolshare.ConfirmationField{Key: "title", Label: "标题", Value: definition.Title},
@@ -526,10 +526,10 @@ func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string,
 		return "", fmt.Errorf("run_at 不能和 run_after_* 同时传；请只使用绝对时间或相对偏移之一")
 	}
 	if offset.Minutes < 0 || offset.Hours < 0 || offset.Days < 0 || offset.Weeks < 0 || offset.Months < 0 {
-		return "", fmt.Errorf("run_after_* 必须是正数；当前本地时间：%s", now.Format("2006-01-02 15:04:05"))
+		return "", fmt.Errorf("run_after_* 必须是正数；当前本地时间：%s", now.Format(time.DateTime))
 	}
 	run := now.AddDate(0, offset.Months, offset.Weeks*7+offset.Days).Add(time.Duration(offset.Hours)*time.Hour + time.Duration(offset.Minutes)*time.Minute)
-	return run.Format("2006-01-02 15:04:05"), nil
+	return run.Format(time.DateTime), nil
 }
 
 func cronWriteDescription() string {

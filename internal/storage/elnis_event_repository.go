@@ -30,14 +30,6 @@ func (r *Supervisor) CreateElnisEvent(ctx context.Context, req CreateElnisEventR
 		return nil, fmt.Errorf("elnis event requires a preallocated ID")
 	}
 	now := Now()
-	receivedAt := req.ReceivedAt
-	if receivedAt.IsZero() {
-		receivedAt = now
-	}
-	createdAt := req.CreatedAt
-	if createdAt.IsZero() {
-		createdAt = receivedAt
-	}
 	event := &ElnisEvent{
 		ID:         req.ID,
 		EventKey:   req.EventKey,
@@ -54,10 +46,8 @@ func (r *Supervisor) CreateElnisEvent(ctx context.Context, req CreateElnisEventR
 		RequestedTargets: req.RequestedTargets,
 		ResolvedTargets:  req.ResolvedTargets,
 		Status:           req.Status,
-		Result:           req.Result,
-		Error:            req.Error,
-		ReceivedAt:       receivedAt,
-		CreatedAt:        createdAt,
+		ReceivedAt:       req.ReceivedAt,
+		CreatedAt:        req.CreatedAt,
 		UpdatedAt:        now,
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -69,8 +59,8 @@ func (r *Supervisor) CreateElnisEvent(ctx context.Context, req CreateElnisEventR
 INSERT INTO elnis_events (
     id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
     model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
-    session_id, result, error, received_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    received_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID,
 		event.EventKey,
 		event.OriginKind, event.OriginName,
@@ -86,9 +76,6 @@ INSERT INTO elnis_events (
 		nullString(event.RequestedTargets),
 		nullString(event.ResolvedTargets),
 		event.Status,
-		nullString(event.SessionID),
-		nullString(event.Result),
-		nullString(event.Error),
 		FormatTime(event.ReceivedAt),
 		FormatTime(event.CreatedAt),
 		FormatTime(event.UpdatedAt),

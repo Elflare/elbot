@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
@@ -33,7 +34,7 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 // missedOnceRun 将锁内实际执行的结果交给锁外的日志与通知。
 type missedOnceRun struct {
 	ctx       context.Context
-	meta      Metadata
+	meta      crondef.Metadata
 	state     CronDeliveryState
 	delivered operationresult.Result[struct{}]
 	err       error
@@ -57,7 +58,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		if ctx.Err() != nil {
 			return
 		}
-		if job.Handler != UserHandlerName || s.missedOnceCandidate(ctx, job, platformName, "") == nil {
+		if job.Handler != crondef.UserHandlerName || s.missedOnceCandidate(ctx, job, platformName, "") == nil {
 			continue
 		}
 		run := s.runMissedOnceJob(ctx, job.Name, platformName)
@@ -151,13 +152,13 @@ func (s *Service) runMissedOnceJob(ctx context.Context, name, platformName strin
 	return run
 }
 
-func (s *Service) missedOnceCandidate(ctx context.Context, job Job, platformName, stagePrefix string) *Metadata {
+func (s *Service) missedOnceCandidate(ctx context.Context, job Job, platformName, stagePrefix string) *crondef.Metadata {
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
 		logMissedOnceError(ctx, job.Name, stagePrefix+"metadata", err)
 		return nil
 	}
-	if meta.Schedule.Mode != ScheduleOnce {
+	if meta.Schedule.Mode != crondef.ScheduleOnce {
 		return nil
 	}
 	runAt, err := parseRunAt(meta.Schedule.RunAt)
@@ -180,7 +181,7 @@ func logMissedOnceError(ctx context.Context, name, stage string, err error) {
 	})
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (context.Context, CronDeliveryState, operationresult.Result[struct{}], error) {
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta crondef.Metadata, platformName string) (context.Context, CronDeliveryState, operationresult.Result[struct{}], error) {
 	ctx, job, prepared, prepareErr := s.prepareDelivery(ctx, job, meta)
 	if prepareErr != nil {
 		return ctx, CronDeliveryState{}, operationresult.Result[struct{}]{}, prepareErr

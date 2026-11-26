@@ -123,7 +123,7 @@ func TestExplicitAssistantPagesUseOnlyDeliveredChatContent(t *testing.T) {
 			t.Fatalf("%s: %+v, %v", id, got, err)
 		}
 	}
-	rows, err := history.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, IncludeAssistant: true, QueryTerms: []string{"公开"}})
+	rows, err := history.SearchChatHistory(ctx, storage.ChatHistorySearchRequest{Limit: 10, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID, IncludeAssistant: true, QueryTerms: []string{"公开"}})
 	if err != nil || len(rows) != 2 || rows[0].Text != "公开上页" || rows[1].Text != "公开下页" {
 		t.Fatalf("search=%+v, %v", rows, err)
 	}

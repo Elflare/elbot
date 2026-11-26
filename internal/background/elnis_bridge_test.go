@@ -148,7 +148,7 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	ctx := t.Context()
 	seedElnisReportMessage(t, store)
-	row, err := b.Create(ctx, elnis.CreateEventRequest{EventKey: "key", ElwispName: "watcher", Source: "source", SourceID: "one", Mode: elnis.ModeLLM, Status: elnis.StatusRunning})
+	row, err := b.Create(ctx, elnis.CreateEventRequest{ReceivedAt: time.Now(), CreatedAt: time.Now(), EventKey: "key", ElwispName: "watcher", Source: "source", SourceID: "one", Mode: elnis.ModeLLM, Status: elnis.StatusRunning})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,9 +464,12 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 		}
 		row, err := repo.CreateElnisEvent(ctx, storage.CreateElnisEventRequest{ID: storage.NewID(),
 			EventKey: status, ElwispName: "recovery", Source: "test", SourceID: status,
-			Status: status, Error: "existing error", Result: "existing result", MediaIDs: mediaIDs,
+			Status: status, MediaIDs: mediaIDs, ReceivedAt: time.Now(), CreatedAt: time.Now(),
 		})
 		if err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.UpdateElnisEvent(ctx, storage.UpdateElnisEventRequest{ID: row.ID, Status: status, Error: "existing error", Result: "existing result"}); err != nil {
 			t.Fatal(err)
 		}
 		if status == elnis.StatusResultReady || status == elnis.StatusDelivering {
@@ -593,7 +596,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 			mediaIDs = []string{mediaID}
 		}
 		row, err := store.CreateElnisEvent(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(),
-			EventKey: status, ElwispName: "close", Source: "test", SourceID: status, Status: status, MediaIDs: mediaIDs,
+			ReceivedAt: time.Now(), CreatedAt: time.Now(), EventKey: status, ElwispName: "close", Source: "test", SourceID: status, Status: status, MediaIDs: mediaIDs,
 		})
 		if err != nil {
 			t.Fatal(err)

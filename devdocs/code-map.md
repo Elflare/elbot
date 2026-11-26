@@ -250,11 +250,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Cron 与维护
 
 - `internal/background/cron/`：`manager.go` 调度；`service.go` 运行；`execution.go` 执行；`refresh.go` 变更刷新；`lifecycle.go` 启停。
-- `internal/background/cron/`：`repository.go` 存储契约；`model.go` 任务；`models.go` 模型；`delivery.go` 投递；`recovery.go` 恢复。
+- `internal/crondef/definition.go`：任务元数据与投递完成字段；Tool 和 Background 共用。
+- `internal/background/cron/`：`repository.go` 存储契约；`model.go` 调度与投递状态；`models.go` 模型；`delivery.go` 投递；`recovery.go` 恢复。
 - `internal/background/execution/runner.go`：后台输入与 Agent 转接。
 - `internal/background/share/`：`result.go` 报告解析；`report.go` 附件与回执；`takeover.go` 接管契约。
 - `internal/background/maintenance/maintenance.go`、`internal/background/cron/maintenance.go`：维护任务、Cron 适配。
-- `internal/tool/builtin/cron.go`、`internal/storage/sqlite/cron_job_repository.go`：任务工具、任务存储。
+- `internal/tool/builtin/cron.go`、`internal/storage/cron_job_repository.go`：任务工具、任务存储。
 
 <!-- locator:docs -->
 ## 文档

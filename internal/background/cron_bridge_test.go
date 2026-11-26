@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -29,7 +30,7 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	store := testutil.NewSQLiteStore(t)
 	b := cronBridge{repo: store}
 	ctx := t.Context()
-	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: "{invalid metadata"})
+	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "job", Handler: crondef.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: "{invalid metadata"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +103,11 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	if err := store.AppendMessage(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
 		t.Fatal(err)
 	}
-	metadata, err := json.Marshal(storage.CronMetadata{Kind: storage.CronMetadataKind, Version: 2, Title: "report", Schedule: storage.CronSchedule{Mode: "once", RunAt: time.Now().Add(time.Hour).Format("2006-01-02 15:04:05")}, Trigger: storage.CronTrigger{Mode: "llm", Message: "#task report - test"}, Target: storage.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	metadata, err := json.Marshal(crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "report", Schedule: crondef.CronSchedule{Mode: "once", RunAt: time.Now().Add(time.Hour).Format("2006-01-02 15:04:05")}, Trigger: crondef.CronTrigger{Mode: "llm", Message: "#task report - test"}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "user.cron.report", Handler: elcron.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: string(metadata)})
+	row, err := store.UpsertCronJob(ctx, storage.UpsertCronJobRequest{Name: "user.cron.report", Handler: crondef.UserHandlerName, Schedule: "0 3 * * *", Enabled: true, Metadata: string(metadata)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var status storage.CronTaskStatus
+	var status crondef.CronTaskStatus
 	if err := json.Unmarshal([]byte(stored.DeliveryState), &status); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	b := cronBridge{repo: store}
 	m := elcron.NewManager(b)
-	m.RegisterHandler(elcron.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, operationresult.Result[struct{}], error) {
+	m.RegisterHandler(crondef.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, operationresult.Result[struct{}], error) {
 		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	})
 	connection, err := tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {

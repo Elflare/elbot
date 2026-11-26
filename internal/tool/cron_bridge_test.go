@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
@@ -55,11 +56,11 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var meta storage.CronMetadata
+	var meta crondef.Metadata
 	if err := json.Unmarshal([]byte(job.Metadata), &meta); err != nil {
 		t.Fatal(err)
 	}
-	if job.Handler != storage.CronHandlerName || meta.CreatedBy.Platform != owner.Platform || meta.CreatedBy.ID != owner.ID || meta.Schedule.RunAt != "2026-10-25 12:10:00" || meta.Kind != storage.CronMetadataKind {
+	if job.Handler != crondef.UserHandlerName || meta.CreatedBy.Platform != owner.Platform || meta.CreatedBy.ID != owner.ID || meta.Schedule.RunAt != "2026-10-25 12:10:00" || meta.Kind != crondef.MetadataKind {
 		t.Fatalf("persisted = %+v %+v", job, meta)
 	}
 	if ok, err := store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, "delivery", `{"delivery_complete":true}`, nil); err != nil || !ok {

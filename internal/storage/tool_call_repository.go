@@ -3,19 +3,12 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"slices"
 	"strings"
 )
 
 func (r *Supervisor) CreateToolCallRecord(ctx context.Context, record *ToolCallRecord) error {
-	now := Now()
-	if record.StartedAt.IsZero() {
-		record.StartedAt = now
-	}
-	if record.FinishedAt.IsZero() {
-		record.FinishedAt = now
-	}
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = record.FinishedAt
 	}
@@ -84,47 +77,32 @@ FROM tool_call_records WHERE session_id=? ORDER BY created_at,rowid`, sessionID)
 }
 
 func (r *Supervisor) SuccessfulIDs(ctx context.Context, sessionID string, toolCallIDs []string) (map[string]bool, error) {
-	const batchSize = 500
-
-	unique := make([]string, 0, len(toolCallIDs))
-	seen := map[string]bool{}
+	var ids []string
 	for _, id := range toolCallIDs {
-		id = strings.TrimSpace(id)
-		if id == "" || seen[id] {
-			continue
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
 		}
-		seen[id] = true
-		unique = append(unique, id)
 	}
-
 	successful := map[string]bool{}
-	for batch := range slices.Chunk(unique, batchSize) {
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
-		args := make([]any, 1, len(batch)+1)
-		args[0] = sessionID
-		for _, id := range batch {
-			args = append(args, id)
+	if len(ids) == 0 {
+		return successful, nil
+	}
+	encoded, _ := json.Marshal(ids)
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT tool_call_id FROM tool_call_records
+WHERE session_id=? AND success=1 AND tool_call_id IN (SELECT value FROM json_each(?))`, sessionID, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("query successful tool calls: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan successful tool call: %w", err)
 		}
-		rows, err := r.db.QueryContext(ctx, `
-SELECT DISTINCT tool_call_id
-FROM tool_call_records
-WHERE session_id=? AND success = 1 AND tool_call_id IN (`+placeholders+`)`, args...)
-		if err != nil {
-			return nil, fmt.Errorf("query successful tool calls: %w", err)
-		}
-		for rows.Next() {
-			var id string
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("scan successful tool call: %w", err)
-			}
-			successful[id] = true
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("iterate successful tool calls: %w", err)
-		}
-		rows.Close()
+		successful[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate successful tool calls: %w", err)
 	}
 	return successful, nil
 }

@@ -3,6 +3,7 @@ package background
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
@@ -191,7 +192,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, IsSessionForeground: deps.Agent.IsSessionForeground,
 		EnabledPlatforms: targets, SandboxRoot: cfg.Sandbox.Root,
 	})
-	m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler)
+	m.cronManager.RegisterHandler(crondef.UserHandlerName, m.cron.Handler)
 
 	// 维护组件只接收日志最小接口、两项清理函数和媒体 Cleanup 接口。
 	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.Store.DeleteChatHistoryBefore, cfg, deps.Agent.CleanupSessions)
@@ -318,7 +319,7 @@ func (b cronBridge) GetByName(ctx context.Context, name string) (*elcron.Job, er
 	return cronJob(row), nil
 }
 func (b cronBridge) ListEnabled(ctx context.Context) ([]elcron.Job, error) {
-	rows, err := b.repo.ListEnabled(ctx)
+	rows, err := b.repo.ListCronJobs(ctx, false)
 	if err != nil {
 		return nil, cronError(err)
 	}

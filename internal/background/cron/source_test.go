@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,7 +34,7 @@ func TestRecoveredReportUsesPersistedSources(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "report", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "report", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: result.NeedReport, TaskCompleted: true, ReportSegments: result.ReportSegments, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"

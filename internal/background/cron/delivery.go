@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,7 +26,7 @@ type deliveryGate struct {
 	refs  int           // 持有者与等待者的总数，由 Service.mu 保护。
 }
 
-func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (operationresult.Result[struct{}], error) {
+func (s *Service) deliverPrepared(ctx context.Context, job Job, meta crondef.Metadata, state CronDeliveryState, platformFilter string, recovery bool) (operationresult.Result[struct{}], error) {
 	if !state.ReportReady {
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
@@ -35,7 +36,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		if _, err := s.persistDeliveryState(ctx, job, meta, state, nil); err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
-		if meta.Schedule.Mode == ScheduleOnce {
+		if meta.Schedule.Mode == crondef.ScheduleOnce {
 			return operationresult.Result[struct{}]{Status: operationresult.Success}, s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 		}
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
@@ -127,7 +128,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			}
 		}
 	}
-	if meta.Schedule.Mode == ScheduleOnce && s.deliveryComplete(meta, state) {
+	if meta.Schedule.Mode == crondef.ScheduleOnce && s.deliveryComplete(meta, state) {
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 	}
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
@@ -179,7 +180,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	return receipt, err
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
+func (s *Service) persistDeliveryState(ctx context.Context, job Job, meta crondef.Metadata, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	state.DeliveryComplete = s.deliveryComplete(meta, state)
@@ -191,7 +192,7 @@ func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliver
 	return err
 }
 
-func (s *Service) resolveDeliveryTargets(meta Metadata) []delivery.Target {
+func (s *Service) resolveDeliveryTargets(meta crondef.Metadata) []delivery.Target {
 	platforms := s.enabledPlatforms
 	if !meta.Target.AllEnabledPlatforms {
 		if !containsString(s.enabledPlatformNames(), meta.Target.SourcePlatform) {
@@ -221,7 +222,7 @@ func (s *Service) resolveDeliveryTargets(meta Metadata) []delivery.Target {
 	return resolved
 }
 
-func (s *Service) deliveryComplete(meta Metadata, state CronDeliveryState) bool {
+func (s *Service) deliveryComplete(meta crondef.Metadata, state CronDeliveryState) bool {
 	if state.TakenOver {
 		return true
 	}
@@ -374,7 +375,7 @@ func cronTargetLabel(target delivery.Target) string {
 	return string(target.ChatType)
 }
 
-func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) (operationresult.Result[struct{}], error) {
+func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta crondef.Metadata, jobName string) (operationresult.Result[struct{}], error) {
 	for _, target := range s.enabledPlatforms {
 		if target.Name == meta.Target.SourcePlatform {
 			continue

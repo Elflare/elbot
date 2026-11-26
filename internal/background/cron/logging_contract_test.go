@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,7 +27,7 @@ type loggingCronRepo struct {
 func TestDeliverySuccessHasIndependentAudit(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeCronRepo()
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "partial", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "report"}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, repo, meta)
 	s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		return sentReceipt(delivery.Receipt{PlatformMessageIDs: []string{"received"}}), nil
@@ -64,7 +65,7 @@ func TestHandlerPreservesDeliveryBusinessResultAndFault(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := newFakeCronRepo()
-			meta := Metadata{Kind: metadataKind, Version: 1, Title: "partial", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}}
+			meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "partial", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "report"}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
 			s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 				return tc.delivery, tc.deliveryErr
@@ -84,7 +85,7 @@ func TestHandlerPreservesDeliveryBusinessResultAndFault(t *testing.T) {
 }
 
 func TestTaskAuditIdentityAndOperation(t *testing.T) {
-	for _, mode := range []TriggerMode{TriggerDirect, TriggerLLM} {
+	for _, mode := range []crondef.TriggerMode{crondef.TriggerDirect, crondef.TriggerLLM} {
 		for _, withIdentity := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/identity=%t", mode, withIdentity), func(t *testing.T) {
 				ctx := t.Context()
@@ -95,7 +96,7 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 					want = globalevents.LogIdentity{SessionID: facts.SessionID, RunID: facts.RunID, Attempt: facts.Attempt, RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
 				}
 				repo := newFakeCronRepo()
-				job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: mode, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}})
+				job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron}, Trigger: crondef.CronTrigger{Mode: mode, Message: "report"}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 				s := newTestCronService(t, Options{Store: repo, Runner: &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"report"}`}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 					return sentReceipt(delivery.Receipt{}), nil
 				}})
@@ -118,7 +119,7 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 					identity := want
 					if strings.HasPrefix(name, "cron.send_") {
 						sessionID := ""
-						if mode == TriggerLLM {
+						if mode == crondef.TriggerLLM {
 							sessionID = "cron-session"
 						}
 						identity.SessionID = sessionID
@@ -226,7 +227,7 @@ func TestRunJobReportsTaskAndBookkeepingFailuresIndependently(t *testing.T) {
 
 func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
 	repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo()}
-	meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "reminder", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "hello"}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, repo.fakeCronRepo, meta)
 	s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		return sentReceipt(delivery.Receipt{}), nil
@@ -271,7 +272,7 @@ func TestRecoveryPublishesReturnedDeliveryDetails(t *testing.T) {
 	for _, status := range []globalevents.ResultStatus{globalevents.ResultFailed} {
 		t.Run(status.String(), func(t *testing.T) {
 			repo := newFakeCronRepo()
-			meta := Metadata{Kind: metadataKind, Version: 1, Title: "reminder", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "hello"}, Target: CronTarget{SourcePlatform: "cli"}}
+			meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "reminder", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "hello"}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
 			s := newTestCronService(t, Options{Store: repo, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 				if status == globalevents.ResultFailed {

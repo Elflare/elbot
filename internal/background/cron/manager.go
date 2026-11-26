@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
@@ -505,11 +506,11 @@ func userOnceRunAt(metadata string) (time.Time, bool, error) {
 	if metadata == "" {
 		return time.Time{}, false, nil
 	}
-	var meta Metadata
+	var meta crondef.Metadata
 	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
 		return time.Time{}, false, err
 	}
-	if meta.Kind != metadataKind || meta.Schedule.Mode != ScheduleOnce {
+	if meta.Kind != crondef.MetadataKind || meta.Schedule.Mode != crondef.ScheduleOnce {
 		return time.Time{}, false, nil
 	}
 	runAt, err := parseRunAt(meta.Schedule.RunAt)

@@ -46,16 +46,18 @@ func TestNativeInputConsumptionRequiresCheckpoint(t *testing.T) {
 func TestSuccessfulIDsBatchBoundaries(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	var ids []string
+	now := Now()
 	for i := range 501 {
 		id := fmt.Sprint(i)
 		ids = append(ids, id)
-		if err := store.CreateToolCallRecord(t.Context(), &ToolCallRecord{SessionID: "s", ToolCallID: id, Success: true}); err != nil {
+		if err := store.CreateToolCallRecord(t.Context(), &ToolCallRecord{SessionID: "s", ToolCallID: id, Success: true, StartedAt: now, FinishedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, size := range []int{0, 500, 501} {
 		input := append([]string{}, ids[:size]...)
 		if size > 0 {
+			input[size-1] = " " + input[size-1] + " "
 			input = append(input, ids[0], " ")
 		}
 		got, err := store.SuccessfulIDs(t.Context(), "s", input)

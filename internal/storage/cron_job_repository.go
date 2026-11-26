@@ -110,10 +110,6 @@ ORDER BY name`
 	return jobs, nil
 }
 
-func (r *Supervisor) ListEnabled(ctx context.Context) ([]CronJob, error) {
-	return r.ListCronJobs(ctx, false)
-}
-
 func (r *Supervisor) UpdateNextRunAt(ctx context.Context, id string, nextRunAt *time.Time, updatedAt time.Time) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE cron_jobs

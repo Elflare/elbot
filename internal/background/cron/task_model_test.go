@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"testing"
 
 	background "elbot/internal/background/share"
@@ -43,7 +44,7 @@ func TestCronModelSnapshotSurvivesFormatRetry(t *testing.T) {
 		models := &taskModels{current: config.ModelSelection{Provider: "provider", Model: "initial"}}
 		runner := &changingModelRunner{models: models, fakeCronRunner: fakeCronRunner{texts: []string{"invalid JSON", `{"completed":true,"need_report":false,"report":"ok"}`}}}
 		svc := newTestCronService(t, Options{Store: newFakeCronRepo(), Models: models, Runner: runner})
-		meta := Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"shell"}}}
+		meta := crondef.Metadata{Target: crondef.CronTarget{SourcePlatform: "cli"}, LLM: crondef.CronLLMMetadata{ToolListNames: []string{"shell"}}}
 		want := "initial"
 		if explicit {
 			meta.LLM.ModelProvider, meta.LLM.Model = "provider", "explicit"
@@ -73,7 +74,7 @@ func TestCronExecutionRejectsInvalidModelBeforeRunning(t *testing.T) {
 	for _, pair := range []config.ModelSelection{{Provider: "provider"}, {Model: "model"}, {Provider: "missing", Model: "model"}} {
 		runner := &fakeCronRunner{}
 		svc := newTestCronService(t, Options{Models: &taskModels{}, Runner: runner})
-		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
+		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, crondef.Metadata{Target: crondef.CronTarget{SourcePlatform: "cli"}, LLM: crondef.CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
 		if err != nil || !state.ReportReady || state.Report == "" || runner.calls != 0 {
 			t.Fatalf("model=%#v state=%+v err=%v calls=%d", pair, state, err, runner.calls)
 		}

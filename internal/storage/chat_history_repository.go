@@ -281,10 +281,6 @@ func (r *Supervisor) getMessage(ctx context.Context, platform string, conversati
 }
 
 func (r *Supervisor) SearchChatHistory(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error) {
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 10
-	}
 	conditions := []string{"platform = ?", "chat_type = ?", "chat_id = ?", "(text != '' OR COALESCE(segments, '') != '')"}
 	params := []any{req.Platform, req.ChatType, req.ChatID}
 	if !req.IncludeAssistant {
@@ -321,7 +317,7 @@ func (r *Supervisor) SearchChatHistory(ctx context.Context, req ChatHistorySearc
 		conditions = append(conditions, "created_at <= ?")
 		params = append(params, FormatTime(*req.Until))
 	}
-	params = append(params, limit)
+	params = append(params, req.Limit)
 	rows, err := r.history.QueryContext(ctx, chatMessageSelect+`
 WHERE `+strings.Join(conditions, " AND ")+`
 ORDER BY seq DESC

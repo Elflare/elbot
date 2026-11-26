@@ -30,12 +30,6 @@ func createSession(ctx context.Context, writer sessionWriter, session *Session) 
 	if session.UpdatedAt.IsZero() {
 		session.UpdatedAt = session.CreatedAt
 	}
-	if session.Mode == "" {
-		session.Mode = SessionModeWork
-	}
-	if session.Status == "" {
-		session.Status = SessionStatusActive
-	}
 
 	_, err := writer.ExecContext(ctx, `
 INSERT INTO sessions (

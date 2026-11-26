@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"elbot/internal/crondef"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -12,60 +13,6 @@ import (
 	"elbot/internal/delivery"
 )
 
-type Metadata struct {
-	Kind      string          `json:"kind"`          // 持久化定义的种类。
-	Version   int             `json:"version"`       // 定义格式版本。
-	Title     string          `json:"title"`         // 展示标题。
-	CreatedBy CronActor       `json:"created_by"`    // 创建者身份快照。
-	Schedule  CronSchedule    `json:"schedule"`      // 一次性或周期计划。
-	Trigger   CronTrigger     `json:"trigger"`       // 直接通知或 LLM 任务。
-	Target    CronTarget      `json:"target"`        // 报告投递范围。
-	LLM       CronLLMMetadata `json:"llm,omitempty"` // LLM 模型和工具选择。
-}
-
-type ScheduleMode string
-
-const (
-	ScheduleOnce ScheduleMode = "once"
-	ScheduleCron ScheduleMode = "cron"
-)
-
-type TriggerMode string
-
-const (
-	TriggerDirect TriggerMode = "direct"
-	TriggerLLM    TriggerMode = "llm"
-)
-
-type CronActor struct {
-	Platform string `json:"platform"`       // 创建者所属平台。
-	ID       string `json:"id"`             // 平台用户标识。
-	Name     string `json:"name,omitempty"` // 创建时的展示名称。
-}
-
-type CronSchedule struct {
-	Mode     ScheduleMode `json:"mode"`                // 计划模式。
-	RunAt    string       `json:"run_at,omitempty"`    // 本地时间，格式为 timeLayout。
-	CronExpr string       `json:"cron_expr,omitempty"` // 五字段 Cron 表达式。
-}
-
-type CronTrigger struct {
-	Mode    TriggerMode `json:"mode"`    // 执行方式。
-	Message string      `json:"message"` // 通知正文或 ELyph 任务文本。
-}
-
-type CronTarget struct {
-	ID                  string `json:"id,omitempty"`          // 来源平台的私聊接收人 ID；空值沿用默认接收人。
-	AllEnabledPlatforms bool   `json:"all_enabled_platforms"` // 是否向全部启用平台投递。
-	SourcePlatform      string `json:"source_platform"`       // 非广播时的来源平台。
-}
-
-type CronLLMMetadata struct {
-	ToolListNames []string `json:"tool_list_names,omitempty"` // 工具、Skill 或标签选择。
-	ModelProvider string   `json:"model_provider,omitempty"`  // 可选的模型提供方。
-	Model         string   `json:"model,omitempty"`           // 与提供方配对的模型名称。
-}
-
 type DeliveryStatus string
 
 const (
@@ -76,20 +23,20 @@ const (
 )
 
 type CronDeliveryState struct {
-	DeliveryComplete bool                      `json:"delivery_complete,omitempty"` // 本轮报告已投递完成或被前台接管，供管理工具读取。
-	ExecutionRunID   string                    `json:"execution_run_id,omitempty"`
-	TakenOver        bool                      `json:"taken_over,omitempty"`
-	Outcome          string                    `json:"outcome,omitempty"`
-	ExecutionResult  string                    `json:"execution_result,omitempty"`
-	RunID            string                    `json:"run_id"`
-	ReportReady      bool                      `json:"report_ready,omitempty"`
-	TaskCompleted    bool                      `json:"task_completed,omitempty"`
-	NeedReport       bool                      `json:"need_report"` // 是否发送汇报正文；附件保存与投递不受此开关影响。
-	Report           string                    `json:"report,omitempty"`
-	ReportSegments   []delivery.Output         `json:"report_segments,omitempty"` // 明确来源的附件，恢复发送不重新解析协议。
-	ReportSessionID  string                    `json:"report_session_id,omitempty"`
-	ReportMessageID  string                    `json:"report_message_id,omitempty"`
-	Targets          []CronDeliveryTargetState `json:"targets,omitempty"`
+	crondef.CronTaskStatus
+	ExecutionRunID  string                    `json:"execution_run_id,omitempty"`
+	TakenOver       bool                      `json:"taken_over,omitempty"`
+	Outcome         string                    `json:"outcome,omitempty"`
+	ExecutionResult string                    `json:"execution_result,omitempty"`
+	RunID           string                    `json:"run_id"`
+	ReportReady     bool                      `json:"report_ready,omitempty"`
+	TaskCompleted   bool                      `json:"task_completed,omitempty"`
+	NeedReport      bool                      `json:"need_report"` // 是否发送汇报正文；附件保存与投递不受此开关影响。
+	Report          string                    `json:"report,omitempty"`
+	ReportSegments  []delivery.Output         `json:"report_segments,omitempty"` // 明确来源的附件，恢复发送不重新解析协议。
+	ReportSessionID string                    `json:"report_session_id,omitempty"`
+	ReportMessageID string                    `json:"report_message_id,omitempty"`
+	Targets         []CronDeliveryTargetState `json:"targets,omitempty"`
 }
 
 type CronDeliveryTargetState struct {
@@ -105,13 +52,13 @@ type CronDeliveryOutputState struct {
 
 type CronLLMResult = background.JSONResult
 
-func decodeMetadata(raw string) (Metadata, error) {
-	var meta Metadata
+func decodeMetadata(raw string) (crondef.Metadata, error) {
+	var meta crondef.Metadata
 	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
-		return Metadata{}, err
+		return crondef.Metadata{}, err
 	}
-	if meta.Kind != metadataKind {
-		return Metadata{}, fmt.Errorf("unsupported cron metadata kind %q", meta.Kind)
+	if meta.Kind != crondef.MetadataKind {
+		return crondef.Metadata{}, fmt.Errorf("unsupported cron metadata kind %q", meta.Kind)
 	}
 	return meta, nil
 }
@@ -121,7 +68,7 @@ func parseRunAt(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, fmt.Errorf("run_at is required")
 	}
-	runAt, err := time.ParseInLocation(timeLayout, value, time.Local)
+	runAt, err := time.ParseInLocation(time.DateTime, value, time.Local)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("run_at must use YYYY-MM-DD HH:MM:SS: %w", err)
 	}

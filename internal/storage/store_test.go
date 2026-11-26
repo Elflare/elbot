@@ -224,7 +224,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 	store := NewStoreForTest(t)
 	ctx := context.Background()
 
-	s1 := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "qq session"}
+	s1 := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "qq session", Mode: SessionModeChat, Status: SessionStatusActive}
 	s2 := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "tg", ID: "u1"}, Platform: "tg", ChatID: "chat:1", Title: "tg session"}
 	s3 := &Session{ID: NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u2"}, Platform: "qq", ChatType: "group", ChatID: "2", Title: "other owner session"}
 	if err := store.CreateSession(ctx, s1); err != nil {
@@ -241,7 +241,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get s1: %v", err)
 	}
-	if got.Title != "qq session" || got.Mode != SessionModeWork || got.Status != SessionStatusActive {
+	if got.Title != "qq session" || got.Mode != SessionModeChat || got.Status != SessionStatusActive {
 		t.Fatalf("unexpected session: %#v", got)
 	}
 
@@ -559,7 +559,7 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 		t.Fatalf("updated = %#v", updated)
 	}
 
-	enabled, err := store.ListEnabled(ctx)
+	enabled, err := store.ListCronJobs(ctx, false)
 	if err != nil {
 		t.Fatalf("list enabled cron jobs: %v", err)
 	}
@@ -595,7 +595,7 @@ func TestCronJobRepositoryUpsertAndRunState(t *testing.T) {
 	if listed[0].NextRunAt != nil {
 		t.Fatalf("next run was not cleared after disable: %#v", listed[0])
 	}
-	enabled, err = store.ListEnabled(ctx)
+	enabled, err = store.ListCronJobs(ctx, false)
 	if err != nil {
 		t.Fatalf("list enabled after disable: %v", err)
 	}

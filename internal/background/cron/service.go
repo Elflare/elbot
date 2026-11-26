@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"log/slog"
 	"slices"
@@ -17,12 +18,6 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
-)
-
-const (
-	UserHandlerName = "builtin.cron"
-	metadataKind    = "llm_cron"
-	timeLayout      = "2006-01-02 15:04:05"
 )
 
 type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error)
@@ -182,7 +177,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (s *Service) targetPlatformNames(meta Metadata) []string {
+func (s *Service) targetPlatformNames(meta crondef.Metadata) []string {
 	var platforms []string
 	for _, target := range s.resolveDeliveryTargets(meta) {
 		platforms = append(platforms, target.Platform)

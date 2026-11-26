@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	background "elbot/internal/background/share"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -249,9 +250,9 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 	past := future.Add(-96 * time.Hour)
 	onceMetadata := func(runAt time.Time) string {
 		t.Helper()
-		data, err := json.Marshal(Metadata{
-			Kind: metadataKind, Version: 1,
-			Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: runAt.Format(timeLayout)},
+		data, err := json.Marshal(crondef.Metadata{
+			Kind: crondef.MetadataKind, Version: 1,
+			Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: runAt.Format(time.DateTime)},
 		})
 		if err != nil {
 			t.Fatalf("marshal once metadata: %v", err)
@@ -351,7 +352,7 @@ func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 
 func TestComputeNextRunAtUsesUserOnceRunAt(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 3, 0, 0, time.Local)
-	meta := Metadata{Kind: metadataKind, Version: 1, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}}
 	data, err := json.Marshal(meta)
 	if err != nil {
 		t.Fatalf("marshal metadata: %v", err)

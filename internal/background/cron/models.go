@@ -2,10 +2,11 @@ package cron
 
 import (
 	"elbot/internal/config"
+	"elbot/internal/crondef"
 	"elbot/internal/operationresult"
 )
 
-func (s *Service) modelForTask(meta CronLLMMetadata) operationresult.Result[config.ModelSelection] {
+func (s *Service) modelForTask(meta crondef.CronLLMMetadata) operationresult.Result[config.ModelSelection] {
 	if meta.ModelProvider == "" && meta.Model == "" {
 		return operationresult.Result[config.ModelSelection]{Status: operationresult.Success, Data: s.models.ResolveMode("work").ModelSelection}
 	}

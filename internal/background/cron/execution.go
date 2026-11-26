@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"elbot/internal/operationresult"
 )
 
-func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (context.Context, operationresult.Result[struct{}], error) {
+func (s *Service) runTask(ctx context.Context, job Job, meta crondef.Metadata) (context.Context, operationresult.Result[struct{}], error) {
 	ctx, job, prepared, err := s.prepareDelivery(ctx, job, meta)
 	if err != nil {
 		return ctx, operationresult.Result[struct{}]{}, err
@@ -38,7 +39,7 @@ func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (context.
 	return ctx, delivered, err
 }
 
-func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (context.Context, Job, operationresult.Result[CronDeliveryState], error) {
+func (s *Service) prepareDelivery(ctx context.Context, job Job, meta crondef.Metadata) (context.Context, Job, operationresult.Result[CronDeliveryState], error) {
 
 	if len(s.targetPlatformNames(meta)) == 0 {
 		return ctx, job, operationresult.Result[CronDeliveryState]{Status: operationresult.Unavailable, Message: fmt.Sprintf("no allowed delivery targets: source_platform=%q all_enabled_platforms=%t enabled_platforms=%v; target platform is not enabled", meta.Target.SourcePlatform, meta.Target.AllEnabledPlatforms, s.enabledPlatformNames())}, nil
@@ -47,7 +48,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	if err != nil {
 		return ctx, job, operationresult.Result[CronDeliveryState]{}, err
 	}
-	if meta.Schedule.Mode == ScheduleCron || strings.TrimSpace(job.DeliveryToken) == "" || strings.TrimSpace(state.RunID) == "" {
+	if meta.Schedule.Mode == crondef.ScheduleCron || strings.TrimSpace(job.DeliveryToken) == "" || strings.TrimSpace(state.RunID) == "" {
 		id, err := s.newRunID(ctx)
 		if err != nil {
 			return ctx, job, operationresult.Result[CronDeliveryState]{}, err
@@ -68,18 +69,18 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	}
 
 	switch meta.Trigger.Mode {
-	case TriggerDirect:
+	case crondef.TriggerDirect:
 		state.ReportReady, state.TaskCompleted = true, true
 		state.NeedReport = true
 		state.Report = strings.TrimSpace(meta.Trigger.Message)
-	case TriggerLLM:
+	case crondef.TriggerLLM:
 		ctx, state, err = s.runLLMReport(ctx, job, meta, state)
 
 	default:
 		err := fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
 		return ctx, job, operationresult.Result[CronDeliveryState]{}, err
 	}
-	if meta.Trigger.Mode == TriggerLLM && !state.ReportReady {
+	if meta.Trigger.Mode == crondef.TriggerLLM && !state.ReportReady {
 		if err != nil {
 			return ctx, job, operationresult.Result[CronDeliveryState]{}, err
 		}
@@ -108,7 +109,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	return ctx, job, operationresult.Result[CronDeliveryState]{Status: operationresult.Success, Data: state}, nil
 }
 
-func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, state CronDeliveryState) (context.Context, CronDeliveryState, error) {
+func (s *Service) runLLMReport(ctx context.Context, job Job, meta crondef.Metadata, state CronDeliveryState) (context.Context, CronDeliveryState, error) {
 
 	platforms := s.targetPlatformNames(meta)
 
@@ -233,7 +234,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	return ctx, state, nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (context.Context, operationresult.Result[background.RunResult], error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta crondef.Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (context.Context, operationresult.Result[background.RunResult], error) {
 	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
 	return s.runner.RunBackground(ctx, runRequest)

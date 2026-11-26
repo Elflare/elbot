@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/crondef"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,7 +65,7 @@ func TestPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T) {
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "提醒", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "该测试啦"}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "提醒", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "该测试啦"}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
 	startCronPlatformEvents(t, svc)
 
@@ -108,7 +109,7 @@ func TestPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "总结", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
 	startCronPlatformEvents(t, svc)
 
@@ -150,7 +151,7 @@ func TestRunLLMReportPassesToolListNames(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"ok"}`}
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}, LLM: crondef.CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	if _, _, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"}); err != nil {
 		t.Fatalf("runLLMReport: %v", err)
@@ -178,7 +179,7 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
-	job := upsertTestCronJob(t, store, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, store, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "总结", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	if _, result, err := svc.runTask(ctx, *job, meta); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("runTask: %v", err)
@@ -194,7 +195,7 @@ func TestCopyCronSessionUsesTaskSourceAndPreservesMetadata(t *testing.T) {
 		copies = append(copies, req)
 		return operationresult.Result[string]{Status: operationresult.Success, Data: "copy"}, nil
 	}, EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1"}}, {Name: "telegram", SuperadminIDs: []string{"2"}}, {Name: "cli"}}})
-	meta := Metadata{Title: "cron", Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
+	meta := crondef.Metadata{Title: "cron", Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
 	if result, err := svc.copySessionToBroadcastTargets(context.Background(), "source", meta, "user.cron.test"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -229,7 +230,7 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 		}
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	if _, result, err := svc.runTask(context.Background(), *job, meta); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("runTask: %v", err)
@@ -251,7 +252,7 @@ func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "日报", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Path: "missing.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
@@ -283,7 +284,7 @@ func TestMissedOnceFallsBackToURLTextAfterRemoteMediaSendFails(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "日报", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/chart.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
@@ -325,7 +326,7 @@ func TestMissedOnceReconnectRetriesOnlyPendingFallbackText(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "日报", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "正文", ReportSegments: []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/chart.png"}}}, ReportSessionID: "session"}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "session"
@@ -347,7 +348,7 @@ func TestMissedOnceReusesReportWhenTaskCompletedIsFalse(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "阻塞任务", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "阻塞任务", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 
 	svc.handlePlatformConnected(context.Background(), "qqonebot")
 	svc.handlePlatformConnected(context.Background(), "cli")
@@ -371,7 +372,7 @@ func TestConcurrentPlatformConnectionsGenerateOnce(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	meta := Metadata{Kind: metadataKind, Version: 2, Title: "并发", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "并发", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, store, meta)
 
 	var wg sync.WaitGroup
@@ -409,7 +410,7 @@ func TestDisableDuringMissedDeliveryDoesNotReenableJob(t *testing.T) {
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	meta := Metadata{Kind: metadataKind, Version: 2, Title: "提醒", CreatedBy: CronActor{Platform: "cli", ID: "local"}, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "正文"}, Target: CronTarget{SourcePlatform: "cli"}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Version: 2, Title: "提醒", CreatedBy: crondef.CronActor{Platform: "cli", ID: "local"}, Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "正文"}, Target: crondef.CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, store, meta)
 
 	done := make(chan struct{})
@@ -437,7 +438,7 @@ func TestRunLLMReportStartsFreshSessionEachCronTrigger(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"ok"}`, sessionIDs: []string{"cron-session-1", "cron-session-2"}}
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleCron, CronExpr: "*/5 * * * *"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleCron, CronExpr: "*/5 * * * *"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}, LLM: crondef.CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	_, _, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run-1"})
 	if err != nil {
@@ -459,13 +460,13 @@ func TestRunLLMReportStoresGeneratedReport(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"新报告"}`, sessionIDs: []string{"new-session"}}
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{
-		Kind:     metadataKind,
+	job := upsertTestCronJob(t, repo, crondef.Metadata{
+		Kind:     crondef.MetadataKind,
 		Version:  1,
 		Title:    "LLM",
-		Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
-		Trigger:  CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")},
-		Target:   CronTarget{SourcePlatform: "cli"},
+		Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"},
+		Trigger:  crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")},
+		Target:   crondef.CronTarget{SourcePlatform: "cli"},
 	})
 
 	_, updated, err := svc.runLLMReport(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata), CronDeliveryState{RunID: "new-run"})
@@ -484,7 +485,7 @@ func TestRunLLMReportPreservesTextWhenNeedReportFalse(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":false,"report":"仅保存"}`}
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	_, updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
@@ -524,7 +525,7 @@ func TestRunLLMNeedReportOnlyControlsText(t *testing.T) {
 				return sentReceipt(delivery.Receipt{}), nil
 			}})
 			svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-			job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+			job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 			_, result, err := svc.runTask(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata))
 			if tc.attachment && !errors.Is(err, failure) || !tc.attachment && (err != nil || result.Status != operationresult.Success) {
 				t.Fatalf("runTask: result=%+v err=%v", result, err)
@@ -564,7 +565,7 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{texts: []string{"不是 JSON", `{"completed":true,"need_report":true,"report":"修正后报告"}`}}
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}, LLM: crondef.CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	_, updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
@@ -600,7 +601,7 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "LLM", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerLLM, Message: testElyphTask("test")}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
 	if _, result, err := svc.runTask(context.Background(), *job, meta); err != nil || result.Status != operationresult.Failed {
@@ -626,7 +627,7 @@ func TestPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "提醒", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "该测试啦"}, Target: CronTarget{SourcePlatform: "cli"}})
+	job := upsertTestCronJob(t, repo, crondef.Metadata{Kind: crondef.MetadataKind, Version: 1, Title: "提醒", Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "该测试啦"}, Target: crondef.CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "该测试啦", Targets: []CronDeliveryTargetState{{Target: delivery.Target{Platform: "cli", Superadmins: true}, Outputs: []CronDeliveryOutputState{{ID: "text", Status: DeliveryDelivered}}}}}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "run"
@@ -707,7 +708,7 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 	}
 	opts.CLIPlatformName = "cli"
 	s := NewService(opts)
-	opts.Manager.RegisterHandler(UserHandlerName, s.Handler)
+	opts.Manager.RegisterHandler(crondef.UserHandlerName, s.Handler)
 	return s
 }
 
@@ -747,9 +748,9 @@ func testElyphTask(name string) string {
 	return "#task " + name + " - test task\n-> $report:str\n"
 }
 
-func upsertTestCronJob(t *testing.T, repo *fakeCronRepo, meta Metadata) *Job {
+func upsertTestCronJob(t *testing.T, repo *fakeCronRepo, meta crondef.Metadata) *Job {
 	t.Helper()
-	job := &Job{ID: storage.NewID(), Name: "user.cron.test", Handler: UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: mustMarshalTestMetadata(t, meta)}
+	job := &Job{ID: storage.NewID(), Name: "user.cron.test", Handler: crondef.UserHandlerName, Schedule: "4 3 2 1 *", Enabled: true, Metadata: mustMarshalTestMetadata(t, meta)}
 	repo.mu.Lock()
 	repo.jobs[job.Name] = job
 	repo.mu.Unlock()
@@ -757,7 +758,7 @@ func upsertTestCronJob(t *testing.T, repo *fakeCronRepo, meta Metadata) *Job {
 	return &copy
 }
 
-func mustDecodeTestMetadata(t *testing.T, raw string) Metadata {
+func mustDecodeTestMetadata(t *testing.T, raw string) crondef.Metadata {
 	t.Helper()
 	meta, err := decodeMetadata(raw)
 	if err != nil {
@@ -766,7 +767,7 @@ func mustDecodeTestMetadata(t *testing.T, raw string) Metadata {
 	return meta
 }
 
-func mustMarshalTestMetadata(t *testing.T, meta Metadata) string {
+func mustMarshalTestMetadata(t *testing.T, meta crondef.Metadata) string {
 	t.Helper()
 	data, err := json.Marshal(meta)
 	if err != nil {
@@ -822,7 +823,7 @@ func mustParseTestTime(t *testing.T, value string) time.Time {
 
 func deliverTestReport(t *testing.T, s *Service, platform, sessionID, messageID string) (operationresult.Result[struct{}], error) {
 	t.Helper()
-	meta := Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: platform}}
+	meta := crondef.Metadata{Kind: crondef.MetadataKind, Schedule: crondef.CronSchedule{Mode: crondef.ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: crondef.CronTrigger{Mode: crondef.TriggerDirect, Message: "report"}, Target: crondef.CronTarget{SourcePlatform: platform}}
 	job := upsertTestCronJob(t, s.store.(*fakeCronRepo), meta)
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, Report: "report", ReportSessionID: sessionID, ReportMessageID: messageID}
 	if ok, err := s.store.CompareAndSwapDelivery(t.Context(), job.ID, "", "run", mustMarshalTestDelivery(t, state), nil); err != nil || !ok {
