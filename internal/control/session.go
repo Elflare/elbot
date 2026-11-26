@@ -86,14 +86,10 @@ func (m *Supervisor) CreateSession(ctx context.Context) (operationresult.Result[
 }
 
 func (m *Supervisor) NewSession(ctx context.Context) (operationresult.Result[NewSessionResult], error) {
-	ready, err := m.beforeSession(ctx)
-	if err != nil {
-		return operationresult.Result[NewSessionResult]{}, err
+	ctx, ready, err := m.beforeSession(ctx)
+	if err != nil || (ready.Status != operationresult.Success && ready.Status != operationresult.NoCurrentSession) {
+		return operationresult.Result[NewSessionResult]{Status: ready.Status, Message: ready.Message}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[NewSessionResult]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	ctx = ready.Data
 	result, err := m.deps.Sessions.ResetCurrent(ctx, m.deps.Scope(ctx))
 	if err != nil {
 		return operationresult.Result[NewSessionResult]{}, err
@@ -273,14 +269,10 @@ func (m *Supervisor) CleanSessions(ctx context.Context, req CleanSessionsRequest
 }
 
 func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest) (operationresult.Result[ResumeSessionResult], error) {
-	ready, err := m.beforeSession(ctx)
-	if err != nil {
-		return operationresult.Result[ResumeSessionResult]{}, err
+	ctx, ready, err := m.beforeSession(ctx)
+	if err != nil || (ready.Status != operationresult.Success && ready.Status != operationresult.NoCurrentSession) {
+		return operationresult.Result[ResumeSessionResult]{Status: ready.Status, Message: ready.Message}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[ResumeSessionResult]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	ctx = ready.Data
 	if strings.TrimSpace(req.SessionID) == "" {
 		return operationresult.Result[ResumeSessionResult]{Status: operationresult.InvalidArguments, Message: "session_id 不能为空"}, nil
 	}
@@ -308,21 +300,14 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 }
 
 func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (operationresult.Result[ForkSessionResult], error) {
-	ready, err := m.beforeSession(ctx)
-	if err != nil {
-		return operationresult.Result[ForkSessionResult]{}, err
+	ctx, ready, err := m.beforeSession(ctx)
+	if err != nil || (ready.Status != operationresult.Success && ready.Status != operationresult.NoCurrentSession) {
+		return operationresult.Result[ForkSessionResult]{Status: ready.Status, Message: ready.Message}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[ForkSessionResult]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	ctx = ready.Data
 	if strings.TrimSpace(req.MessageID) == "" {
 		return operationresult.Result[ForkSessionResult]{Status: operationresult.InvalidArguments, Message: "message_id 不能为空"}, nil
 	}
-	current, err := m.requireCurrent(ctx, req.SessionID)
-	if err != nil {
-		return operationresult.Result[ForkSessionResult]{}, err
-	}
+	current := requireCurrent(ready, req.SessionID)
 	if current.Status != operationresult.Success {
 		return operationresult.Result[ForkSessionResult]{Status: current.Status, Message: current.Message}, nil
 	}
@@ -341,18 +326,11 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (o
 }
 
 func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionRequest) (operationresult.Result[CompactSessionResult], error) {
-	ready, err := m.beforeSession(ctx)
+	ctx, ready, err := m.beforeSession(ctx)
 	if err != nil {
 		return operationresult.Result[CompactSessionResult]{}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[CompactSessionResult]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	ctx = ready.Data
-	current, err := m.requireCurrent(ctx, req.SessionID)
-	if err != nil {
-		return operationresult.Result[CompactSessionResult]{}, err
-	}
+	current := requireCurrent(ready, req.SessionID)
 	if current.Status != operationresult.Success {
 		return operationresult.Result[CompactSessionResult]{Status: current.Status, Message: current.Message}, nil
 	}
@@ -368,14 +346,10 @@ func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionReque
 }
 
 func (m *Supervisor) SetMode(ctx context.Context, req SetModeRequest) (operationresult.Result[SetModeResult], error) {
-	ready, err := m.beforeSession(ctx)
-	if err != nil {
-		return operationresult.Result[SetModeResult]{}, err
+	ctx, ready, err := m.beforeSession(ctx)
+	if err != nil || (ready.Status != operationresult.Success && ready.Status != operationresult.NoCurrentSession) {
+		return operationresult.Result[SetModeResult]{Status: ready.Status, Message: ready.Message}, err
 	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[SetModeResult]{Status: ready.Status, Message: ready.Message}, nil
-	}
-	ctx = ready.Data
 	activated, err := m.deps.Sessions.ActivateMode(ctx, m.deps.Scope(ctx), session.ActivateModeRequest{Mode: req.Mode, NewSessionTitle: req.NewSessionTitle})
 	if err != nil {
 		return operationresult.Result[SetModeResult]{}, err
@@ -439,26 +413,21 @@ func (m *Supervisor) SessionMessages(ctx context.Context, req SessionMessagesReq
 	return operationresult.Result[SessionMessagesResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (m *Supervisor) beforeSession(ctx context.Context) (operationresult.Result[context.Context], error) {
+// beforeSession 返回同一次读取的会话与绑定；没有 current 时保留调用方的上下文与业务状态。
+func (m *Supervisor) beforeSession(ctx context.Context) (context.Context, operationresult.Result[session.CurrentBoundData], error) {
 	authorized, err := authorize(ctx, false)
 	if err != nil || authorized.Status != operationresult.Success {
-		return operationresult.Result[context.Context]{Status: authorized.Status, Message: authorized.Message}, err
+		return ctx, operationresult.Result[session.CurrentBoundData]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	current, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
-	if err != nil {
-		return operationresult.Result[context.Context]{}, err
-	}
-	if current.Status == operationresult.NoCurrentSession {
-		return operationresult.Result[context.Context]{Status: operationresult.Success, Data: ctx}, nil
-	}
-	if current.Status != operationresult.Success {
-		return operationresult.Result[context.Context]{Status: current.Status, Message: current.Message}, nil
+	if err != nil || current.Status != operationresult.Success {
+		return ctx, current, err
 	}
 	binding := current.Data.Binding
 	if original, ok := session.BindingFromContext(ctx); ok && (original != binding || !original.Valid()) {
-		return operationresult.Result[context.Context]{Status: operationresult.Conflict, Message: "原会话绑定已经失效"}, nil
+		return ctx, operationresult.Result[session.CurrentBoundData]{Status: operationresult.Conflict, Message: "原会话绑定已经失效"}, nil
 	}
-	return operationresult.Result[context.Context]{Status: operationresult.Success, Data: session.WithBinding(ctx, binding)}, nil
+	return session.WithBinding(ctx, binding), current, nil
 }
 
 func (m *Supervisor) resolveSessionID(ctx context.Context, id string) (operationresult.Result[string], error) {
@@ -494,15 +463,14 @@ func (m *Supervisor) readSession(ctx context.Context, id string) (operationresul
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
-func (m *Supervisor) requireCurrent(ctx context.Context, id string) (operationresult.Result[string], error) {
-	current, err := m.deps.Sessions.Current(ctx, m.deps.Scope(ctx))
-	if err != nil || current.Status != operationresult.Success {
-		return operationresult.Result[string]{Status: current.Status, Message: current.Message}, err
+func requireCurrent(current operationresult.Result[session.CurrentBoundData], id string) operationresult.Result[string] {
+	if current.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: current.Status, Message: current.Message}
 	}
-	if id = strings.TrimSpace(id); id != "" && current.Data.ID != id {
-		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "目标不是当前绑定的会话"}, nil
+	if id = strings.TrimSpace(id); id != "" && current.Data.Session.ID != id {
+		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "目标不是当前绑定的会话"}
 	}
-	return operationresult.Result[string]{Status: operationresult.Success, Data: current.Data.ID}, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: current.Data.Session.ID}
 }
 
 func (m *Supervisor) currentID(ctx context.Context) (operationresult.Result[string], error) {

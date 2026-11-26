@@ -58,7 +58,7 @@
 - [x] storage包
 - [x] session包
 - [x] command包
-- [ ] control包
+- [x] control包
     - [x] 收回包内授权，合并授权失败的重复返回分支。
     - [x] 分离会话变更回执和预览，保真交付文件分片，原子保存受管文件。
 - [x] delivery包
