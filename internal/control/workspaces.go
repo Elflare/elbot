@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"elbot/internal/workspace"
 )
@@ -34,8 +33,7 @@ func (m *Supervisor) WorkspaceDirectories(ctx context.Context, req WorkspaceDire
 	if path == "" {
 		path = state.Dir
 	}
-	result, err := workspace.ListDirectories(ctx, path)
-	return result, err
+	return workspace.ListDirectories(ctx, path)
 }
 
 func (m *Supervisor) WorkspaceFiles(ctx context.Context, req WorkspaceFilesRequest) (operationresult.Result[WorkspaceFilesResult], error) {
@@ -65,12 +63,9 @@ func (m *Supervisor) WorkspaceFiles(ctx context.Context, req WorkspaceFilesReque
 	return operationresult.Result[WorkspaceFilesResult]{Status: operationresult.Success, Data: result.Data}, nil
 }
 func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceRequest) (operationresult.Result[WorkspaceResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[WorkspaceResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[WorkspaceResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[WorkspaceResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	path, err := workspace.ValidateWorkspaceDir(req.Path)
 	if err != nil {
@@ -79,7 +74,7 @@ func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceR
 	if path.Status != operationresult.Success {
 		return operationresult.Result[WorkspaceResult]{Status: path.Status, Message: path.Message}, nil
 	}
-	result, err := m.workspaces.SetUserDir(ctx, path.Data)
+	result, err := m.deps.Workspaces.SetUserDir(ctx, path.Data)
 	if err != nil {
 		return operationresult.Result[WorkspaceResult]{}, err
 	}
@@ -90,14 +85,11 @@ func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceR
 }
 
 func (m *Supervisor) SetWorkspaceSync(ctx context.Context, req SetWorkspaceSyncRequest) (operationresult.Result[WorkspaceResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[WorkspaceResult]{}, err
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[WorkspaceResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[WorkspaceResult]{Status: authorized.Status, Message: authorized.Message}, nil
-	}
-	result, err := m.workspaces.SetSync(ctx, req.AgentToUser, req.UserToAgent)
+	result, err := m.deps.Workspaces.SetSync(ctx, req.AgentToUser, req.UserToAgent)
 	if err != nil {
 		return operationresult.Result[WorkspaceResult]{}, err
 	}
@@ -123,8 +115,7 @@ func (m *Supervisor) WorkspaceGit(ctx context.Context, req WorkspaceGitRequest) 
 	if path == "" {
 		return operationresult.Result[WorkspaceGitResult]{Status: operationresult.Success, Data: WorkspaceGitResult{Changes: []workspace.GitChange{}}}, nil
 	}
-	result, err := workspace.ReadGitStatus(ctx, path)
-	return result, err
+	return workspace.ReadGitStatus(ctx, path)
 }
 
 func (m *Supervisor) WorkspaceGitDiff(ctx context.Context, req WorkspaceGitRequest) (operationresult.Result[string], error) {
@@ -143,26 +134,15 @@ func (m *Supervisor) WorkspaceGitDiff(ctx context.Context, req WorkspaceGitReque
 	if path == "" {
 		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: "workspace 尚未设置"}, nil
 	}
-	diff, err := workspace.ReadGitDiff(ctx, path, req.Path)
-	return diff, err
+	return workspace.ReadGitDiff(ctx, path, req.Path)
 }
 
 func (m *Supervisor) currentWorkspace(ctx context.Context) (operationresult.Result[workspace.CurrentState], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[workspace.CurrentState]{}, err
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[workspace.CurrentState]{Status: authorized.Status, Message: authorized.Message}, err
 	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[workspace.CurrentState]{Status: authorized.Status, Message: authorized.Message}, nil
-	}
-	result, err := m.workspaces.GetCurrentState(ctx)
-	if err != nil {
-		return operationresult.Result[workspace.CurrentState]{}, err
-	}
-	if result.Status != operationresult.Success {
-		return operationresult.Result[workspace.CurrentState]{Status: result.Status, Message: result.Message}, nil
-	}
-	return result, nil
+	return m.deps.Workspaces.GetCurrentState(ctx)
 }
 
 func workspaceResult(sessionID string, state workspace.State) WorkspaceResult {

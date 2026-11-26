@@ -43,7 +43,7 @@ func (s *historyStub) ListInputHistory(_ context.Context, account contextinfo.Ac
 
 func TestListInputHistoryUsesAuthenticatedAccount(t *testing.T) {
 	provider := &historyStub{}
-	m, _ := testSupervisor(t, SupervisorDeps{History: provider})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{History: provider}})
 	denied, err := m.ListInputHistory(context.Background())
 	if err != nil || denied.Status != operationresult.Forbidden || provider.limit != 0 {
 		t.Fatal(denied, err, provider.limit)
@@ -77,9 +77,9 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	}
 	message := storage.Message{ID: "m", SessionID: "s", Role: "assistant", Content: "exact\n", SourceContent: "model source", ReasoningContent: "thought", ParentMessageID: "parent", ReplyToPlatformMessageID: "platform-message", ReplyToMessageID: "reply", ToolCallID: "tool-call", ToolCalls: []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: "completed", Metadata: `{"internal":"must not be returned"}`, Segments: string(raw), CreatedAt: time.Now()}
 	provider.messages = []storage.Message{message}
-	m, _ := testSupervisor(t, SupervisorDeps{History: provider, Scope: func(context.Context) session.Scope {
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{History: provider, Scope: func(context.Context) session.Scope {
 		return session.Scope{Platform: "qq", ChatType: contextinfo.ChatPrivate, ChatID: "chat", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "user"}}
-	}})
+	}}})
 	forbidden, err := m.SessionMessages(testContext(false), SessionMessagesRequest{SessionID: "s", Page: 1, PageSize: 250})
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func (s *managedSessionStub) Delete(_ context.Context, _ session.Scope, id strin
 
 func TestSessionManagementUsesExplicitTargetAndProviderAdmission(t *testing.T) {
 	provider := &managedSessionStub{sessionStub: sessionStub{current: &storage.Session{ID: "current"}}, rows: map[string]*storage.Session{"target": {ID: "target"}}}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	operations := map[string]func() (operationresult.Status, error){
 		"rename": func() (operationresult.Status, error) {
 			result, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "target", Title: "title", PageSize: 10})
@@ -272,7 +272,7 @@ func TestRenameSessionResolvesUniqueTitleAcrossPages(t *testing.T) {
 			{ID: "target", Title: "known title"},
 		},
 	}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	renamed, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "known title", Title: "new title", PageSize: 1})
 	if err != nil || renamed.Status != operationresult.Success {
 		t.Fatalf("rename: %+v %v", renamed, err)
@@ -289,16 +289,17 @@ func TestRenameSessionRejectsDuplicateTitleAndFallsBackForMissingTitle(t *testin
 		listed: []storage.SessionSummary{
 			{ID: "one", Title: "shared title"},
 			{ID: "two", Title: "shared title"},
+			{ID: "three", Title: "shared title"},
 		},
 	}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	duplicate, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "shared title", Title: "replacement", PageSize: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireStatus(t, duplicate, operationresult.InvalidArguments)
-	if provider.target != "" {
-		t.Fatalf("duplicate title reached provider: %+v", provider)
+	if provider.target != "" || len(provider.queries) != 2 {
+		t.Fatalf("ambiguous title: target=%q pages=%d", provider.target, len(provider.queries))
 	}
 	provider.listed = nil
 	provider.queries = nil
@@ -323,7 +324,7 @@ func (s *sessionListStub) ListPage(_ context.Context, _ session.Scope, req sessi
 
 func TestSessionListForwardsOptionsWithoutCaps(t *testing.T) {
 	provider := &sessionListStub{sessionStub: sessionStub{currentStatus: operationresult.NoCurrentSession}}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	result, err := m.ListSessions(testContext(false), ListSessionsRequest{Query: "chosen", Page: 3, PageSize: 250, Archived: true, ExcludeCurrent: true})
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +337,7 @@ func TestSessionListForwardsOptionsWithoutCaps(t *testing.T) {
 
 func TestSessionListRequiresSuperadminForAllPlatforms(t *testing.T) {
 	provider := &sessionListStub{sessionStub: sessionStub{currentStatus: operationresult.NoCurrentSession}}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	forbidden, err := m.ListSessions(testContext(false), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true})
 	if err != nil {
 		t.Fatal(err)

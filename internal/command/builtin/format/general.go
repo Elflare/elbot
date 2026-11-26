@@ -323,11 +323,6 @@ func HookDetail(d control.GetHookResult) string {
 				fmt.Fprintf(&out, "\n%s", item.Detail)
 			}
 		}
-	} else if len(d.Items) > 0 && !stateful && first.Point != "" {
-		fmt.Fprintf(&out, "point: %s\npriority: %d", first.Point, first.Priority)
-		if first.Detail != "" {
-			fmt.Fprintf(&out, "\n%s", first.Detail)
-		}
 	}
 	return strings.TrimRight(out.String(), "\n")
 }

@@ -2,9 +2,9 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/command/builtin/format"
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/control/format"
 )
 
 func NewNew(deps Deps) command.Handler {

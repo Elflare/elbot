@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"maps"
@@ -17,12 +16,9 @@ import (
 
 func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (operationresult.Result[QueryLogsResult], error) {
 	result := QueryLogsResult{Items: []LogData{}, DamagedLines: []string{}}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[QueryLogsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[QueryLogsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[QueryLogsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if !slices.Contains([]string{"log", "audit", "elnis"}, req.Category) {
 		return operationresult.Result[QueryLogsResult]{Status: operationresult.InvalidArguments, Message: "category 必须是 log、audit 或 elnis"}, nil
@@ -54,12 +50,9 @@ func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (opera
 
 func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (operationresult.Result[QueryUsageResult], error) {
 	result := QueryUsageResult{Items: []UsageBucket{}}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[QueryUsageResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[QueryUsageResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[QueryUsageResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if !slices.Contains([]string{"model", "day", "session"}, req.GroupBy) {
 		return operationresult.Result[QueryUsageResult]{Status: operationresult.InvalidArguments, Message: "group_by 必须是 model、day 或 session"}, nil

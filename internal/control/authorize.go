@@ -1,4 +1,4 @@
-package share
+package control
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"elbot/internal/operationresult"
 )
 
-// Authorize allows user and superadmin actors, or only superadmin when adminOnly is true.
-func Authorize(ctx context.Context, adminOnly bool) (operationresult.Result[contextinfo.Actor], error) {
+// authorize 接受用户和超管；adminOnly 操作只允许超管。
+func authorize(ctx context.Context, adminOnly bool) (operationresult.Result[contextinfo.Actor], error) {
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[contextinfo.Actor]{}, err
 	}

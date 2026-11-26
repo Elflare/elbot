@@ -2,7 +2,7 @@ package builtin
 
 import (
 	"context"
-	"elbot/internal/control/format"
+	"elbot/internal/command/builtin/format"
 	"fmt"
 	"strings"
 

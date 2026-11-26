@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"bytes"
-	controlshare "elbot/internal/control/share"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -55,7 +54,7 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	var err error
 	switch raw.Kind {
 	case ContentSessionList:
-		content, err = decodeBlockContent[controlshare.ListSessionsResult](decoder)
+		content, err = decodeBlockContent[ListSessionsResult](decoder)
 	case ContentPreview:
 		content, err = decodeBlockContent[[]ContentBlock](decoder)
 	case ContentQuestion:
@@ -89,7 +88,7 @@ func ContentBlocksText(blocks []ContentBlock) string {
 		var content string
 		switch block.Kind {
 		case ContentSessionList:
-			content = SessionListText(block.Content.(controlshare.ListSessionsResult))
+			content = SessionListText(block.Content.(ListSessionsResult))
 		case ContentPreview:
 			content = previewOperation(operationPreviewBody(block.Content.([]ContentBlock)))
 		case ContentQuestion:

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -15,12 +14,9 @@ import (
 )
 
 func (m *Supervisor) ListRequests(ctx context.Context) (operationresult.Result[ListRequestsResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ListRequestsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListRequestsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListRequestsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	result := ListRequestsResult{Items: requestData(m.deps.Requests.List())}
 	for i := range result.Items {
@@ -41,12 +37,9 @@ func (m *Supervisor) ListRequests(ctx context.Context) (operationresult.Result[L
 
 func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (operationresult.Result[StopRequestResult], error) {
 	result := StopRequestResult{RequestID: req.RequestID, SessionIDs: []string{}, State: "stopping"}
-	ready, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[StopRequestResult]{}, err
-	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[StopRequestResult]{Status: ready.Status, Message: ready.Message}, nil
+	ready, err := authorize(ctx, false)
+	if err != nil || ready.Status != operationresult.Success {
+		return operationresult.Result[StopRequestResult]{Status: ready.Status, Message: ready.Message}, err
 	}
 	if strings.TrimSpace(req.RequestID) == "" {
 		return operationresult.Result[StopRequestResult]{Status: operationresult.InvalidArguments, Message: "request_id 不能为空"}, nil
@@ -95,12 +88,9 @@ func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (o
 }
 
 func (m *Supervisor) StopSession(ctx context.Context) (operationresult.Result[StopSessionResult], error) {
-	ready, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[StopSessionResult]{}, err
-	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[StopSessionResult]{Status: ready.Status, Message: ready.Message}, nil
+	ready, err := authorize(ctx, false)
+	if err != nil || ready.Status != operationresult.Success {
+		return operationresult.Result[StopSessionResult]{Status: ready.Status, Message: ready.Message}, err
 	}
 	current, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
 	if err != nil {
@@ -123,12 +113,9 @@ func (m *Supervisor) StopSession(ctx context.Context) (operationresult.Result[St
 }
 
 func (m *Supervisor) StopAllRequests(ctx context.Context) (operationresult.Result[StopAllRequestsResult], error) {
-	ready, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[StopAllRequestsResult]{}, err
-	}
-	if ready.Status != operationresult.Success {
-		return operationresult.Result[StopAllRequestsResult]{Status: ready.Status, Message: ready.Message}, nil
+	ready, err := authorize(ctx, true)
+	if err != nil || ready.Status != operationresult.Success {
+		return operationresult.Result[StopAllRequestsResult]{Status: ready.Status, Message: ready.Message}, err
 	}
 	seen := map[string]bool{}
 	for _, item := range m.deps.Requests.List() {

@@ -44,11 +44,7 @@ func (m *Supervisor) ConnectAgent(deps AgentDeps) error {
 	if deps.Workspaces == nil {
 		return fmt.Errorf("control: Workspace capability is required")
 	}
-	m.deps.Tools, m.deps.Skills, m.deps.FileRollback, m.deps.PrepareFileContext = deps.Tools, deps.Skills, deps.FileRollback, deps.PrepareFileContext
-	m.deps.Sessions, m.deps.History, m.deps.Requests = deps.Sessions, deps.History, deps.Requests
-	m.workspaces = deps.Workspaces
-	m.deps.Execution, m.deps.Confirmations = deps.Execution, deps.Confirmations
-	m.deps.Scope, m.deps.Status, m.deps.Commands = deps.Scope, deps.Status, deps.Commands
+	m.deps.AgentDeps = deps
 	return nil
 }
 

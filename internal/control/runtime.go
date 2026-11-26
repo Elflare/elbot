@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"sync"
 
@@ -23,12 +22,9 @@ type CheckConfigurationResult struct {
 }
 
 func (m *Supervisor) CheckConfiguration(ctx context.Context) (operationresult.Result[CheckConfigurationResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[CheckConfigurationResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[CheckConfigurationResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[CheckConfigurationResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	report, err := m.deps.Doctor.Check(ctx)
 	if err != nil {
@@ -44,12 +40,9 @@ func (m *Supervisor) CheckConfiguration(ctx context.Context) (operationresult.Re
 }
 
 func (m *Supervisor) RequestRestart(ctx context.Context) (operationresult.Result[RequestRestartResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[RequestRestartResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[RequestRestartResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[RequestRestartResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	prepared, err := m.deps.Runtime.PrepareRestart(ctx)
 	if err != nil {

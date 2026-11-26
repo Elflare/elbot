@@ -2,10 +2,10 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/command/builtin/format"
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
-	"elbot/internal/control/format"
 	"elbot/internal/operationresult"
 	"fmt"
 	"sort"

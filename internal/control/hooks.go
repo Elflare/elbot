@@ -2,18 +2,14 @@ package control
 
 import (
 	"context"
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"strings"
 )
 
 func (m *Supervisor) ListHooks(ctx context.Context) (operationresult.Result[ListHooksResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ListHooksResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListHooksResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListHooksResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	items, err := m.deps.Hooks.List(ctx)
 	if items == nil {
@@ -27,12 +23,9 @@ func (m *Supervisor) ListHooks(ctx context.Context) (operationresult.Result[List
 
 func (m *Supervisor) GetHook(ctx context.Context, req GetHookRequest) (operationresult.Result[GetHookResult], error) {
 	result := GetHookResult{Items: []HookInfo{}}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[GetHookResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[GetHookResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[GetHookResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.HookID) == "" {
 		return operationresult.Result[GetHookResult]{Status: operationresult.InvalidArguments, Message: "hook_id 不能为空"}, nil
@@ -53,12 +46,9 @@ func (m *Supervisor) GetHook(ctx context.Context, req GetHookRequest) (operation
 }
 
 func (m *Supervisor) ReloadHooks(ctx context.Context) (operationresult.Result[ReloadHooksResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ReloadHooksResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ReloadHooksResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ReloadHooksResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	result, err := m.deps.Hooks.Reload(ctx)
 	if err != nil {
@@ -68,12 +58,9 @@ func (m *Supervisor) ReloadHooks(ctx context.Context) (operationresult.Result[Re
 }
 
 func (m *Supervisor) StartHook(ctx context.Context, req StartHookRequest) (operationresult.Result[struct{}], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.HookID) == "" {
 		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "hook_id 不能为空"}, nil
@@ -82,12 +69,9 @@ func (m *Supervisor) StartHook(ctx context.Context, req StartHookRequest) (opera
 }
 
 func (m *Supervisor) StopHook(ctx context.Context, req StopHookRequest) (operationresult.Result[struct{}], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.HookID) == "" {
 		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "hook_id 不能为空"}, nil
@@ -96,12 +80,9 @@ func (m *Supervisor) StopHook(ctx context.Context, req StopHookRequest) (operati
 }
 
 func (m *Supervisor) RestartHook(ctx context.Context, req RestartHookRequest) (operationresult.Result[struct{}], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.HookID) == "" {
 		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "hook_id 不能为空"}, nil

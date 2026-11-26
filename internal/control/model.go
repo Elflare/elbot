@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/control/share"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
@@ -14,23 +13,17 @@ import (
 )
 
 func (m *Supervisor) ListModels(ctx context.Context, req ListModelsRequest) (operationresult.Result[ListModelsResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ListModelsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListModelsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListModelsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	return operationresult.Result[ListModelsResult]{Status: operationresult.Success, Data: m.modelList(req.Query, false)}, nil
 }
 
 func (m *Supervisor) RefreshModels(ctx context.Context, req ListModelsRequest) (operationresult.Result[RefreshModelsResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[RefreshModelsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[RefreshModelsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[RefreshModelsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if err := m.deps.Models.ReloadProviders(ctx); err != nil {
 		return operationresult.Result[RefreshModelsResult]{}, err
@@ -39,12 +32,9 @@ func (m *Supervisor) RefreshModels(ctx context.Context, req ListModelsRequest) (
 }
 
 func (m *Supervisor) SelectModel(ctx context.Context, req SelectModelRequest) (operationresult.Result[SelectModelResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[SelectModelResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[SelectModelResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[SelectModelResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.Provider) == "" || strings.TrimSpace(req.Model) == "" || strings.Contains(req.Provider, "/") {
 		return operationresult.Result[SelectModelResult]{Status: operationresult.InvalidArguments, Message: "需要明确的 provider 和 model"}, nil

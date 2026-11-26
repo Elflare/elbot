@@ -3,7 +3,6 @@ package control
 
 import (
 	"context"
-	controlshare "elbot/internal/control/share"
 	"encoding/json"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"elbot/internal/workspace"
 )
 
-type Page = controlshare.Page
+type Page = delivery.Page
 
 type CommandInfo struct {
 	Name        string           `json:"name"`
@@ -35,13 +34,13 @@ type ListCommandsResult struct {
 	Items []CommandInfo `json:"items"`
 }
 
-type SessionData = controlshare.SessionData
-type MessageData = controlshare.MessageData
+type SessionData = delivery.SessionData
+type MessageData = delivery.MessageData
 
 // ToolCallData is the tool invocation shape exposed by the history API.
-type ToolCallData = controlshare.ToolCallData
+type ToolCallData = delivery.ToolCallData
 
-type SessionSummaryData = controlshare.SessionSummaryData
+type SessionSummaryData = delivery.SessionSummaryData
 type ListSessionsRequest struct {
 	Query          string `json:"query"`
 	Page           int    `json:"page"`            // 从 1 开始，由调用方指定。
@@ -50,7 +49,7 @@ type ListSessionsRequest struct {
 	ExcludeCurrent bool   `json:"exclude_current"` // 排除当前绑定的会话。
 	AllPlatforms   bool   `json:"all_platforms"`   // 超管显式查询所有平台会话。
 }
-type ListSessionsResult = controlshare.ListSessionsResult
+type ListSessionsResult = delivery.ListSessionsResult
 type GetSessionRequest struct {
 	SessionID string `json:"session_id"`
 }

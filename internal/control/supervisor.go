@@ -12,14 +12,13 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/control/share"
 )
 
 // Supervisor 持有统一操作策略和文件访问范围，不拥有借用业务服务的生命周期。
 type Supervisor struct {
-	questions   storage.QuestionSet
-	deps        SupervisorDeps
-	workspaces  WorkspaceCapabilities
+	questions storage.QuestionSet
+	deps      SupervisorDeps
+
 	roots       map[string]string // 逻辑目录到实际目录；构造后只读。
 	configFiles map[string]string // 固定逻辑配置名到实际文件，可引用配置目录之外的文件。
 	filesMu     sync.RWMutex      // 协调本总管的直接读写，防止读到本总管尚未写完的内容。
@@ -57,12 +56,9 @@ func NewSupervisor(cfg *config.Config, deps SupervisorDeps) (*Supervisor, error)
 }
 
 func (m *Supervisor) ListCommands(ctx context.Context, req ListCommandsRequest) (operationresult.Result[ListCommandsResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[ListCommandsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListCommandsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListCommandsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	actor := authorized.Data
 	result := ListCommandsResult{Items: []CommandInfo{}}
@@ -87,12 +83,9 @@ func (m *Supervisor) ListCommands(ctx context.Context, req ListCommandsRequest) 
 }
 
 func (m *Supervisor) Status(ctx context.Context) (operationresult.Result[StatusResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[StatusResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[StatusResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[StatusResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	return m.deps.Status(ctx)
 }

@@ -1,9 +1,9 @@
 package command
 
 import (
+	"elbot/internal/command/builtin/format"
 	commandshare "elbot/internal/command/share"
 	"elbot/internal/control"
-	"elbot/internal/control/format"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"

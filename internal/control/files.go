@@ -13,18 +13,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 )
 
 func (m *Supervisor) ListFiles(ctx context.Context, req ListFilesRequest) (operationresult.Result[ListFilesResult], error) {
 	result := ListFilesResult{Root: req.Root, Path: req.Path, Items: []FileEntry{}}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ListFilesResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListFilesResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListFilesResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if req.Root == "" {
 		if req.Path != "" {
@@ -134,12 +130,9 @@ func (m *Supervisor) ListFiles(ctx context.Context, req ListFilesRequest) (opera
 
 func (m *Supervisor) ReadFile(ctx context.Context, req ReadFileRequest) (operationresult.Result[ReadFileResult], error) {
 	result := ReadFileResult{Root: req.Root, Path: req.Path}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[ReadFileResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ReadFileResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ReadFileResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if req.Offset < 0 || req.Limit < 0 {
 		return operationresult.Result[ReadFileResult]{Status: operationresult.InvalidArguments, Message: "文件读取偏移或字节数无效"}, nil
@@ -207,12 +200,9 @@ func (m *Supervisor) ReadFile(ctx context.Context, req ReadFileRequest) (operati
 // WriteFile 原样写入前端提交的 UTF-8 文本，不转换编码、换行或创建撤销记录。
 func (m *Supervisor) WriteFile(ctx context.Context, req WriteFileRequest) (operationresult.Result[WriteFileResult], error) {
 	result := WriteFileResult{Root: req.Root, Path: req.Path}
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[WriteFileResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[WriteFileResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[WriteFileResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if req.Root == "logs" {
 		return operationresult.Result[WriteFileResult]{Status: operationresult.Forbidden, Message: "日志文件只读"}, nil

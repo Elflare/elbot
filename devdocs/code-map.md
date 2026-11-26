@@ -77,9 +77,9 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/command/`：`types.go`、`result.go` 命令契约；`wiring.go` 内置命令装配；`router.go` 路由；`parse.go` 解析命令；`directive.go` 解析正文和补全中的 `@tool` / `@skill` 指令；`format.go` 命令文本组装；`completion.go` 补全。
 - `internal/command/share/`：内部共用契约及纯辅助逻辑。
-- `internal/command/builtin/`：`register.go` 内部模块登记；其他命令按同名文件定位。
+- `internal/command/builtin/`：`register.go` 内部模块登记；`format/` 命令结果文本展示；其他命令按同名文件定位。
 - `internal/command/builtin/`：`log.go` 日志入口；`log_query.go` 查询解析；`usage.go` 用量统计。
-- `internal/control/`：统一业务操作入口；`contracts.go` 请求与 raw 结果；按会话、日志、工具、Hook、文件等主题分文件实现；`format/` 提供可选展示格式化。
+- `internal/control/`：统一业务操作入口；`contracts.go` 请求与结构化结果；按会话、日志、工具、Hook、文件等主题分文件实现。
 - `internal/agent/input/command_executor.go`：执行协调。
 - `internal/agent/input/file_rollback.go`、`internal/command/builtin/rollback.go`：撤销准入、撤销命令。
 - `internal/completion/`：结构化补全与工具候选。
@@ -161,7 +161,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 输出、投递与通知
 
 - `internal/delivery/delivery.go`：输出、目标、回执与发送契约。
-- `internal/delivery/stream.go`：消息流事件与消费契约。
+- `internal/delivery/stream.go`：消息流事件与消费契约；`session_list.go`：会话列表交付结构与文本预览。
 - `internal/platform/dispatch/`：`router.go` 发送路由；`media.go` 媒体准备；`calls.go` 原生 API。
 - `internal/platform/notification/manager.go`：通知队列。
 - `internal/agent/output/output.go`、`internal/agent/dialogue/reply_commit.go`：输出 Hook、回复提交。

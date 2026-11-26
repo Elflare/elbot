@@ -84,11 +84,11 @@ func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
 	sessions := &sessionStub{
 		current: &storage.Session{ID: "current"},
 	}
-	m, _ := testSupervisor(t, SupervisorDeps{
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{
 		Sessions: sessions,
 		Scope:    func(context.Context) session.Scope { return session.Scope{} },
-	})
-	m.workspaces = workspaceCapabilitiesStub{state: workspace.State{Dir: agentRoot, UserDir: userRoot}}
+	}})
+	m.deps.Workspaces = workspaceCapabilitiesStub{state: workspace.State{Dir: agentRoot, UserDir: userRoot}}
 	for side, want := range map[string]string{"agent": "agent.txt", "user": "user.txt"} {
 		result, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: side})
 		if err != nil || result.Status != operationresult.Success || result.Data.Side != side || result.Data.Path != "." || len(result.Data.Items) != 1 || result.Data.Items[0].Name != want {
@@ -131,7 +131,7 @@ func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testi
 
 func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 	items := []CommandInfo{{Name: "new", Aliases: []string{"n"}, MinRole: contextinfo.RoleUser}, {Name: "doctor"}}
-	m, _ := testSupervisor(t, SupervisorDeps{Commands: func(context.Context) ([]CommandInfo, error) { return items, nil }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Commands: func(context.Context) ([]CommandInfo, error) { return items, nil }}})
 	listed, err := m.ListCommands(testContext(false), ListCommandsRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func (s *executionStub) SnapshotAll() []turn.Snapshot { return nil }
 
 func TestSessionAdmissionAndContinuation(t *testing.T) {
 	sessions := &sessionStub{current: &storage.Session{ID: "old", Mode: "work"}}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	sessions.resetStatus = operationresult.Busy
 	reset, err := m.NewSession(testContext(false))
 	requireStatus(t, reset, operationresult.Busy)

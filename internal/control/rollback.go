@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"elbot/internal/control/share"
 	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
@@ -12,12 +11,9 @@ import (
 )
 
 func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[[]fileops.RollbackInfo]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[[]fileops.RollbackInfo]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[[]fileops.RollbackInfo]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	prepared, err := m.deps.PrepareFileContext(ctx, false)
 	if err != nil {
@@ -29,12 +25,9 @@ func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[
 	return m.deps.FileRollback.List(prepared.Data), nil
 }
 func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) (operationresult.Result[fileops.RollbackResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[fileops.RollbackResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[fileops.RollbackResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[fileops.RollbackResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if req.ID == 0 {
 		return operationresult.Result[fileops.RollbackResult]{Status: operationresult.InvalidArguments, Message: "id 必须为正数"}, nil

@@ -45,7 +45,7 @@ func (s *modelStub) ModelList(query string, opts modelmgr.ModelListOptions) mode
 func TestModelSelectionUsesExplicitIdentityAndDefaultMode(t *testing.T) {
 	provider := &modelStub{selected: modelmgr.ModelOption{Provider: "p", Model: "m"}}
 	sessions := &sessionStub{currentStatus: operationresult.NoCurrentSession}
-	m, _ := testSupervisor(t, SupervisorDeps{Models: provider, Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{Models: provider, AgentDeps: AgentDeps{Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	forbidden, err := m.SelectModel(testContext(false), SelectModelRequest{Provider: "p", Model: "m"})
 	if err != nil {
 		t.Fatal(err)

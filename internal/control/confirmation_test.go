@@ -26,7 +26,7 @@ func (s *confirmationStub) Respond(_ context.Context, req RespondConfirmationReq
 
 func TestConfirmationValidatesDecisionScopeAndDelegatesCurrentWait(t *testing.T) {
 	provider := &confirmationStub{accepted: true}
-	m, _ := testSupervisor(t, SupervisorDeps{Confirmations: provider})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Confirmations: provider}})
 	result, err := m.RespondConfirmation(testContext(false), RespondConfirmationRequest{Decision: "unknown", Scope: "current"})
 	if err != nil {
 		t.Fatal(err)

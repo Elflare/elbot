@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/control/share"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
@@ -17,12 +16,9 @@ import (
 )
 
 func (m *Supervisor) ListSessions(ctx context.Context, req ListSessionsRequest) (operationresult.Result[ListSessionsResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[ListSessionsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[ListSessionsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[ListSessionsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	actor := authorized.Data
 	if req.AllPlatforms && actor.Role != contextinfo.RoleSuperadmin {
@@ -55,12 +51,9 @@ func (m *Supervisor) ListSessions(ctx context.Context, req ListSessionsRequest) 
 }
 
 func (m *Supervisor) GetSession(ctx context.Context, req GetSessionRequest) (operationresult.Result[GetSessionResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[GetSessionResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[GetSessionResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[GetSessionResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	resolved, err := m.resolveSessionID(ctx, req.SessionID)
 	if err != nil {
@@ -81,7 +74,7 @@ func (m *Supervisor) GetSession(ctx context.Context, req GetSessionRequest) (ope
 
 // CreateSession 创建独立会话，不改变任何入口的 current 或连接订阅。
 func (m *Supervisor) CreateSession(ctx context.Context) (operationresult.Result[SessionData], error) {
-	auth, err := share.Authorize(ctx, false)
+	auth, err := authorize(ctx, false)
 	if err != nil || auth.Status != operationresult.Success {
 		return operationresult.Result[SessionData]{Status: auth.Status, Message: auth.Message}, err
 	}
@@ -112,12 +105,9 @@ func (m *Supervisor) NewSession(ctx context.Context) (operationresult.Result[New
 }
 
 func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest) (operationresult.Result[RenameSessionResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[RenameSessionResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[RenameSessionResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[RenameSessionResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	target, title := strings.TrimSpace(req.Target), req.Title
 	id := ""
@@ -143,7 +133,6 @@ func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest
 			if req.PageSize <= 0 {
 				return operationresult.Result[RenameSessionResult]{Status: operationresult.InvalidArguments, Message: "page_size 必须为正数"}, nil
 			}
-			matches := []string{}
 			for page := 1; ; page++ {
 				listed, err := m.deps.Sessions.ListPage(ctx, m.deps.Scope(ctx), session.ListRequest{Query: target, Page: page, PageSize: req.PageSize})
 				if err != nil {
@@ -154,15 +143,17 @@ func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest
 				}
 				for _, row := range listed.Data.Items {
 					if row.Title == target {
-						matches = append(matches, row.ID)
+						if id != "" {
+							return operationresult.Result[RenameSessionResult]{Status: operationresult.InvalidArguments, Message: "session title 匹配多个会话，请使用 session ID"}, nil
+						}
+						id = row.ID
 					}
 				}
 				if page >= listed.Data.TotalPages {
 					break
 				}
 			}
-			switch len(matches) {
-			case 0:
+			if id == "" {
 				resolved, err := m.resolveSessionID(ctx, "")
 				if err != nil {
 					return operationresult.Result[RenameSessionResult]{}, err
@@ -171,10 +162,6 @@ func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest
 					return operationresult.Result[RenameSessionResult]{Status: resolved.Status, Message: resolved.Message}, nil
 				}
 				id, title = resolved.Data, target+" "+title
-			case 1:
-				id = matches[0]
-			default:
-				return operationresult.Result[RenameSessionResult]{Status: operationresult.InvalidArguments, Message: "session title 匹配多个会话，请使用 session ID"}, nil
 			}
 		}
 	}
@@ -190,12 +177,9 @@ func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest
 }
 
 func (m *Supervisor) SetSessionArchived(ctx context.Context, req SetSessionArchivedRequest) (operationresult.Result[SetSessionArchivedResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[SetSessionArchivedResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[SetSessionArchivedResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[SetSessionArchivedResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if req.Archived && !req.Confirmed {
 		return operationresult.Result[SetSessionArchivedResult]{Status: operationresult.Rejected, Message: "归档操作需要确认"}, nil
@@ -224,12 +208,9 @@ func (m *Supervisor) SetSessionArchived(ctx context.Context, req SetSessionArchi
 }
 
 func (m *Supervisor) SetSessionPinned(ctx context.Context, req SetSessionPinnedRequest) (operationresult.Result[SetSessionPinnedResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[SetSessionPinnedResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[SetSessionPinnedResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[SetSessionPinnedResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 
 	resolved, err := m.resolveSessionID(ctx, req.SessionID)
@@ -256,12 +237,9 @@ func (m *Supervisor) SetSessionPinned(ctx context.Context, req SetSessionPinnedR
 }
 
 func (m *Supervisor) DeleteSession(ctx context.Context, req DeleteSessionRequest) (operationresult.Result[DeleteSessionResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[DeleteSessionResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[DeleteSessionResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[DeleteSessionResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if strings.TrimSpace(req.SessionID) == "" {
 		return operationresult.Result[DeleteSessionResult]{Status: operationresult.InvalidArguments, Message: "session_id 不能为空"}, nil
@@ -280,12 +258,9 @@ func (m *Supervisor) DeleteSession(ctx context.Context, req DeleteSessionRequest
 }
 
 func (m *Supervisor) CleanSessions(ctx context.Context, req CleanSessionsRequest) (operationresult.Result[CleanSessionsResult], error) {
-	authorized, err := share.Authorize(ctx, true)
-	if err != nil {
-		return operationresult.Result[CleanSessionsResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[CleanSessionsResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, true)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[CleanSessionsResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	if !req.Confirmed {
 		return operationresult.Result[CleanSessionsResult]{Status: operationresult.Rejected, Message: "清理操作需要确认"}, nil
@@ -350,14 +325,7 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (o
 	if strings.TrimSpace(req.MessageID) == "" {
 		return operationresult.Result[ForkSessionResult]{Status: operationresult.InvalidArguments, Message: "message_id 不能为空"}, nil
 	}
-	resolved, err := m.resolveSessionID(ctx, req.SessionID)
-	if err != nil {
-		return operationresult.Result[ForkSessionResult]{}, err
-	}
-	if resolved.Status != operationresult.Success {
-		return operationresult.Result[ForkSessionResult]{Status: resolved.Status, Message: resolved.Message}, nil
-	}
-	current, err := m.requireCurrent(ctx, resolved.Data)
+	current, err := m.requireCurrent(ctx, req.SessionID)
 	if err != nil {
 		return operationresult.Result[ForkSessionResult]{}, err
 	}
@@ -387,21 +355,14 @@ func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionReque
 		return operationresult.Result[CompactSessionResult]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	ctx = ready.Data
-	resolved, err := m.resolveSessionID(ctx, req.SessionID)
-	if err != nil {
-		return operationresult.Result[CompactSessionResult]{}, err
-	}
-	if resolved.Status != operationresult.Success {
-		return operationresult.Result[CompactSessionResult]{Status: resolved.Status, Message: resolved.Message}, nil
-	}
-	current, err := m.requireCurrent(ctx, resolved.Data)
+	current, err := m.requireCurrent(ctx, req.SessionID)
 	if err != nil {
 		return operationresult.Result[CompactSessionResult]{}, err
 	}
 	if current.Status != operationresult.Success {
 		return operationresult.Result[CompactSessionResult]{Status: current.Status, Message: current.Message}, nil
 	}
-	compacted, err := m.deps.Execution.CompactCurrent(ctx, resolved.Data)
+	compacted, err := m.deps.Execution.CompactCurrent(ctx, current.Data)
 	if err != nil {
 		return operationresult.Result[CompactSessionResult]{}, err
 	}
@@ -437,7 +398,7 @@ func (m *Supervisor) SetMode(ctx context.Context, req SetModeRequest) (operation
 }
 
 func (m *Supervisor) ListInputHistory(ctx context.Context) (operationresult.Result[[]string], error) {
-	authorized, err := share.Authorize(ctx, false)
+	authorized, err := authorize(ctx, false)
 	if err != nil || authorized.Status != operationresult.Success {
 		return operationresult.Result[[]string]{Status: authorized.Status, Message: authorized.Message}, err
 	}
@@ -448,12 +409,9 @@ func (m *Supervisor) ListInputHistory(ctx context.Context) (operationresult.Resu
 	return operationresult.Result[[]string]{Status: operationresult.Success, Data: items}, nil
 }
 func (m *Supervisor) SessionMessages(ctx context.Context, req SessionMessagesRequest) (operationresult.Result[SessionMessagesResult], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[SessionMessagesResult]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[SessionMessagesResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[SessionMessagesResult]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	resolved, err := m.resolveSessionID(ctx, req.SessionID)
 	if err != nil {
@@ -488,12 +446,9 @@ func (m *Supervisor) SessionMessages(ctx context.Context, req SessionMessagesReq
 }
 
 func (m *Supervisor) beforeSession(ctx context.Context) (operationresult.Result[context.Context], error) {
-	authorized, err := share.Authorize(ctx, false)
-	if err != nil {
-		return operationresult.Result[context.Context]{}, err
-	}
-	if authorized.Status != operationresult.Success {
-		return operationresult.Result[context.Context]{Status: authorized.Status, Message: authorized.Message}, nil
+	authorized, err := authorize(ctx, false)
+	if err != nil || authorized.Status != operationresult.Success {
+		return operationresult.Result[context.Context]{Status: authorized.Status, Message: authorized.Message}, err
 	}
 	current, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
 	if err != nil {
@@ -545,21 +500,15 @@ func (m *Supervisor) readSession(ctx context.Context, id string) (operationresul
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
-func (m *Supervisor) requireCurrent(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
-	if strings.TrimSpace(id) == "" {
-		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "session_id 不能为空"}, nil
-	}
+func (m *Supervisor) requireCurrent(ctx context.Context, id string) (operationresult.Result[string], error) {
 	current, err := m.deps.Sessions.Current(ctx, m.deps.Scope(ctx))
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
+	if err != nil || current.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: current.Status, Message: current.Message}, err
 	}
-	if current.Status != operationresult.Success {
-		return operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+	if id = strings.TrimSpace(id); id != "" && current.Data.ID != id {
+		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "目标不是当前绑定的会话"}, nil
 	}
-	if current.Data.ID != id {
-		return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "目标不是当前绑定的会话"}, nil
-	}
-	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: current.Data.ID}, nil
 }
 
 func (m *Supervisor) currentID(ctx context.Context) (operationresult.Result[string], error) {

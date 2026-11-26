@@ -1,7 +1,7 @@
 ## 业务线
 
 把以下包和5条业务线一样并列
-- [ ] control
+- [x] control
 - [x] storage
 - [ ] logging
 - [x] session 
@@ -59,6 +59,7 @@
 - [x] session包
 - [x] command包
 - [ ] control包
+    - [x] 收回包内授权，合并授权失败的重复返回分支。
 - [x] delivery包
 
 ## 不一定实现

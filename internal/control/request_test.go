@@ -76,7 +76,7 @@ func TestListRequestsPreservesMissingTitlesAndPropagatesReadFailures(t *testing.
 		"found":   {ID: "found", SessionID: "session"},
 	}}
 	history := &requestHistoryStub{rows: map[string]*storage.Session{"session": {ID: "session", Title: "active session"}}}
-	m, _ := testSupervisor(t, SupervisorDeps{Requests: requests, History: history})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Requests: requests, History: history}})
 	listed, err := m.ListRequests(testContext(true))
 	if err != nil || listed.Status != operationresult.Success {
 		t.Fatalf("list requests: %+v %v", listed, err)
@@ -100,7 +100,7 @@ func TestListRequestsPreservesMissingTitlesAndPropagatesReadFailures(t *testing.
 func TestStopTurnCancelsSessionButLeafStaysLocal(t *testing.T) {
 	provider := &requestStub{active: map[string]request.Request{"turn": {ID: "turn", SessionID: "s", Kind: request.KindTurn}, "child": {ID: "child", SessionID: "s", ParentID: "turn"}, "other": {ID: "other", SessionID: "other"}}}
 	execution := &executionStub{}
-	m, _ := testSupervisor(t, SupervisorDeps{Requests: provider, Execution: execution, Sessions: &sessionStub{}, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Requests: provider, Execution: execution, Sessions: &sessionStub{}, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	forbidden, err := m.ListRequests(testContext(false))
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestStopTurnCancelsSessionButLeafStaysLocal(t *testing.T) {
 func TestStopAllUsesDeterministicSessionSet(t *testing.T) {
 	provider := &requestStub{active: map[string]request.Request{"a": {ID: "a", SessionID: "s2"}, "b": {ID: "b", SessionID: "s1"}, "c": {ID: "c", SessionID: "s2"}}}
 	execution := &executionStub{}
-	m, _ := testSupervisor(t, SupervisorDeps{Requests: provider, Execution: execution, Sessions: &sessionStub{}, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	m, _ := testSupervisor(t, SupervisorDeps{AgentDeps: AgentDeps{Requests: provider, Execution: execution, Sessions: &sessionStub{}, Scope: func(context.Context) session.Scope { return session.Scope{} }}})
 	forbidden, err := m.StopAllRequests(testContext(false))
 	if err != nil {
 		t.Fatal(err)

@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"elbot/internal/control/share"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -20,7 +19,7 @@ func (m *Supervisor) CreateQuestions(items []storage.Question) *storage.Question
 
 // Slash and HTTP operations resolve the same activation and serialize edits with submission.
 func withQuestionSession[T any](ctx context.Context, m *Supervisor, id string, do func(string) (operationresult.Result[T], error)) (operationresult.Result[T], error) {
-	auth, err := share.Authorize(ctx, false)
+	auth, err := authorize(ctx, false)
 	if err != nil || auth.Status != operationresult.Success {
 		return operationresult.Result[T]{Status: auth.Status, Message: auth.Message}, err
 	}
