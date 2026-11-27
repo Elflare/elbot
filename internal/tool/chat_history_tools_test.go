@@ -87,7 +87,7 @@ func TestChatHistoryPreservesLiteralTruncationText(t *testing.T) {
 	ctx, _, _ := newHistoryMediaToolTest(t)
 	const body = "用户原文：...[单条消息过长，已截断]"
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: body}}}
-	for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: historyTestDeps(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: historyTestDeps(repo)}), builtinTestTool(t, "reply_to_chat_history_message", builtin.Deps{ChatHistory: historyTestDeps(repo)})} {
+	for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: historyTestDeps(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: historyTestDeps(repo)})} {
 		result, _, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
 		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, body) {
 			t.Fatalf("%s changed original message: result=%+v err=%v", caller.Definition.Name, result, err)
@@ -103,7 +103,7 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "...[单条消息过长，已截断]") || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Data.Outputs) != 1 {
+	if result.Data.Content != "回复成功" || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Data.Outputs) != 1 {
 		t.Fatalf("result=%+v log=%q", result, logContent)
 	}
 }

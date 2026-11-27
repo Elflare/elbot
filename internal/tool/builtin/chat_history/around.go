@@ -77,18 +77,8 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 		}
 		lines := []string{fmt.Sprintf("附近消息：%d 条（=> 为目标）。", len(rows.Data))}
 		lines = append(lines, formatHistoryRows(rows.Data, messageID, args.Full, args.IncludeAvatar)...)
-		if hint := viewImageHistoryHint(ctx, t.ViewImageAvailable); hint != "" {
-			lines = append(lines, hint)
-		}
 
 		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("message_id=h%d before=%d after=%d returned=%d", messageID, args.Before, args.After, len(rows.Data)), nil
 	})}, nil
-}
-
-func viewImageHistoryHint(ctx context.Context, viewImageAvailable func(context.Context) bool) string {
-	if viewImageAvailable != nil && viewImageAvailable(ctx) {
-		return "看图可用 view_image(message_id=[\"...\"])；指定图片沿用上述媒体序号。"
-	}
-	return ""
 }

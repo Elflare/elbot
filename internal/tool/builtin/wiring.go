@@ -29,7 +29,6 @@ type Deps struct {
 	Cron                CronRepository                                        // 已适配的任务存储能力。
 	ValidateModel       func(string, string) operationresult.Result[struct{}] // Cron 模型选择校验。
 	Now                 func() time.Time                                      // Cron 时钟。
-	ViewImageAvailable  func(context.Context) bool                            // 当前调用上下文的看图资格。
 	Media               interface {
 		ValidateImage(context.Context, string) (operationresult.Result[share.MediaInfo], error)
 		ImportURL(context.Context, string, share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error)
@@ -59,7 +58,6 @@ func NewTools(deps Deps) []share.ToolDefinition {
 	}
 	deps.ChatHistory.LocalSourcePath = localSourcePath
 	deps.ChatHistory.SensitivePath = isSensitiveReadFile
-	deps.ChatHistory.ViewImageAvailable = deps.ViewImageAvailable
 	definitions = append(definitions, chat_history.Definitions(deps.ChatHistory)...)
 	definitions = append(definitions, NewResidentMemoryTools(deps.ResidentMemory)...)
 	definitions = append(definitions, long_memory.NewLongMemoryTools(deps.LongMemoryDir)...)

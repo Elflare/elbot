@@ -537,7 +537,7 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"新摘要", "2 | 第二行已更新", "正文行号从 1 开始"} {
+	for _, want := range []string{"新摘要", "2 | 第二行已更新", "详细内容："} {
 		if !strings.Contains(result.Data.Content, want) {
 			t.Fatalf("search result missing %q:\n%s", want, result.Data.Content)
 		}

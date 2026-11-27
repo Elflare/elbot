@@ -119,12 +119,6 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 		}
 		lines := []string{fmt.Sprintf("%s查询结果：返回 %d 条。", label, len(rows.Data))}
 		lines = append(lines, formatHistoryRows(rows.Data, 0, false, args.IncludeAvatar)...)
-		if scope.Platform == nil {
-			lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
-			if hint := viewImageHistoryHint(ctx, t.ViewImageAvailable); hint != "" {
-				lines = append(lines, hint)
-			}
-		}
 
 		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("scope=%q query=%q returned=%d", label, args.Query, len(rows.Data)), nil

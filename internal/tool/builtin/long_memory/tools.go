@@ -144,7 +144,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 				return operationresult.Result[*toolshare.Result]{Status: saved.Status, Message: saved.Message}, saved.Message, nil
 			}
 			record := saved.Data
-			result := &toolshare.Result{Content: strings.TrimSpace(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s\n可通过 long_memory_search 检索，或用 long_memory_write 更新/删除。", record.ID, record.Category, record.Title, record.FilePath))}
+			result := &toolshare.Result{Content: strings.TrimSpace(fmt.Sprintf("记忆写入成功！\nID：%d\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))}
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 		})}, nil
 	case "update":

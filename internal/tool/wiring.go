@@ -58,10 +58,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		DraftRoot:    filepath.Join(filepath.Dir(cfg.Sandbox.Root), "draft"),
 		FileRollback: fileRollback, ProcessEnv: environment,
 		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,
-		ViewImageAvailable: func(ctx context.Context) bool {
-			tools, err := registry.Query(ctx, share.ToolQuery{Names: []string{"view_image"}})
-			return err == nil && len(tools) > 0
-		},
 	})
 	definitions = append(definitions, skill.NewTools(skillManager)...)
 	definitions = append(definitions, discovery.NewDiscoverTool(resolver))

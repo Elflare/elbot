@@ -31,8 +31,7 @@ type Deps struct {
 		ImportURL(context.Context, string, toolshare.MediaImportOptions) (operationresult.Result[toolshare.MediaInfo], error)
 		ImportFile(context.Context, string, toolshare.MediaImportOptions) (operationresult.Result[toolshare.MediaInfo], error)
 	}
-	ResolveMedia       func(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
-	ViewImageAvailable func(context.Context) bool
+	ResolveMedia func(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
 }
 
 func Definitions(d Deps) []toolshare.ToolDefinition {

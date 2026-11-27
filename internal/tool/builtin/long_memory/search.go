@@ -44,7 +44,7 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 		var out strings.Builder
 		writeInvalidLongMemoryWarning(&out, invalids)
 		if overview == "" {
-			out.WriteString("当前长期记忆库为空，尚未建立任何分类。你可以自由创建新的分类。")
+			out.WriteString("当前长期记忆库为空，尚未建立任何分类。")
 		} else {
 			out.WriteString("当前可用的长期记忆分类目录\n")
 			out.WriteString(overview)
@@ -71,7 +71,7 @@ func formatSearchResult(invalids []longMemoryInvalidFile, overview string, recor
 	out.WriteString(strings.Repeat("=", 30))
 	out.WriteString("\n")
 	if len(records) == 0 {
-		out.WriteString("长期记忆库中未找到相关内容。建议检查关键词是否过于严格，尝试 match_mode=OR，或参考分类概览调整分类。")
+		out.WriteString("长期记忆库中未找到相关内容。")
 		return operationresult.Result[string]{Status: operationresult.Success, Data: strings.TrimSpace(out.String())}, nil
 	}
 	out.WriteString(fmt.Sprintf("成功检索到%d条记录\n", len(records)))
@@ -96,7 +96,7 @@ func formatSearchResult(invalids []longMemoryInvalidFile, overview string, recor
 			if parsed.Status != operationresult.Success {
 				return operationresult.Result[string]{Status: parsed.Status, Message: parsed.Message}, nil
 			}
-			out.WriteString("详细内容（正文行号从 1 开始，可用于 content_edits）：\n")
+			out.WriteString("详细内容：\n")
 			writeNumberedLongMemoryContent(&out, parsed.Data.Content)
 		}
 	}

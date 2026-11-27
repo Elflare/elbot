@@ -51,7 +51,7 @@ func TestSearchToolScopeParameters(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			backend := &historyScopeBackend{}
-			tool := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: chat_history.Deps{Repository: backend}, ViewImageAvailable: func(context.Context) bool { return true }})
+			tool := builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: chat_history.Deps{Repository: backend}})
 			tc.ctx = toolPolicyContext(tc.ctx)
 			call, err := tool.PrepareCall(tc.ctx, share.CallRequest{Arguments: json.RawMessage(tc.args)})
 			if err != nil || call.Status != operationresult.Success {
@@ -67,6 +67,11 @@ func TestSearchToolScopeParameters(t *testing.T) {
 			if err != nil || result.Data == nil || backend.calls != 1 {
 				t.Fatalf("result=%+v error=%v", result, err)
 			}
+			for _, hint := range []string{"get_media(", "get_chat_history_around(", "reply_to_chat_history_message(", "view_image("} {
+				if strings.Contains(result.Data.Content, hint) {
+					t.Fatalf("unexpected usage hint: %s", result.Data.Content)
+				}
+			}
 			if share.PolicyFromContext(tc.ctx).ExplicitChat {
 				if backend.query.Platform != "qqofficial" || (backend.query.ChatType != "private" || backend.query.ChatID != "AB12_OPENID") || backend.query.SenderQuery != "AB12_OPENID" {
 					t.Fatalf("query=%+v", backend.query)
@@ -74,12 +79,7 @@ func TestSearchToolScopeParameters(t *testing.T) {
 				if !strings.Contains(result.Data.Content, "platform=qqofficial，chat_type=private，chat_id=AB12_OPENID") {
 					t.Fatal(result.Data.Content)
 				}
-				for _, hint := range []string{"get_media(", "get_chat_history_around(", "reply_to_chat_history_message(", "view_image("} {
-					if strings.Contains(result.Data.Content, hint) {
-						t.Fatalf("background has current-chat hint: %s", result.Data.Content)
-					}
-				}
-			} else if backend.query.Platform != "telegram" || (backend.query.ChatType != "group" || backend.query.ChatID != "current") || !strings.Contains(result.Data.Content, "get_chat_history_around(") {
+			} else if backend.query.Platform != "telegram" || (backend.query.ChatType != "group" || backend.query.ChatID != "current") {
 				t.Fatalf("foreground query=%+v result=%s", backend.query, result.Data.Content)
 			}
 		})

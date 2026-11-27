@@ -60,7 +60,7 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 		out := delivery.Reply(target.Data.PlatformMessageID, replyText)
 		out.ReplyReferenceIndex = target.Data.ReferenceIndex
 		result := &toolshare.Result{
-			Content: fmt.Sprintf("已引用回复 [h%d] %s(%s): %s\n回复内容已发送，勿重复发送。", target.Data.Seq, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false)),
+			Content: "回复成功",
 			Outputs: []delivery.Output{out},
 		}
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("已引用回复 h%d", messageID), nil
