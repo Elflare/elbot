@@ -1390,53 +1390,46 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	}
 }
 
-func TestReadFileToolAbsolutePathWarnings(t *testing.T) {
+func TestFileToolsAbsolutePathWarnings(t *testing.T) {
 	workspaceDir := t.TempDir()
-	insidePath := filepath.Join(workspaceDir, "sample.txt")
-	if err := os.WriteFile(insidePath, []byte("alpha\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	outsidePath := filepath.Join(t.TempDir(), "outside.txt")
-	if err := os.WriteFile(outsidePath, []byte("outside\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	parent := t.TempDir()
+	draftRoot := filepath.Join(parent, "draft")
 	ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: workspaceDir})
-	tool := NewReadFileTool(FileGuard{}).Definition()
+	read := (ReadFileTool{DraftRoot: draftRoot}).Definition()
+	edit := (EditFileTool{Rollback: fileops.NewService(nil), DraftRoot: draftRoot}).Definition()
 	for _, tc := range []struct {
 		name, path, warning string
 	}{
-		{name: "inside absolute", path: insidePath, warning: toolshare.AbsolutePathWithinWorkspaceWarning},
-		{name: "outside absolute", path: outsidePath, warning: toolshare.AbsolutePathWorkspaceWarning},
-		{name: "relative", path: "sample.txt", warning: ""},
+		{"inside absolute", filepath.Join(workspaceDir, "sample.txt"), toolshare.AbsolutePathWithinWorkspaceWarning},
+		{"outside absolute", filepath.Join(parent, "outside.txt"), toolshare.AbsolutePathWorkspaceWarning},
+		{"relative", "relative.txt", ""},
+		{"draft", filepath.Join(draftRoot, "session", "note.md"), ""},
+		{"draft sibling", filepath.Join(parent, "draft-old", "session", "note.md"), toolshare.AbsolutePathWorkspaceWarning},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, _, err := callTool(ctx, tool, toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path})})
-			if err != nil || result.Status != operationresult.Success {
+			path := tc.path
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(workspaceDir, path)
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if tc.warning == "" && len(result.Data.Warnings) != 0 {
-				t.Fatalf("warnings = %#v", result.Data.Warnings)
+			if err := os.WriteFile(path, []byte("alpha\n"), 0600); err != nil {
+				t.Fatal(err)
 			}
-			if tc.warning != "" && (len(result.Data.Warnings) == 0 || result.Data.Warnings[0] != tc.warning) {
-				t.Fatalf("warnings = %#v, want %q", result.Data.Warnings, tc.warning)
+			check := func(tool toolshare.ToolDefinition, args map[string]any) {
+				t.Helper()
+				result, _, err := callTool(ctx, tool, toolshare.CallRequest{Arguments: mustJSON(args)})
+				if err != nil || result.Status != operationresult.Success {
+					t.Fatalf("%s: %s, %v", tool.Definition.Name, result.Message, err)
+				}
+				if strings.Join(result.Data.Warnings, "\n") != tc.warning {
+					t.Errorf("%s warnings = %q, want %q", tool.Definition.Name, result.Data.Warnings, tc.warning)
+				}
 			}
+			check(read, map[string]any{"path": tc.path})
+			check(edit, map[string]any{"path": tc.path, "edits": []map[string]any{{"operation": "replace_text", "old_text": "alpha", "new_text": "beta"}}})
 		})
-	}
-
-	editPath := filepath.Join(workspaceDir, "edit.txt")
-	if err := os.WriteFile(editPath, []byte("alpha\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args := mustJSON(map[string]any{
-		"path":  editPath,
-		"edits": []map[string]any{{"operation": "replace_text", "old_text": "alpha", "new_text": "beta"}},
-	})
-	result, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if len(result.Data.Warnings) == 0 || result.Data.Warnings[0] != toolshare.AbsolutePathWithinWorkspaceWarning {
-		t.Fatalf("edit warnings = %#v", result.Data.Warnings)
 	}
 }
 

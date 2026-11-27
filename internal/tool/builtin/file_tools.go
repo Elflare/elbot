@@ -27,10 +27,12 @@ const (
 
 type ReadFileTool struct {
 	FileGuard FileGuard
+	DraftRoot string // 此目录内的绝对路径不提示切换 workspace。
 }
 
 type EditFileTool struct {
-	Rollback *fileops.Service
+	Rollback  *fileops.Service
+	DraftRoot string // 此目录内的绝对路径不提示切换 workspace。
 }
 
 type readFileArgs struct {
@@ -152,6 +154,20 @@ func (t ReadFileTool) Definition() toolshare.ToolDefinition {
 	return definition
 }
 
+func absolutePathWarnings(resolved workspace.ResolvedPath, draftRoot string) []string {
+	if !resolved.WasAbs {
+		return nil
+	}
+	draftPath := workspace.ResolvedPath{BaseDir: draftRoot, Path: resolved.Path}
+	if draftRoot != "" && draftPath.IsWithinWorkspace() {
+		return nil
+	}
+	if resolved.IsWithinWorkspace() {
+		return []string{toolshare.AbsolutePathWithinWorkspaceWarning}
+	}
+	return []string{toolshare.AbsolutePathWorkspaceWarning}
+}
+
 func isSensitiveReadFile(path string) bool {
 	name := strings.ToLower(filepath.Base(path))
 	if name == ".env" || strings.HasPrefix(name, ".env.") {
@@ -238,14 +254,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		toolshare.ConfirmationField{Key: "context_lines", Label: "上下文行数", Value: args.ContextLines},
 		toolshare.ConfirmationField{Key: "index", Label: "结果编号", Value: index},
 	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		var warnings []string
-		if resolved.WasAbs {
-			warning := toolshare.AbsolutePathWorkspaceWarning
-			if resolved.IsWithinWorkspace() {
-				warning = toolshare.AbsolutePathWithinWorkspaceWarning
-			}
-			warnings = append(warnings, warning)
-		}
+		warnings := absolutePathWarnings(resolved, t.DraftRoot)
 		info, err := os.Stat(path)
 		if errors.Is(err, os.ErrNotExist) {
 			message := fmt.Sprintf("file %q not found", path)
@@ -474,14 +483,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 		content = "dry_run: true | " + content
 	}
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
-	var warnings []string
-	if resolved.WasAbs {
-		warning := toolshare.AbsolutePathWorkspaceWarning
-		if resolved.IsWithinWorkspace() {
-			warning = toolshare.AbsolutePathWithinWorkspaceWarning
-		}
-		warnings = append(warnings, warning)
-	}
+	warnings := absolutePathWarnings(resolved, t.DraftRoot)
 	if result.RollbackEvicted > 0 {
 		warnings = append(warnings, fmt.Sprintf("撤销备份内存已满；已删最旧 %d 条。", result.RollbackEvicted))
 	}
