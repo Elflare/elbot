@@ -83,7 +83,7 @@ func currentShellDesc() string {
 
 func shellBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("shell").Async(toolshare.SyncByDefault).
-		Description(fmt.Sprintf("执行命令，语法=%s。", currentShellDesc())).
+		Description(fmt.Sprintf("执行命令，语法=%s。py用tool_weave", currentShellDesc())).
 		Risk(toolshare.RiskHigh).
 		SuperadminOnly().
 		DependsOn("workspace", "draft").
