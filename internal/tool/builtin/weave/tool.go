@@ -63,7 +63,7 @@ print(await send_file(source="weekly.md"))`).
 				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
 			if strings.TrimSpace(a.Code) == "" || (a.Mode != "" && a.Mode != "system" && a.Mode != "uv") || a.Timeout < 0 || a.Timeout > int64((1<<63-1)/time.Second) {
-				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "tool_weave 参数无效，检查 code、mode、timeout"}, nil
+				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "参数错误"}, nil
 			}
 			if a.Timeout == 0 {
 				a.Timeout = 10
