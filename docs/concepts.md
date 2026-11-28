@@ -60,7 +60,7 @@ print(await send_file(source="weekly.md"))
 
 前台 Work 中，`shell` 和 `tool_weave` 支持异步执行，长耗时命令不影响模型继续工作。
 
-`shell` 的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计），超出时在对应输出末尾附上截断说明。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。
+`shell` 和 `tool_weave` 的 stdout 和 stderr 各自最多保留最后 256 KiB（按字节计），超出时在对应输出开头注明已截断。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。
 
 ## 内联预载
 

@@ -87,11 +87,11 @@ func TestShellToolOutputLimit(t *testing.T) {
 		t.Skip("uses POSIX shell commands")
 	}
 	const limit = 256 * 1024
-	const notice = "\n... output too long; truncated to first 256 KiB ...\n"
+	const notice = "... output too long; showing last 256 KiB ...\n"
 	for _, size := range []int{20 * 1024, limit, limit + 1, 4 * limit} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			dir := t.TempDir()
-			out, errText := strings.Repeat("o", size), strings.Repeat("e", size)
+			out, errText := strings.Repeat("o", size-4)+"OUT!", strings.Repeat("e", size-4)+"ERR!"
 			for name, content := range map[string]string{"stdout.txt": out, "stderr.txt": errText} {
 				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
 					t.Fatal(err)
@@ -104,7 +104,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 				t.Fatal(err)
 			}
 			if size > limit {
-				out, errText = out[:limit]+notice, errText[:limit]+notice
+				out, errText = notice+out[size-limit:], notice+errText[size-limit:]
 			}
 			want := out + "\nstderr:\n" + errText + "\nexit_code: 7"
 			if result.Message != want {

@@ -25,10 +25,10 @@ func TestProcessOutputDrainsWithBoundedMemory(t *testing.T) {
 			}
 			want := strings.Repeat("x", min(total, limit))
 			if total > limit {
-				want += "\n... output too long; truncated to first 256 KiB ...\n"
+				want = "... output too long; showing last 256 KiB ...\n" + want
 			}
 			if output.String() != want {
-				t.Fatal("retained prefix or truncation notice changed")
+				t.Fatal("retained tail or truncation notice changed")
 			}
 		})
 	}

@@ -34,11 +34,11 @@ func TestFileLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	written, err := os.ReadFile(path)
-	if err != nil || string(written) != body+"EDIT_TAIL" || !strings.Contains(result.Data.Content, "EDIT_TAIL") {
+	if err != nil || string(written) != body+"EDIT_TAIL" || strings.Contains(result.Data.Content, "EDIT_TAIL") {
 		t.Fatalf("business edit changed: err=%v result=%+v", err, result)
 	}
 	preview = result.Data.LogContent()
-	if !strings.Contains(logContent, "edited=") || strings.Contains(logContent, "diff:") || !strings.Contains(preview, "diff:") || !strings.Contains(preview, "revision_after") || !strings.HasSuffix(preview, "…") || !utf8.ValidString(preview) || utf8.RuneCountInString(preview) != 1024 {
+	if !strings.Contains(logContent, "edited=") || strings.Contains(logContent, "diff:") || strings.Contains(preview, "diff:") || !strings.Contains(preview, "revision_after") || preview != result.Data.Content {
 		t.Fatalf("edit log=%q", logContent)
 	}
 }

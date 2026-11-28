@@ -404,7 +404,7 @@ func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
 	}
 }
 
-func TestEditFileToolEditsLargeFileWithDiff(t *testing.T) {
+func TestEditFileToolEditsLargeFileWithoutReturningDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "large.txt")
 	original := []byte(strings.Repeat("x", fileops.MaxFileSize) + "\ntarget\n")
 	if err := os.WriteFile(path, original, 0644); err != nil {
@@ -423,8 +423,8 @@ func TestEditFileToolEditsLargeFileWithDiff(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "-target\n+TARGET") {
-		t.Fatalf("expected complete diff, got:\n%s", result.Data.Content)
+	if strings.Contains(result.Data.Content, "diff:") || strings.Contains(result.Data.Content, "+TARGET") {
+		t.Fatal("large file diff leaked into the tool result")
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -474,7 +474,7 @@ func TestEditFileToolRequiresEdits(t *testing.T) {
 	}
 }
 
-func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
+func TestEditFileToolBatchReplacesLinesAndReturnsRevision(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
 	original := []byte("alpha\nbeta\ngamma\n")
 	if err := os.WriteFile(path, original, 0644); err != nil {
@@ -500,11 +500,8 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	if got := string(content); got != "alpha\nBETA\nDELTA\ngamma\n" {
 		t.Fatalf("file content = %q", got)
 	}
-	if !strings.Contains(result.Data.Content, "-beta") || !strings.Contains(result.Data.Content, "+BETA") || !strings.Contains(result.Data.Content, "+DELTA") {
-		t.Fatalf("unexpected diff:\n%s", result.Data.Content)
-	}
-	if !strings.HasPrefix(result.Data.Content, fmt.Sprintf("edited: %s | encoding: utf-8 | revision_after: %s\ndiff:\n", path, fileops.ContentRevision(content))) {
-		t.Fatalf("unexpected edit header:\n%s", result.Data.Content)
+	if !strings.HasPrefix(result.Data.Content, fmt.Sprintf("edited: %s | encoding: utf-8 | revision_after: %s\nrollback_available: ", path, fileops.ContentRevision(content))) || strings.Contains(result.Data.Content, "diff:") {
+		t.Fatalf("unexpected edit result:\n%s", result.Data.Content)
 	}
 }
 
@@ -862,15 +859,16 @@ func TestEditFileToolContextLinesAndHunkHeader(t *testing.T) {
 			"new_text":  "FOUR",
 		}},
 	})
-	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
+	prepared, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare: %v, %v", prepared.Status, err)
 	}
-	if !strings.Contains(result.Data.Content, "@@ -3,3 +3,3 @@") {
-		t.Fatalf("expected real hunk header, got:\n%s", result.Data.Content)
+	diff := prepared.Data.Details()[1].Content.(string)
+	if !strings.Contains(diff, "@@ -3,3 +3,3 @@") {
+		t.Fatalf("expected real hunk header, got:\n%s", diff)
 	}
-	if strings.Contains(result.Data.Content, " one\n") || strings.Contains(result.Data.Content, " six\n") {
-		t.Fatalf("diff context was not trimmed:\n%s", result.Data.Content)
+	if strings.Contains(diff, " one\n") || strings.Contains(diff, " six\n") {
+		t.Fatalf("diff context was not trimmed:\n%s", diff)
 	}
 }
 
@@ -1150,12 +1148,13 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 			{"operation": "replace_text", "old_text": "seven", "new_text": "SEVEN"},
 		},
 	})
-	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
+	prepared, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare: %v, %v", prepared.Status, err)
 	}
-	if strings.Count(result.Data.Content, "@@ ") != 2 {
-		t.Fatalf("expected two diff hunks, got:\n%s", result.Data.Content)
+	diff := prepared.Data.Details()[1].Content.(string)
+	if strings.Count(diff, "@@ ") != 2 {
+		t.Fatalf("expected two diff hunks, got:\n%s", diff)
 	}
 }
 

@@ -405,7 +405,7 @@ func (t EditFileTool) Definition() toolshare.ToolDefinition {
 func editFileBuilder() *toolshare.Builder {
 	editProperties := fileops.EditOperationProperties()
 	return toolshare.NewBuilder("edit_file").Weavable().
-		Description("批量编辑单个文本文件；成功→unified diff，任一操作失败→不写入。").
+		Description("批量编辑单个文本文件；任一操作失败→不写入。").
 		Risk(toolshare.RiskHigh).
 		SuperadminOnly().
 		DependsOn("workspace", "rollback_file", "draft").
@@ -475,7 +475,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, "file edit rejected: " + committed.Message, nil
 	}
 	result := committed.Data
-	content := fmt.Sprintf("edited: %s | encoding: %s | revision_after: %s\ndiff:\n%s", result.Path, result.Encoding, result.RevisionAfter, result.Diff)
+	content := fmt.Sprintf("edited: %s | encoding: %s | revision_after: %s", result.Path, result.Encoding, result.RevisionAfter)
 	if result.Created {
 		content = "created: true | " + content
 	}
