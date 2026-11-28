@@ -200,11 +200,11 @@ Commands available when high-risk confirmation is triggered:
 
 | Command | Function |
 | --- | --- |
-| `/detail` | Details of the tool call awaiting confirmation; displays structured fields, commands, and pre-check diffs provided by the tool, without appending additional parameter JSON. Full diffs are shown if both the before and after versions of the file are within 8 MiB; otherwise, diffs are not displayed, which does not affect operation or switch to fallback text. |
+| `/detail` | Details of the tool call awaiting confirmation; displays structured fields, commands, and pre-check diffs provided by the tool. |
 | `/confirm` | Confirm the current tool call awaiting confirmation. |
 | `/confirmtool` | Confirm the current tool. |
 | `/confirmall` | Confirm all tool calls awaiting confirmation in the current batch. |
 | `/reject` | Reject the current tool call awaiting confirmation. |
 
-- Confirmation for ordinary users expires by default after 10 minutes of inactivity; a shorter limit is used if the Session TTL for the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` resets the timer; once expired, the tool will not be executed and the current processing will stop.
-- You can also use `/stop` to stop the current request (see [请求管理](#请求管理)). Refer to the runtime output for specific prompts.
+- Confirmation for ordinary users expires by default after 10 minutes without valid action; a shorter limit is used if the Session TTL of the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; once expired, the tool will not be executed and current processing will stop.
+- You can also use `/stop` to stop the current request (see [Request Management](#请求管理)). Refer to the runtime output for specific prompts.
