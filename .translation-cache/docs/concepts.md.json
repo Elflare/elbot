@@ -144,14 +144,6 @@
       "translation": "## Chat / Work Dual Mode\n\n| Mode | Suitable Scenarios | Tool |\n| --- | --- | --- |\n| `chat` | Casual chat, companionship, lightweight Q&A, low-cost conversation | No tool injection |\n| `work` | Tasks such as search, files, command, Cron, Skill, etc. | Enable tool discovery and tool calling |\n\n- Regular chat does not pay the context cost for tool schemas, nor is it interfered with by irrelevant tools.\n- Different models can be configured for the two modes; a more powerful model can be selected for work tasks.\n\nSwitch at runtime using `/chat` and `/work`. The Session mode is independent of the Provider's `api_mode`. See [Session Protocol Locking](configuration.md#会话协议锁定) for the switchable scope.\n\n",
       "updated_at": 1793353326
     },
-    "docs/concepts.md:section:c4e72162374dffb438ac39bb0e3c6a9cab4da6805b75fd9f02f195172ff26c24": {
-      "kind": "section",
-      "source": "## Shell\n\n前台 Work 中，`shell` 和 `tool_weave` 支持异步执行，长耗时命令不影响模型继续工作。\n\n`shell` 的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计），超出时在对应输出末尾附上截断说明。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。\n\n",
-      "source_file": "docs/concepts.md",
-      "source_hash": "690f2a3bff9c7a6376f25385cd7957c0abe504b91d83bfb0ec72ebac0cf9435f",
-      "translation": "## Shell\n\nIn foreground work mode, `shell` and `tool_weave` support asynchronous execution, so long-running commands do not prevent the model from continuing its work.\n\nThe stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); when exceeded, a truncation notice is appended to the end of the corresponding output. Commands will continue to run and drain the output; when full large-scale output is required, write it to a file and then read it by range.\n\n",
-      "updated_at": 1795241342
-    },
     "docs/concepts.md:section:ca02d26ba67774e5269734a2cd247c74f55897ce322c3876499521ace53e830e": {
       "kind": "section",
       "source": "## 上下文压缩\n\n长对话接近模型上下文窗口时触发。Chat 会话用压缩模型生成文字摘要并保留用户原话；Responses 用当前对话模型的原生压缩能力。\n\n关键设计：压缩成功后切换到**完全独立的新 Session**（标题 `原标题 compacted-N`），而不是就地修改原 Session——原对话从此不可变，可追溯、可对比。\n\n配置与协议差异见[Context 与压缩](configuration.md#context-与压缩)。\n\n",
@@ -192,6 +184,14 @@
       "translation": "### Skill Media Usage\n\nMedia uses a stable identifier `media:<64-bit lowercase SHA-256>`. Ordinary document-type Skills can guide the Agent to pass this identifier to tools that support media.\n\nBash scripts explicitly declare inputs via `shell`, for example:\n\n```json\n{\n  \"cmd\": \"python generate.py --input \\\"$ELBOT_MEDIA_1\\\" --output result.png\",\n  \"media_inputs\": [{\"media\": \"media:<sha256>\"}]\n}\n```\n\nEach item in `media_inputs` only accepts `media`. The host exports or reuses files in the `media-inputs/` directory of the sandbox and injects environment variables such as `ELBOT_MEDIA_1` and `ELBOT_MEDIA_2` for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and must copy them before modification; cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. The original command and call parameters remain unchanged.\n\nTool-based AgentSkills declare media parameters using `{\"type\":\"media\"}` in `parameters.properties` of `ELBOT_SKILL.toml` and map them to command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives a temporary file path relative to the working directory; the default working directory is the Skill root directory, or the current workspace when `use_workspace = true`.\n\nWhen calling a tool, if a JSON field uses a media ID, it is also considered a reference for that Session. Plain text calls are not counted.\n\nThe stdout of a tool-based AgentSkill can return media results:\n\n```json\n{\"content\":\"Processing complete\",\"segments\":[{\"type\":\"image\",\"path\":\"result.png\"}]}\n```\n\n`segments` supports `text`, `image`, and `file`; media segments must and can only provide `media` or `path`. Paths are resolved relative to the working directory; absolute paths, `..`, and symlink/junction escapes are rejected. The host imports the file before returning, and the Tool Transcript saves the stable media ID and establishes a reference. Call-specific directories and temporary references are released after success, failure, cancellation, or timeout; other working files in the Skill root directory are still managed by the Skill. Temporary output can be written to the directory where the received media inputs are located.\n\n",
       "updated_at": 1795530656
     },
+    "docs/concepts.md:section:f8d165ff1a0d80d04e29ea1305bbfdb45a3cabb96b3a6fd044d6485cf9b87e7a": {
+      "kind": "section",
+      "source": "## Shell\n\n前台 Work 中，`shell` 和 `tool_weave` 支持异步执行，长耗时命令不影响模型继续工作。\n\n`shell` 和 `tool_weave` 的 stdout 和 stderr 各自最多保留最后 256 KiB（按字节计），超出时在对应输出开头注明已截断。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "c32de5622a495ec1e2434fea2710dc5577c4962e6d5f1b731dff852c57b36e83",
+      "translation": "## Shell\n\nIn foreground work mode, `shell` and `tool_weave` support asynchronous execution, so long-running commands do not prevent the model from continuing its work.\n\nThe stdout and stderr of `shell` and `tool_weave` each retain a maximum of the last 256 KiB (measured in bytes); if this limit is exceeded, a truncation notice will be added to the beginning of the corresponding output. Commands will continue to run and drain output; if large amounts of complete output are required, write them to a file and then read them by range.\n\n",
+      "updated_at": 1795860803
+    },
     "docs/concepts.md:section:fb1c0bde14b8e29c47a6f4d805521aaa775b9aefde72893596c041fe16f7a681": {
       "kind": "section",
       "source": "## 平台适配\n\nPlatform Adapter 接入具体平台：把平台消息转为 Agent Core 的统一输入，把 Output Layer 的输出意图转回平台消息。因此 Agent Core 不需要关心消息来自 CLI、群聊还是私聊。\n\n",
@@ -202,8 +202,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "51c04361a97d0381b965190b87f6031845b7456a4b69aa13db82af01cbb8f319",
+  "source_hash": "b23ab13cc1bc77614de84feacb40801d6460ccbc340cca23e866267bd22e3acf",
   "target": "docs.en/concepts.md",
-  "updated_at": 1795854729,
+  "updated_at": 1795860803,
   "version": 3
 }

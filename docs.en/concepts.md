@@ -62,7 +62,7 @@ Available only for foreground sessions, `draft` can be used to save notes or scr
 
 In foreground work mode, `shell` and `tool_weave` support asynchronous execution, so long-running commands do not prevent the model from continuing its work.
 
-The stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); when exceeded, a truncation notice is appended to the end of the corresponding output. Commands will continue to run and drain the output; when full large-scale output is required, write it to a file and then read it by range.
+The stdout and stderr of `shell` and `tool_weave` each retain a maximum of the last 256 KiB (measured in bytes); if this limit is exceeded, a truncation notice will be added to the beginning of the corresponding output. Commands will continue to run and drain output; if large amounts of complete output are required, write them to a file and then read them by range.
 
 ## Inline Preloading
 
