@@ -26,32 +26,32 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 **Ultra-lightweight Go implementation**:
 
-| Metric           | Value                            |
-| -------------- | ------------------------------- |
-| Local startup time   | ~10ms (tested on N5105, SATA SSD) |
-| Resident memory       | ~50MB                           |
-| Binary size | <30MB                           |
+| Metric            | Value                                   |
+| ----------------- | --------------------------------------- |
+| Local startup time| ~10ms (tested on N5105, SATA SSD)       |
+| Resident memory   | ~50MB                                   |
+| Binary size       | <30MB                                   |
 
 **On-demand tool discovery to save tokens**: Most users treat LLMs as search engines, writing assistants, or listeners; frequent tool calls are not the norm for conversations[^1][^2].
 
-ElBot does not inject the full schema of all tools in every conversation round. It only exposes `discover_tool` and the names of currently available tools; the model discovers details only when needed, and the Agent then injects the corresponding schema.
+ElBot does not inject the full schema of all tools into every conversation round. It only exposes `discover_tool` and the names of currently available tools; the model discovers details only when needed, and the Agent then injects the corresponding schema.
 
 All tool schemas, prompts, and message hints are meticulously designed to be precise and unambiguous while significantly reducing token usage.
 
-**Chat / Work dual modes**: Both modes can be configured with different models independently—low-cost models for chatting and powerful models for complex tasks.
+**Chat / Work dual mode**: Both modes can be configured with independent models: low-cost models for chatting and powerful models for complex tasks.
 
 | Mode   | Tools               | Applicable Scenarios                                 | First request token consumption      |
-| ------ | ------------------ | ---------------------------------------- | -------------------------- |
-| `chat` | Not injected             | Chatting, companionship, lightweight Q&A, low-cost conversations         | <500 (subsequent cache hit rate 98%+)  |
-| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit rate 95%+) |
+| ------ | ------------------- | ---------------------------------------------------- | ------------------------------------ |
+| `chat` | Not injected        | Chatting, companionship, lightweight Q&A, low-cost conversations | <500 (Subsequent cache hit 98%+)  |
+| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (Subsequent cache hit 95%+) |
 
 > Note: After using the `Responses` protocol, tool discovery via `additional_tools` no longer breaks the cache, leading to higher subsequent cache hit rates.
 
-**Layered resident memory and long-term memory**: Resident memory only stores short, stable information injected into each round, internally distinguishing between `core` (requiring confirmation for modification) and `normal` (organizable). Longer memories are queried by the LLM on demand via `long_memory`, using Markdown source data and SQLite FTS at the bottom to balance transparency and retrieval efficiency.
+**Layered resident memory and long-term memory**: Resident memory only stores short, stable information injected into each round, internally distinguishing between "core" (requiring confirmation for modification) and "normal" (organizable). Longer memories are queried by the LLM as needed via `long_memory`, using Markdown source data and SQLite FTS at the bottom to balance transparency and retrieval efficiency.
 
-**tool_weave**: Allows the model to use Python for concurrent and batch calls to ElBot tools, filtering for only the required results to save tokens and increase speed.[^3] [Learn about tool orchestration principles](docs.en/concepts.md#用-python-编排工具)
+**tool_weave**: Allows the model to use Python for concurrent and batch calls to ElBot tools, filtering for only the required results to save tokens and increase speed.[^3] [Learn about tool orchestration principles](docs.en/concepts.md#tool-weave)
 
-Both ElBot and Codex used `gpt-6.2-astra` to fix the same bug in ElBot. With similar code quality, ElBot made 12 fewer model calls, and its total token usage was 81.3% lower.
+Both ElBot and Codex used `gpt-6.2-astra` to fix the same bug in ElBot. With similar code quality, ElBot made 12 fewer model calls, and total token usage was 81.3% lower.
 
 ```mermaid
 ---
@@ -72,7 +72,7 @@ config:
       plotColorPalette: "#487DB5"
 ---
 xychart-beta horizontal
-    title "Same bug, ElBot uses 81.3% fewer tokens"
+    title "Same bug, ElBot used 81.3% fewer tokens"
     x-axis ["ElBot · 363.4k Tokens · 25 calls", "Codex · 1.9451M Tokens · 37 calls"]
     y-axis 0 --> 200
     bar [36.34, 194.51]
