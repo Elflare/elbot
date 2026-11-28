@@ -16,16 +16,20 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 )
 
+const directoryPreviewMatches = 5
+
 type directorySearchMatch struct {
-	Path   string
-	Line   int
-	Column int
+	Path    string
+	Line    int
+	Column  int
+	Preview string // Bounded excerpt for small, fully enumerated result sets.
 }
 
 func readFileDirectorySearch(ctx context.Context, root string, args readFileArgs, warnings []string) (operationresult.Result[*toolshare.Result], error) {
@@ -228,7 +232,11 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 						break
 					}
 					if total+count >= index.start {
-						candidates = append(candidates, directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1})
+						match := directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1}
+						if !index.single && total+count <= directoryPreviewMatches {
+							match.Preview = directoryGrepPreview(line, location[0])
+						}
+						candidates = append(candidates, match)
 					}
 				}
 			}
@@ -249,6 +257,28 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 	return operationresult.Result[int]{Status: operationresult.Success, Data: total}, nil
 }
 
+func directoryGrepPreview(line string, at int) string {
+	const width = 240 // bytes, excluding ellipses
+	if len(line) <= width {
+		return strings.Clone(line)
+	}
+	start := min(max(0, at-width/4), len(line)-width)
+	end := start + width
+	prefix, suffix := "", ""
+	if start > 0 {
+		prefix = "…"
+		for start < end && !utf8.RuneStart(line[start]) {
+			start++
+		}
+	}
+	if end < len(line) {
+		suffix = "…"
+		for end > start && !utf8.RuneStart(line[end]) {
+			end--
+		}
+	}
+	return prefix + line[start:end] + suffix
+}
 func formatDirectorySearchMatches(root, query string, matches []directorySearchMatch, total, contextLines int, index readFileIndex, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	if index.outOfRange(total) {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index.start, total)}, nil
@@ -258,8 +288,14 @@ func formatDirectorySearchMatches(root, query string, matches []directorySearchM
 	if index.single {
 		return formatDirectorySearchSelection(&b, root, matches[0], contextLines, warnings)
 	}
+	// A hit after the page proves there are more results, not how many in total.
+	showPreview := total <= index.end && total <= directoryPreviewMatches
 	for i, match := range matches {
-		fmt.Fprintf(&b, "%d. %s:%d:%d [grep] \n", i+index.start, match.Path, match.Line, match.Column)
+		fmt.Fprintf(&b, "%d. %s:%d:%d [grep] ", i+index.start, match.Path, match.Line, match.Column)
+		if showPreview {
+			b.WriteString(match.Preview)
+		}
+		b.WriteByte('\n')
 	}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }
