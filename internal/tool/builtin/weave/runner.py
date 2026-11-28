@@ -5,6 +5,13 @@ import itertools
 import json
 import os
 import sys
+import traceback
+
+
+class ToolCallError(RuntimeError):
+    def __init__(self, name, message):
+        super().__init__(message)
+        self.name = name
 
 
 async def main():
@@ -31,7 +38,10 @@ async def main():
             message = json.dumps({"id": seq, "name": name, "args": kwargs})
             pending[seq] = future = loop.create_future()
             transport.write(message.encode() + b"\n")
-            return await future
+            reply = await future
+            if not reply["ok"]:
+                raise ToolCallError(name, reply["text"])
+            return reply["text"]
         return call
 
     async def receive():
@@ -41,10 +51,7 @@ async def main():
                 future = pending.pop(reply["id"])
                 if future.done():
                     continue
-                if reply["ok"]:
-                    future.set_result(reply["text"])
-                else:
-                    future.set_exception(RuntimeError(reply["text"]))
+                future.set_result(reply)
         finally:
             for future in pending.values():
                 if not future.done():
@@ -65,4 +72,9 @@ async def main():
         transport.close()
 
 
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except ToolCallError as err:
+    line = next(f.lineno for f in reversed(traceback.extract_tb(err.__traceback__))
+                if f.filename == "<tool_weave>")
+    sys.exit(f"<tool_weave>:{line}: {err.name}: {err}")

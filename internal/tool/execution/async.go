@@ -13,8 +13,16 @@ import (
 	"time"
 )
 
+func asyncMode(info toolshare.Info, raw json.RawMessage, allowAsync bool) (bool, string) {
+	async, reason := parseAsync(info, raw)
+	if async && !allowAsync {
+		return false, "async 仅限前台 Work 工具调用"
+	}
+	return async, reason
+}
+
 // The same decoder applies to declared async options across tool entry points.
-func asyncMode(info toolshare.Info, raw json.RawMessage, foreground bool) (bool, string) {
+func parseAsync(info toolshare.Info, raw json.RawMessage) (bool, string) {
 	if info.Async == toolshare.AsyncDisabled {
 		return false, ""
 	}
@@ -32,9 +40,6 @@ func asyncMode(info toolshare.Info, raw json.RawMessage, foreground bool) (bool,
 		default:
 			return false, "async 必须为布尔值"
 		}
-	}
-	if async && !foreground {
-		return false, "async 仅限前台 Work 工具调用"
 	}
 	return async, ""
 }

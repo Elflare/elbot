@@ -123,7 +123,11 @@ func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session 
 	if !target.Native.Definition.Weavable {
 		return operationresult.Result[string]{Status: operationresult.Forbidden, Message: "工具已停止支持编排：" + call.Name}, nil
 	}
-	if _, reason := asyncMode(target.Native.Definition, json.RawMessage(call.Arguments), false); reason != "" {
+	async, reason := parseAsync(target.Native.Definition, json.RawMessage(call.Arguments))
+	if async {
+		reason = "tool_weave 子调用异步用 asyncio.gather。"
+	}
+	if reason != "" {
 		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: reason}, nil
 	}
 	ctx = deps.PrepareToolContext(ctx, session, call)
