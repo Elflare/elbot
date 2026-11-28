@@ -41,7 +41,7 @@ type pipes struct {
 
 func Definition(env processenv.Environment) share.ToolDefinition {
 	return share.NewBuilder("tool_weave").Async(share.SyncByDefault).
-		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。默认已import asyncio,可直接使用。复杂、多次工具调用尽量使用该工具，简单别用。例：
+		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。默认已import asyncio,可直接使用。复杂、多次工具调用尽量使用该工具，简单别用。code/path二选一。例：
 from pathlib import Path
 projects = {"Go": "go.dev", "Python": "blog.python.org"}
 news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))#函数名即为已发现工具，不用声明直接使用
@@ -53,24 +53,50 @@ print(await send_file(source="weekly.md"))`).
 		ForegroundOnly().
 		DependsOn("draft").
 		Tags("files").
-		String("code", "Python 源码，支持顶层 await，用 print 输出。", share.Required()).
+		String("code", "Python 源码。").
+		String("path", "本地脚本路径，内容语法和code一致。").
 		String("mode", "省略：项目 uv，否则系统 Python。显式 uv：无项目用临时环境，准备失败回退系统 Python。", share.Enum("system", "uv")).
 		StringArray("packages", "临时依赖，仅 uv。项目外用 mode=\"uv\"。").
 		Integer("timeout", "总超时，秒，默认 10。").
 		Build(func(ctx context.Context, req share.CallRequest, info share.Info) (operationresult.Result[*share.PreparedCall], error) {
-			var a args
-			if err := json.Unmarshal(req.Arguments, &a); err != nil {
+			var input struct {
+				args
+				Code, Path *string
+			}
+			if err := json.Unmarshal(req.Arguments, &input); err != nil {
 				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
-			if strings.TrimSpace(a.Code) == "" || (a.Mode != "" && a.Mode != "system" && a.Mode != "uv") || a.Timeout < 0 || a.Timeout > int64((1<<63-1)/time.Second) {
+			a := input.args
+			if (input.Code == nil) == (input.Path == nil) || (a.Mode != "" && a.Mode != "system" && a.Mode != "uv") || a.Timeout < 0 || a.Timeout > int64((1<<63-1)/time.Second) {
 				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "参数错误"}, nil
 			}
 			if a.Timeout == 0 {
 				a.Timeout = 10
 			}
-			dir, err := workspace.CurrentWorkspaceDir(ctx)
-			if err != nil {
-				return operationresult.Result[*share.PreparedCall]{}, err
+			var dir string
+			if input.Path != nil {
+				selected, err := workspace.ResolveWorkspacePath(ctx, *input.Path, workspace.PathResolveOptions{RequireRegularFile: true})
+				if err != nil {
+					return operationresult.Result[*share.PreparedCall]{}, err
+				}
+				if selected.Status != operationresult.Success {
+					return operationresult.Result[*share.PreparedCall]{Status: selected.Status, Message: selected.Message}, nil
+				}
+				data, err := os.ReadFile(selected.Data.Path)
+				if err != nil {
+					return operationresult.Result[*share.PreparedCall]{}, err
+				}
+				a.Code, dir = string(data), selected.Data.BaseDir
+			} else {
+				a.Code = *input.Code
+				var err error
+				dir, err = workspace.CurrentWorkspaceDir(ctx)
+				if err != nil {
+					return operationresult.Result[*share.PreparedCall]{}, err
+				}
+			}
+			if strings.TrimSpace(a.Code) == "" {
+				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "参数错误"}, nil
 			}
 			details := []share.ConfirmationDetailBlock{
 				share.CodeConfirmationDetail("python", a.Code),
