@@ -115,6 +115,7 @@ func (b *runBatch) close() {
 		b.deps.PublishToolResult(context.WithoutCancel(b.ctx), task.call.ID, delivery.ToolResult{
 			Success:  false,
 			Segments: segments,
+			Blocks:   task.result.Changes,
 		})
 	}
 }

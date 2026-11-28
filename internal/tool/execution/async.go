@@ -50,12 +50,12 @@ func (result executionResult) record(sid string, call llm.ToolCallRequest, actor
 }
 
 // Only the actual invocation executes and fires the completion Hook. The later pair is input.
-func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job toolshare.AsyncJob, session *storage.Session, call llm.ToolCallRequest, target resolvedTool, preparedCall *toolshare.PreparedCall, actor contextinfo.Actor, risk, runSource string, withdraw func()) {
+func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job toolshare.AsyncJob, session *storage.Session, call llm.ToolCallRequest, target resolvedTool, execute func(func()) executionResult, actor contextinfo.Actor, risk, runSource string, withdraw func()) {
 	defer job.Done()
 	sessionID := session.ID
 
 	start := time.Now()
-	result := m.executePrepared(ctx, call, target, preparedCall, func() {
+	result := execute(func() {
 		m.recordCallStarted(ctx, sessionID, call, target.Source, actor, risk, runSource)
 	})
 	if withdraw != nil {
@@ -79,7 +79,7 @@ func (m *Manager) runAsync(ctx context.Context, deps toolshare.RunnerDeps, job t
 		state = "error"
 	}
 	segments := append(llm.TextSegments(fmt.Sprintf("任务 %s 回报（%s），非新执行。\n", job.ID, state)), result.Message.Segments...)
-	if err := job.Deliver(report, delivery.ToolResult{Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: segments}); err != nil {
+	if err := job.Deliver(report, delivery.ToolResult{Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: segments, Blocks: result.Changes}); err != nil {
 		m.Log(ctx, newRunRecord(ctx, sessionID, "async_tool_delivery_failed", err))
 	}
 }

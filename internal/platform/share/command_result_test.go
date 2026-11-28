@@ -72,7 +72,7 @@ func TestRiskPreviewDoesNotTrimWireOrDetail(t *testing.T) {
 		{Kind: delivery.ContentFields, Content: []delivery.ContentField{{Key: "path", Label: "文件", Value: "example.go"}, {Key: "created", Label: "创建文件", Value: false}}},
 		{Kind: delivery.ContentDiff, Content: diff},
 	}
-	out := delivery.Output{Kind: delivery.KindText, ShowActionHints: true, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "edit [high]"}, {Kind: delivery.ContentPreview, Content: detail}, {Kind: delivery.ContentText, Content: "risk reason"}}, Actions: []delivery.Action{{Command: "-c", Label: "确认"}}}
+	out := delivery.Output{Kind: delivery.KindText, ShowActionHints: true, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "edit [high]"}, {Kind: delivery.ContentOperation, Content: delivery.OperationContent{ToolCallID: "call", Name: "edit", Blocks: detail}}, {Kind: delivery.ContentText, Content: "risk reason"}}, Actions: []delivery.Action{{Command: "-c", Label: "确认"}}}
 	for _, buttons := range []bool{false, true} {
 		s := delivery.OutputBody(out, buttons)
 		if strings.Contains(s, "+last") || !strings.Contains(s, "example.go\n---old\n+++new\n+变更…") || strings.Contains(s, "创建文件") || !strings.Contains(s, "risk reason") || !strings.Contains(s, "-c 确认") {
@@ -87,10 +87,11 @@ func TestRiskPreviewDoesNotTrimWireOrDetail(t *testing.T) {
 	if err = json.Unmarshal(wire, &blocks); err != nil {
 		t.Fatal(err)
 	}
-	if blocks[1].Content.([]delivery.ContentBlock)[1].Content != diff {
+	if blocks[1].Content.(delivery.OperationContent).Blocks[1].Content != diff {
 		t.Fatal("wire diff trimmed")
 	}
-	if !strings.Contains(FormatCommandResult(command.Result{Blocks: detail}), diff) {
+	explicit := command.Result{Blocks: blocks, Actions: out.Actions}
+	if !strings.Contains(FormatCommandResult(explicit), diff) || !strings.Contains(delivery.FallbackText(CommandResultOutputs(explicit, nil)[0]), diff) {
 		t.Fatal("detail trimmed")
 	}
 }

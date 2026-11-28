@@ -48,10 +48,10 @@ func TestWeavePreloadReflectsFullCommittedState(t *testing.T) {
 		names []string
 		want  string
 	}{
-		{[]string{"shell"}, "tool_weave 可调用：draft、workspace"},
-		{[]string{"tool_weave"}, "tool_weave 可调用：draft、workspace"},
+		{[]string{"tool_weave"}, "tool_weave 可调用：draft"},
 		{[]string{"read_file"}, "tool_weave 可调用：draft、read_file、rollback_file、workspace"},
 		{[]string{"web_extract"}, "tool_weave 可调用：draft、read_file、rollback_file、web_extract、web_search、workspace"},
+		{[]string{"shell"}, "tool_weave 可调用：draft、read_file、rollback_file、shell、web_extract、web_search、workspace"},
 	} {
 		prepared, err := m.PrepareTools(ctx, step.names)
 		if err != nil {

@@ -77,7 +77,7 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.Path},
 			toolshare.ConfirmationField{Key: "action", Label: "操作", Value: action},
 		),
-		toolshare.FileDiffConfirmationDetail(preview.Diff),
+		toolshare.FileDiffBlock(preview.Diff),
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preparedRollback)
@@ -98,5 +98,5 @@ func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRo
 		action = "deleted_created_file"
 	}
 	content := fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", data.Path, action, data.Revision)
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content}}, content, nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Changes: toolshare.FileChanges(prepared.Preview().Diff)}}, content, nil
 }

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
@@ -61,7 +63,22 @@ func (m *Manager) WeaveDescription(ctx context.Context, items []share.Discovered
 	return "tool_weave 可调用：" + strings.Join(names, "、"), nil
 }
 
-func (m *Manager) bindWeave(ctx context.Context, deps share.RunnerDeps, session storage.Session, items []share.DiscoveredTool, parent string, actor contextinfo.Actor) (context.Context, error) {
+// weaveChanges belongs to one script. The bridge joins all children before the parent reads blocks.
+type weaveChanges struct {
+	mu     sync.Mutex
+	blocks []delivery.ContentBlock
+}
+
+func (c *weaveChanges) add(call llm.ToolCallRequest, blocks []delivery.ContentBlock) {
+	if len(blocks) == 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.blocks = append(c.blocks, delivery.ContentBlock{Kind: delivery.ContentOperation, Content: delivery.OperationContent{ToolCallID: call.ID, Name: call.Name, Blocks: blocks}})
+}
+
+func (m *Manager) bindWeave(ctx context.Context, deps share.RunnerDeps, session storage.Session, items []share.DiscoveredTool, parent string, actor contextinfo.Actor, changes *weaveChanges) (context.Context, error) {
 	names, _, err := m.weaveNames(ctx, items)
 	if err != nil {
 		return ctx, err
@@ -78,12 +95,12 @@ func (m *Manager) bindWeave(ctx context.Context, deps share.RunnerDeps, session 
 		if refreshed, ok := contextinfo.ActorFromContext(ctx); ok {
 			currentActor = refreshed
 		}
-		return m.callWeave(ctx, deps, &snapshot, items, names, request, currentActor)
+		return m.callWeave(ctx, deps, &snapshot, items, names, request, currentActor, changes)
 	}
 	return share.WithWeaveContext(ctx, share.WeaveContext{Names: names, Call: call}), nil
 }
 
-func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session *storage.Session, items []share.DiscoveredTool, names []string, call llm.ToolCallRequest, actor contextinfo.Actor) (result operationresult.Result[string], err error) {
+func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session *storage.Session, items []share.DiscoveredTool, names []string, call llm.ToolCallRequest, actor contextinfo.Actor, changes *weaveChanges) (result operationresult.Result[string], err error) {
 	start := time.Now()
 	var outcome executionResult
 	var risk string
@@ -129,6 +146,7 @@ func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session 
 		outcome = *rejected
 	} else {
 		outcome = m.executePrepared(child, call, target, prepared.Data, func() { m.recordCallStarted(child, session.ID, call, target.Source, actor, risk, "tool_weave") })
+		changes.add(call, outcome.Changes)
 		deliverOutputs(child, deps, &outcome)
 	}
 	result = operationresult.Result[string]{Status: outcome.Result.Status, Message: outcome.Result.Message}

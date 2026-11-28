@@ -249,8 +249,23 @@ schemas:
         question: { type: string }
         options: { type: array, minItems: 1, maxItems: 3, items: { type: string } }
         draft: { $ref: '#/schemas/QuestionDraft' }
+    OperationContent:
+      type: object
+      description: Groups full confirmation details or committed changes by tool invocation.
+      properties:
+        tool_call_id: { type: string }
+        name: { type: string }
+        blocks:
+          type: [array, 'null']
+          items: { $ref: '#/schemas/ContentBlock' }
+      required: [tool_call_id, name, blocks]
     ContentBlock:
       oneOf:
+        - type: object
+          properties:
+            kind: { const: operation }
+            content: { $ref: '#/schemas/OperationContent' }
+          required: [kind, content]
         - type: object
           properties:
             kind: { const: question }
@@ -325,6 +340,10 @@ schemas:
           type: object
           properties:
             success: { type: boolean }
+            blocks:
+              type: array
+              description: Display-only committed changes, never included in model input or history. A script reports its child changes together as operation blocks on its final result, including when the script fails.
+              items: { $ref: '#/schemas/ContentBlock' }
             segments: { type: array, items: { type: object, additionalProperties: true } }
           required: [success, segments]
       required: [type]
@@ -358,7 +377,7 @@ schemas:
         detail:
           type: [array, 'null']
           items: { $ref: '#/schemas/ConfirmationDetailBlock' }
-          description: Ordered tool-provided confirmation detail blocks. Fields and code preserve prepared operation data. A diff block is included only when both file versions are at most 8 MiB and have changes; larger files remain editable without a diff block. No arguments block or alternate text fallback is added. Empty for append confirmation and null when no confirmation is pending.
+          description: Ordered tool-provided confirmation detail blocks. Fields and code preserve prepared operation data. Operation blocks identify the tool call and carry its full prepared details. An empty diff means a patch was unavailable; it is not evidence that no changes were made. No arguments block or alternate text fallback is added. Empty for append confirmation and null when no confirmation is pending.
         actions:
           type: [array, 'null']
           items:

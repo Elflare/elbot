@@ -63,10 +63,7 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 		toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.Path},
 	)}
 	if preview.Action == "write" {
-		filePreview := preview.File.Preview()
-		details = append(details,
-			toolshare.FileDiffConfirmationDetail(filePreview.Diff),
-		)
+		details = append(details, toolshare.FileDiffBlock(preview.File.Preview().Diff))
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preview)
@@ -98,7 +95,7 @@ func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (op
 	if committed.Status != operationresult.Success {
 		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, committed.Message, nil
 	}
-	result := &toolshare.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
+	result := &toolshare.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name), Changes: toolshare.FileChanges(preview.File.Preview().Diff)}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 }
 

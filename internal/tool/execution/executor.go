@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/operationresult"
 )
 
 type executionResult struct {
+	// Changes carries committed diffs separately from model-facing content.
+	Changes []delivery.ContentBlock
 	// Message is the model-facing result, using Message on rejection and err.Error() on faults.
 	Message llm.LLMMessage
 	// Result carries the business outcome; Data is available only on success.
@@ -54,21 +57,22 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 		message.Segments = llm.TextSegments(result.Message)
 		return executionResult{Message: message, Result: result, Summary: logContent, ExecutionStarted: true}
 	}
-	toolResult := result.Data
+	completed := executionResult{Message: message, Result: result, Summary: logContent, ExecutionStarted: true}
 	// 只把 Content/Segments 回灌给 LLM；Result.Data 留给 Agent 内部结构化消费。
 	// 避免 discover schema、内部状态或大对象污染上下文。
-	if toolResult != nil {
+	if toolResult := result.Data; toolResult != nil {
+		completed.Changes = toolResult.Changes
 		if resolved.Native != nil {
 			toolResult.NeedsElyphRules = toolResult.NeedsElyphRules || resolved.Native.Definition.NeedsElyphRules
 		}
 		if toolResult.DiscoveryText != nil {
 			// Hook 只处理业务详情；摘要与公共规则由协调器在 Hook 后组装。
-			message.Segments = llm.TextSegments(toolResult.DiscoveryText.Details)
+			completed.Message.Segments = llm.TextSegments(toolResult.DiscoveryText.Details)
 		} else {
-			message.Segments = toolResult.LLMSegments()
+			completed.Message.Segments = toolResult.LLMSegments()
 		}
 	}
-	return executionResult{Message: message, Result: result, Summary: logContent, ExecutionStarted: true}
+	return completed
 }
 
 func executionError(call llm.ToolCallRequest, err error) executionResult {

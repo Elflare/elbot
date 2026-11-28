@@ -45,6 +45,7 @@ type Result struct {
 	Discovery     *DiscoveryResult // discover_tool 返回的结构化结果；普通工具不填。
 	ActivateTools []string         // 请求激活的工具名，提交时仍按当前身份筛选。
 	Outputs       []delivery.Output
+	Changes       []delivery.ContentBlock `json:"-"` // Committed changes for display only, never model content.
 }
 
 // LogContent returns a log-only preview of the successful result, bounded to

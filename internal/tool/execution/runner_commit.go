@@ -85,7 +85,7 @@ func (b *runBatch) commit(index int, receipt bool) error {
 		return err
 	}
 	b.deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, delivery.ToolResult{
-		Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: result.Message.Segments,
+		Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: result.Message.Segments, Blocks: result.Changes,
 	})
 	task.published = true
 	if ruleCard != "" {

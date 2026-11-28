@@ -48,7 +48,7 @@ func TestWeaveAuditsToolRemovedAfterDiscovery(t *testing.T) {
 	session := &storage.Session{ID: "work", Mode: storage.SessionModeWork}
 	items := []share.DiscoveredTool{{Name: "removed", Source: share.SourceKindNative}}
 	call := llm.ToolCallRequest{ID: "outer/1", Name: "removed", Arguments: "{}"}
-	got, err := manager.callWeave(t.Context(), &weaveDeps{}, session, items, []string{"removed"}, call, contextinfo.Actor{})
+	got, err := manager.callWeave(t.Context(), &weaveDeps{}, session, items, []string{"removed"}, call, contextinfo.Actor{}, &weaveChanges{})
 	if err != nil || got.Status != operationresult.Unavailable || audit.EventName != "tool_call_completed" || audit.ResultStatus != events.ResultRejected {
 		t.Fatalf("removed tool: result=%+v audit=%+v err=%v", got, audit, err)
 	}
@@ -93,7 +93,7 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bound, err := manager.bindWeave(ctx, &weaveDeps{}, *session, state.DiscoveredTools, "forged", actor)
+	bound, err := manager.bindWeave(ctx, &weaveDeps{}, *session, state.DiscoveredTools, "forged", actor, &weaveChanges{})
 	if err != nil {
 		t.Fatal(err)
 	}

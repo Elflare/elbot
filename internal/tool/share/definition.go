@@ -106,8 +106,12 @@ func CodeConfirmationDetail(language, content string) ConfirmationDetailBlock {
 	return ConfirmationDetailBlock{Kind: ConfirmationDetailCode, Content: delivery.CodeContent{Language: language, Content: content}}
 }
 
-func FileDiffConfirmationDetail(diff string) ConfirmationDetailBlock {
-	return ConfirmationDetailBlock{Kind: ConfirmationDetailDiff, Content: diff}
+func FileDiffBlock(diff string) delivery.ContentBlock {
+	return delivery.ContentBlock{Kind: delivery.ContentDiff, Content: diff}
+}
+
+func FileChanges(diff string) []delivery.ContentBlock {
+	return []delivery.ContentBlock{FileDiffBlock(diff)}
 }
 
 // ToolRegistrationScope 标识一次完整替换的工具组；远端组仅属于指定会话和事件。

@@ -79,9 +79,10 @@ type Action struct {
 }
 
 type Output struct {
-	ShowActionHints bool `json:"-"` // Show typed commands even when buttons are available.
-	Kind            Kind
-	Text            string
+	ShowActionHints      bool `json:"-"` // Show typed commands even when buttons are available.
+	FullOperationDetails bool `json:"-"` // Explicit command replies (e.g. /detail) render full details even on text platforms.
+	Kind                 Kind
+	Text                 string
 	// Blocks preserves typed message content until the receiving platform renders it.
 	Blocks                   []ContentBlock
 	Name                     string
@@ -258,7 +259,7 @@ func firstNonEmpty(values ...string) string {
 
 func (out Output) bodyText() string {
 	if len(out.Blocks) > 0 {
-		return ContentBlocksText(out.Blocks)
+		return renderBlocksText(out.Blocks, !out.FullOperationDetails)
 	}
 	return out.Text
 }

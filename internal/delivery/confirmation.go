@@ -18,13 +18,20 @@ type ContentBlock struct {
 
 const (
 	ContentSessionList ContentBlockKind = "session_list"
-	ContentPreview     ContentBlockKind = "preview"
+	ContentOperation   ContentBlockKind = "operation"
 	ContentQuestion    ContentBlockKind = "question"
 	ContentText        ContentBlockKind = "text"
 	ContentDiff        ContentBlockKind = "diff"
 	ContentFields      ContentBlockKind = "fields"
 	ContentCode        ContentBlockKind = "code"
 )
+
+// OperationContent groups confirmation details or committed changes by tool invocation.
+type OperationContent struct {
+	ToolCallID string         `json:"tool_call_id"`
+	Name       string         `json:"name"`
+	Blocks     []ContentBlock `json:"blocks"`
+}
 
 // ContentField is an independently renderable confirmation field.
 type ContentField struct {
@@ -55,8 +62,8 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 	switch raw.Kind {
 	case ContentSessionList:
 		content, err = decodeBlockContent[ListSessionsResult](decoder)
-	case ContentPreview:
-		content, err = decodeBlockContent[[]ContentBlock](decoder)
+	case ContentOperation:
+		content, err = decodeBlockContent[OperationContent](decoder)
 	case ContentQuestion:
 		content, err = decodeBlockContent[QuestionContent](decoder)
 	case ContentFields:
@@ -83,14 +90,23 @@ func decodeBlockContent[T any](decoder *json.Decoder) (T, error) {
 
 // ContentBlocksText renders structured blocks for consumers that only accept text.
 func ContentBlocksText(blocks []ContentBlock) string {
+	return renderBlocksText(blocks, false)
+}
+
+func renderBlocksText(blocks []ContentBlock, shortOperation bool) string {
 	var parts []string
 	for _, block := range blocks {
 		var content string
 		switch block.Kind {
 		case ContentSessionList:
 			content = SessionListText(block.Content.(ListSessionsResult))
-		case ContentPreview:
-			content = previewOperation(operationPreviewBody(block.Content.([]ContentBlock)))
+		case ContentOperation:
+			details := block.Content.(OperationContent).Blocks
+			if shortOperation {
+				content = previewOperation(operationPreviewBody(details))
+			} else {
+				content = ContentBlocksText(details)
+			}
 		case ContentQuestion:
 			content = block.Content.(QuestionContent).text()
 		case ContentFields:
@@ -115,7 +131,9 @@ func ContentBlocksText(blocks []ContentBlock) string {
 		case ContentText:
 			content = block.Content.(string)
 		case ContentDiff:
-			content = "```diff\n" + block.Content.(string) + "\n```"
+			if patch := block.Content.(string); patch != "" {
+				content = "```diff\n" + patch + "\n```"
+			}
 		default:
 			panic(fmt.Errorf("unsupported content block kind %q", block.Kind))
 		}

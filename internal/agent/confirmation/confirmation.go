@@ -286,12 +286,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
 		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{}}, nil
 	}
+	operation := []delivery.ContentBlock{{Kind: delivery.ContentOperation, Content: delivery.OperationContent{ToolCallID: call.ID, Name: call.Name, Blocks: detail}}}
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
 		ToolName: call.Name,
 		Risk:     string(assessment.Level),
 		Reasons:  append([]string(nil), assessment.Reasons...),
-		Detail:   toTurnConfirmationDetails(detail),
+		Detail:   operation,
 	}, turn.AttemptFromContext(ctx))
 	if wait == nil {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "skip", "", "confirmation wait is no longer current", events.ResultSkipped, slog.LevelInfo)
@@ -300,11 +301,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	defer wait.Cancel()
 	if ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-		preview := []delivery.ContentBlock{}
-		if len(detail) > 0 {
-			preview = append(preview, delivery.ContentBlock{Kind: delivery.ContentPreview, Content: detail})
-		}
-		blocks := riskConfirmationDetails(call.Name, string(assessment.Level), preview, assessment.Reasons)
+		blocks := riskConfirmationDetails(call.Name, string(assessment.Level), operation, assessment.Reasons)
 		sent, err := c.output.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, ShowActionHints: true, Blocks: blocks, Actions: riskConfirmationActions(c.commandText)}})
 		if err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
@@ -363,10 +360,6 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
 	return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{Extra: resp.Extra}}, nil
-}
-
-func toTurnConfirmationDetails(details []tool.ConfirmationDetailBlock) []turn.ConfirmationDetailBlock {
-	return append([]turn.ConfirmationDetailBlock(nil), details...)
 }
 
 func riskConfirmationDetails(toolName, risk string, detail []tool.ConfirmationDetailBlock, reasons []string) []tool.ConfirmationDetailBlock {

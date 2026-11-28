@@ -166,7 +166,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 				return operationresult.Result[*toolshare.Result]{Status: updated.Status, Message: updated.Message}, updated.Message, nil
 			}
 			record := updated.Data
-			result := &toolshare.Result{Content: strings.TrimSpace(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))}
+			result := &toolshare.Result{Changes: toolshare.FileChanges(preview.File.Preview().Diff), Content: strings.TrimSpace(fmt.Sprintf("ID：%d 更新成功！\n分类：%s\n标题：%s\n文件：%s", record.ID, record.Category, record.Title, record.FilePath))}
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 		})}, nil
 	case "delete":
@@ -227,7 +227,7 @@ func longMemoryUpdateRiskDetails(preview longMemoryUpdatePreview) []toolshare.Co
 			toolshare.ConfirmationField{Key: "id", Label: "ID", Value: preview.After.ID},
 			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.After.FilePath},
 		),
-		toolshare.FileDiffConfirmationDetail(filePreview.Diff),
+		toolshare.FileDiffBlock(filePreview.Diff),
 	}
 }
 

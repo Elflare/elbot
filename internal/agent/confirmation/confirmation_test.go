@@ -250,7 +250,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		blocks := <-output.blocks
-		if len(blocks) != 2 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentPreview || delivery.ContentBlocksText(blocks[1].Content.([]delivery.ContentBlock)) != "detail" {
+		if len(blocks) != 2 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentOperation || blocks[1].Content.(delivery.OperationContent).ToolCallID != "call" || delivery.ContentBlocksText(blocks[1].Content.(delivery.OperationContent).Blocks) != "detail" {
 			t.Fatalf("confirmation blocks=%#v", blocks)
 		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {

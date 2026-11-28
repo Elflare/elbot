@@ -451,7 +451,7 @@ func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolsh
 			toolshare.ConfirmationField{Key: "expected_revision", Label: "校验版本", Value: args.ExpectedRevision},
 			toolshare.ConfirmationField{Key: "encoding", Label: "编码", Value: preview.Encoding},
 		),
-		toolshare.FileDiffConfirmationDetail(preview.Diff),
+		toolshare.FileDiffBlock(preview.Diff),
 	}
 }
 
@@ -490,7 +490,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if lease.Data != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "已编辑，无撤销备份（会话失效或容量受限）。")
 	}
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Warnings: warnings}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Warnings: warnings, Changes: toolshare.FileChanges(result.Diff)}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
 }
 
 func editServiceRequest(args editFileArgs) fileops.EditRequest {

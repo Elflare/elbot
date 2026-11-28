@@ -217,6 +217,10 @@ components:
       $ref: './frontend-api/components/schemas.yaml#/schemas/UsageSnapshot'
     Status:
       $ref: './frontend-api/components/schemas.yaml#/schemas/Status'
+    OperationContent:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/OperationContent'
+    StreamEvent:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/StreamEvent'
     Confirmation:
       $ref: './frontend-api/components/schemas.yaml#/schemas/Confirmation'
     Hook:

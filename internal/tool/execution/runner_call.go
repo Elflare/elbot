@@ -160,12 +160,18 @@ func (b *runBatch) launch(index int, toolCtx context.Context, snapshot *storage.
 		done = func() { withdraw(); release() }
 	}
 	runToolCtx = b.deps.PrepareToolContext(runToolCtx, snapshot, call)
+	var children weaveChanges
 	if call.Name == "tool_weave" {
-		runToolCtx, err = b.manager.bindWeave(runToolCtx, b.deps, *snapshot, b.req.DiscoveredTools, call.ID, task.actor)
+		runToolCtx, err = b.manager.bindWeave(runToolCtx, b.deps, *snapshot, b.req.DiscoveredTools, call.ID, task.actor, &children)
 		if err != nil {
 			done()
 			return err
 		}
+	}
+	execute := func(onStarted func()) executionResult {
+		result := b.manager.executePrepared(runToolCtx, call, resolvedTool, preparedCall, onStarted)
+		result.Changes = append(result.Changes, children.blocks...)
+		return result
 	}
 	if async {
 		// Save acceptance before starting the worker. A failed commit cannot leak a job.
@@ -176,12 +182,12 @@ func (b *runBatch) launch(index int, toolCtx context.Context, snapshot *storage.
 			done()
 			return err
 		}
-		go b.manager.runAsync(runToolCtx, b.deps, job, snapshot, call, resolvedTool, preparedCall, task.actor, task.risk, runSource, withdraw)
+		go b.manager.runAsync(runToolCtx, b.deps, job, snapshot, call, resolvedTool, execute, task.actor, task.risk, runSource, withdraw)
 		return nil
 	}
 	b.workers.Go(func() {
 		startedAt := time.Now()
-		result := b.manager.executePrepared(runToolCtx, call, resolvedTool, preparedCall, func() {
+		result := execute(func() {
 			startedAt = time.Now()
 			task.startedAt = startedAt
 			b.manager.recordCallStarted(runToolCtx, b.sessionID, call, resolvedTool.Source, task.actor, task.risk, runSource)

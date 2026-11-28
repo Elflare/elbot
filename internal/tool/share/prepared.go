@@ -28,9 +28,7 @@ type PreparedCall struct {
 func NewPreparedCall(req CallRequest, assessment RiskAssessment, details []ConfirmationDetailBlock, run func(context.Context) (operationresult.Result[*Result], string, error)) *PreparedCall {
 	req.Arguments = bytes.Clone(req.Arguments)
 	assessment.Reasons = append([]string(nil), assessment.Reasons...)
-	details = slices.DeleteFunc(slices.Clone(details), func(block ConfirmationDetailBlock) bool {
-		return block.Kind == ConfirmationDetailDiff && block.Content.(string) == ""
-	})
+	details = slices.Clone(details)
 	return &PreparedCall{request: req, assessment: assessment, details: details, run: run}
 }
 

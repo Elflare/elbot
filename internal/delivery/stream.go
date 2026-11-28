@@ -28,8 +28,9 @@ type ToolCall struct {
 }
 
 type ToolResult struct {
-	Success  bool                 `json:"success"`  // Whether tool execution completed without error.
-	Segments []llm.MessageSegment `json:"segments"` // Complete result content, including multimodal parts.
+	Blocks   []ContentBlock       `json:"blocks,omitempty"` // Display-only changes, never injected into model input.
+	Success  bool                 `json:"success"`          // Whether tool execution completed without error.
+	Segments []llm.MessageSegment `json:"segments"`         // Complete result content, including multimodal parts.
 }
 
 type StreamEvent struct {
