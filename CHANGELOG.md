@@ -47,6 +47,7 @@
 - 优化压缩逻辑
 - `read_file` 的 `ast` 模式改为 Go 单文件结构索引，返回声明骨架与行范围，支持限制条目数和按编号展开类型成员；移除 `ast_function`、标识符搜索及 Go／Shell 目录 AST 查询。
 - 优化chat hisotry，现在助手能看到自己发的内容了
+- 优化workspace预载和发现，提前知道目录
 
 ### Fixed
 

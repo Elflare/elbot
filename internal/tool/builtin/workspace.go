@@ -32,17 +32,15 @@ func (t WorkspaceTool) Definition() toolshare.ToolDefinition {
 }
 
 func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error) {
-	store, ok := workspace.WorkspaceStoreFromContext(ctx)
-	if !ok {
-		return "", false, nil
-	}
-	noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore)
-	if !ok {
-		return "", false, nil
-	}
 	dir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
 		return "", false, err
+	}
+	content := "current workspace: " + dir
+	store, _ := workspace.WorkspaceStoreFromContext(ctx)
+	noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore)
+	if !ok {
+		return content, false, nil
 	}
 	instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 	if err != nil {
@@ -53,7 +51,10 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 			return "", false, fmt.Errorf("mark workspace instructions notice: %w", err)
 		}
 	}
-	return instructions, false, nil
+	if instructions != "" {
+		content += "\n" + instructions
+	}
+	return content, false, nil
 }
 
 func workspaceBuilder() *toolshare.Builder {
@@ -93,7 +94,7 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 						return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 					}
 					if instructions != "" {
-						content += "\n\n" + instructions
+						content += "\n" + instructions
 					}
 					if err := noticeStore.ClearWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
 						callErr := fmt.Errorf("reset workspace: %w", err)
@@ -133,7 +134,7 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				}
 				markNotice = mark
 				if instructions != "" {
-					content += "\n\n" + instructions
+					content += "\n" + instructions
 				}
 				if err := noticeStore.SetWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
 					callErr := fmt.Errorf("set workspace: %w", err)

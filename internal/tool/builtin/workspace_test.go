@@ -15,6 +15,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/tool/discovery"
+	"elbot/internal/tool/preload"
 	toolregistry "elbot/internal/tool/registry"
 	"elbot/internal/workspace"
 )
@@ -132,7 +133,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantStatus := "workspace set to " + filepath.Clean(dir)
-	if result.Data.Content != wantStatus+"\n\nLoaded workspace instructions from AGENTS.md:\nwork rules" {
+	if result.Data.Content != wantStatus+"\nLoaded workspace instructions from AGENTS.md:\nwork rules" {
 		t.Fatalf("instructions not loaded: %q", result.Data.Content)
 	}
 	if logContent != wantStatus || !strings.Contains(result.Data.LogContent(), "work rules") {
@@ -174,7 +175,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if override || !strings.Contains(content, "Loaded workspace instructions from AGENTS.md:\ndiscovery rules") {
+	if override || content != "current workspace: "+dir+"\nLoaded workspace instructions from AGENTS.md:\ndiscovery rules" {
 		t.Fatalf("unexpected discovery content: override=%t content=%q", override, content)
 	}
 	if len(store.noticeDirs) != 1 || store.noticeDirs[0] != filepath.Clean(dir) {
@@ -185,8 +186,8 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content != "" {
-		t.Fatalf("instructions repeated during discovery: %q", content)
+	if content != "current workspace: "+dir {
+		t.Fatalf("repeat discovery should report only the directory: %q", content)
 	}
 
 	args, _ := json.Marshal(map[string]any{"path": dir})
@@ -199,7 +200,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	}
 }
 
-func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
+func TestWorkspaceDiscoveryAndPreloadReportCurrentDirectory(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "AGENT.md"), []byte("current rules"), 0644); err != nil {
 		t.Fatal(err)
@@ -217,7 +218,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "已发现：workspace") || !strings.Contains(result.Data.Content, "Loaded workspace instructions from AGENT.md:\ncurrent rules") {
+	if !strings.Contains(result.Data.Content, "已发现：workspace") || !strings.Contains(result.Data.Content, "current workspace: "+dir+"\nLoaded workspace instructions from AGENT.md:\ncurrent rules") {
 		t.Fatalf("unexpected discovery result: %q", result.Data.Content)
 	}
 
@@ -225,8 +226,23 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if strings.Contains(result.Data.Content, "current rules") {
-		t.Fatalf("list discovery should not load instructions: %q", result.Data.Content)
+	if strings.Contains(result.Data.Content, "current workspace: ") || strings.Contains(result.Data.Content, "current rules") {
+		t.Fatalf("list discovery should not include workspace details: %q", result.Data.Content)
+	}
+
+	preloader := preload.NewPreloadService(preload.PreloadOptions{
+		Registry: registry, Resolver: discovery.NewResolver(registry),
+		NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery,
+	})
+	for _, current := range []string{dir, t.TempDir()} {
+		store.dir = current
+		prepared, err := preloader.PrepareTools(ctx, []string{"workspace"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if prepared.Content != "current workspace: "+current {
+			t.Fatalf("unexpected workspace preload: %q", prepared.Content)
+		}
 	}
 }
 
